@@ -4,6 +4,7 @@
 import { useStore, toEngineState } from '../../state/store';
 import { getBottleneck, getCapacity, getFireFactor, getFoodFactor } from '../../game/engine';
 import { formatNumber, formatPercent } from '../../core/format';
+import { Icon } from './Icon';
 
 export function HintBar() {
   const s = useStore();
@@ -19,7 +20,7 @@ export function HintBar() {
       role="status"
       className="flex items-center gap-2 rounded border border-yellow-600/60 bg-yellow-900/40 px-3 py-2 text-xs text-yellow-200"
     >
-      <span className="shrink-0 text-base leading-none">⚠️</span>
+      <Icon emoji="⚠️" className="shrink-0 text-base leading-none" />
       <span className="font-medium">{bottleneck}</span>
 
       {/* 末尾附上当前最大限制的速览，方便判断该调哪一项 */}

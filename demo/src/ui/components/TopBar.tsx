@@ -5,6 +5,12 @@
 // 资源变多时横向滚动（overflow-x-auto + flex-nowrap），绝不换行把下面挤扁。
 //
 // 只显示已解锁的资源（渐进解锁），人口单独显示「数量 / 上限」与增长速率。
+//
+// 视觉简约化：去掉卡片化外观，仅用一条极淡分隔线（border-gray-800）与内容区分界；
+// 层级靠字重与灰阶建立（数值白、标签灰、速率弱化），不再使用色块背景。
+//
+// 纯文字模式：所有 emoji 走 <Icon>，关闭图标时该节点不渲染 ——
+// 外层容器一律使用 flex + gap 排布，因此不依赖图标宽度，不会塌陷错位。
 
 import { useStore, toEngineState } from '../../state/store';
 import { MATERIAL_RESOURCES, RESOURCE_MAP } from '../../data/resources';
@@ -17,6 +23,7 @@ import {
   getPopulationGrowth,
 } from '../../game/engine';
 import { formatNumber, formatRate } from '../../core/format';
+import { Icon } from './Icon';
 
 /** 数值列固定宽度 + 右对齐，避免数字位数变化时整行抖动 */
 const VALUE_COL = 'min-w-[3.5rem] text-right';
@@ -32,7 +39,7 @@ export function TopBar() {
   const capacity = getCapacity(view);
 
   return (
-    <div className="flex shrink-0 flex-nowrap items-center gap-4 overflow-x-auto border-b border-gray-700 bg-gray-800 px-4 py-1.5 text-sm leading-tight">
+    <div className="flex shrink-0 flex-nowrap items-center gap-5 overflow-x-auto border-b border-gray-800 bg-gray-900/40 px-4 py-1.5 text-sm leading-tight">
       {shown.map(id => {
         const def = RESOURCE_MAP[id];
         const rate = id === 'experience' ? calcExperienceOutput(view) : calcResourceOutput(id, view);
@@ -40,19 +47,20 @@ export function TopBar() {
         const amount = id === 'experience' ? s.experience : s[id as 'food' | 'wood' | 'stone'];
 
         return (
+          // gap 负责间距：图标被隐藏（Icon → null）时不会留下空洞
           <span key={id} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-            <span className="text-sm">{def.icon}</span>
-            <span className="text-gray-400">{def.name}</span>
+            <Icon emoji={def.icon} className="text-sm" />
+            <span className="text-gray-500">{def.name}</span>
             {/* 主数值：等宽字体 + 右对齐，位数变化不影响其他项的位置 */}
-            <span className={`${VALUE_COL} font-mono tabular-nums text-white`}>
+            <span className={`${VALUE_COL} font-mono tabular-nums text-gray-100`}>
               {formatNumber(amount)}
             </span>
             {Number.isFinite(cap) && (
-              <span className="text-xs text-gray-500">/ {formatNumber(cap)}</span>
+              <span className="text-xs text-gray-600">/ {formatNumber(cap)}</span>
             )}
             <span
               className={`${RATE_COL} font-mono text-xs tabular-nums ${
-                rate > 0 ? 'text-green-400' : 'text-gray-500'
+                rate > 0 ? 'text-emerald-400/80' : 'text-gray-600'
               }`}
             >
               {formatRate(rate)}
@@ -61,17 +69,21 @@ export function TopBar() {
         );
       })}
 
-      {/* 人口：单独显示上限与增长速率 */}
+      {/* 人口：单独显示上限与增长速率（增长/衰减按正负着色，其余保持灰阶） */}
       <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-        <span className="text-sm">{RESOURCE_MAP.population.icon}</span>
-        <span className="text-gray-400">人口</span>
-        <span className={`${VALUE_COL} font-mono tabular-nums text-white`}>
+        <Icon emoji={RESOURCE_MAP.population.icon} className="text-sm" />
+        <span className="text-gray-500">人口</span>
+        <span className={`${VALUE_COL} font-mono tabular-nums text-gray-100`}>
           {Math.floor(s.population)}
-          <span className="text-gray-500"> / {capacity}</span>
+          <span className="text-gray-600"> / {capacity}</span>
         </span>
         <span
           className={`${RATE_COL} font-mono text-xs tabular-nums ${
-            popGrowth > 0 ? 'text-green-400' : popGrowth < 0 ? 'text-red-400' : 'text-gray-500'
+            popGrowth > 0
+              ? 'text-emerald-400/80'
+              : popGrowth < 0
+                ? 'text-red-400/80'
+                : 'text-gray-600'
           }`}
         >
           {formatRate(popGrowth)}

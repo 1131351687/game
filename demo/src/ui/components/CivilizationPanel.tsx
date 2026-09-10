@@ -9,6 +9,11 @@
 //   · 外层已由 App.tsx 提供 `mx-auto max-w-4xl`，本组件不再套外层限宽容器
 //   · 但树状图需要横向空间，所以**视图区不限宽**，只有跃迁/队列两块收窄到 max-w-4xl
 //   · MessageLog 是 `fixed bottom-0`（约 160px），视图区底部 pb-40 防止最后一行被遮挡
+//
+// 视觉约定（v3 简约化）：
+//   · 顶栏去掉边框与实心卡片感，只用一层极淡背景 + 留白
+//   · 视图切换做成 segmented control（一个内凹容器 + 两个按钮，选中项 bg-gray-700），不用亮蓝
+//   · 所有 emoji 经 <Icon> 渲染（纯文字模式），间距用 gap 建立，不依赖图标宽度
 
 import { useState } from 'react';
 
@@ -18,6 +23,7 @@ import { isModuleUnlocked } from '../../game/reveal';
 import { TECHS } from '../../data/techs';
 import { formatNumber, formatRate } from '../../core/format';
 
+import { Icon } from './Icon';
 import { TechCategories } from './TechCategories';
 import { TechTree } from './TechTree';
 import { QueuePanel } from './QueuePanel';
@@ -40,46 +46,52 @@ export function CivilizationPanel() {
 
   const progress = total > 0 ? Math.min(1, researched / total) : 0;
 
+  // segmented control 的两个按钮共用的基底样式（唯一差别是选中态）
+  const segmentClass = (active: boolean): string =>
+    `rounded px-3 py-1 text-xs font-medium transition-colors ${
+      active ? 'bg-gray-700 text-gray-100' : 'text-gray-500 hover:text-gray-300'
+    }`;
+
   return (
     <div className="space-y-4">
-      {/* ── 顶栏：左侧进度 / 中间经验 / 右侧视图切换 ── */}
-      <header className="rounded-lg border border-gray-700 bg-gray-800 px-4 py-2.5">
+      {/* ── 顶栏：左侧进度 / 中间经验 / 右侧视图切换（无边框，仅极淡底色） ── */}
+      <header className="rounded-md bg-gray-800/40 px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           {/* 左：已学科技数 */}
-          <div className="text-xs tabular-nums text-gray-400">
-            已学{' '}
-            <span className="text-sm font-semibold text-gray-100">{researched}</span>
-            <span className="text-gray-500"> / {total}</span>
+          <div className="text-xs tabular-nums text-gray-500">
+            已学 <span className="text-sm font-semibold text-gray-100">{researched}</span>
+            <span className="text-gray-600"> / {total}</span>
           </div>
 
           {/* 中：经验存量 + 每秒产出 */}
-          <div className="flex items-center gap-2 text-xs tabular-nums text-gray-400">
-            <span>
+          <div className="flex items-center gap-2 text-xs tabular-nums text-gray-500">
+            <span className="inline-flex items-center gap-1">
               经验{' '}
-              <span className="text-sm font-semibold text-amber-300">
+              <span className="text-sm font-semibold text-gray-100">
                 {formatNumber(view.experience, 0)}
-              </span>{' '}
-              💡
+              </span>
+              <Icon emoji="💡" className="text-[10px]" />
             </span>
+            {/* 产出速率 > 0 时给一点点颜色（关键状态），否则纯灰 */}
             <span
               title="经验产出速率"
-              className={expOutput > 0 ? 'text-emerald-400' : 'text-gray-500'}
+              className={expOutput > 0 ? 'text-emerald-500/90' : 'text-gray-600'}
             >
               {formatRate(expOutput)}/秒
             </span>
           </div>
 
-          {/* 右：视图切换（当前视图高亮） */}
-          <div className="flex items-center gap-1" role="group" aria-label="视图切换">
+          {/* 右：视图切换（segmented control：一个容器内两个按钮） */}
+          <div
+            className="inline-flex items-center gap-0.5 rounded-md bg-gray-800/70 p-0.5"
+            role="group"
+            aria-label="视图切换"
+          >
             <button
               type="button"
               onClick={() => setMode('categories')}
               aria-pressed={mode === 'categories'}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                mode === 'categories'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
+              className={segmentClass(mode === 'categories')}
             >
               分类
             </button>
@@ -87,21 +99,17 @@ export function CivilizationPanel() {
               type="button"
               onClick={() => setMode('tree')}
               aria-pressed={mode === 'tree'}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                mode === 'tree'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-              }`}
+              className={segmentClass(mode === 'tree')}
             >
               树状图
             </button>
           </div>
         </div>
 
-        {/* 细进度条：把"已学 / 总数"视觉化 */}
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-gray-900">
+        {/* 细进度条：把"已学 / 总数"视觉化（中性灰，不用亮色） */}
+        <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-gray-800">
           <div
-            className="h-full rounded-full bg-blue-600 transition-[width] duration-300"
+            className="h-full rounded-full bg-gray-400 transition-[width] duration-300"
             style={{ width: `${progress * 100}%` }}
           />
         </div>

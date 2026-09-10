@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import { checkAdvance } from '../../game/engine';
+import { Icon } from './Icon';
 
 export function AdvancePanel() {
   const s = useStore();
@@ -62,13 +63,13 @@ export function AdvancePanel() {
             : 'cursor-not-allowed bg-gray-700 text-sm text-gray-500'
         }`}
       >
-        {check.ok ? '🌾 迈向定居时代' : `迈向定居时代（还差 ${remaining} 项）`}
+        {check.ok ? (<><Icon emoji="🌾" className="text-base mr-1" />迈向定居时代</>) : `迈向定居时代（还差 ${remaining} 项）`}
       </button>
 
       {/* 跃迁提示：本 demo 到此结束 */}
       {notified && (
         <div className="flex items-start gap-2 rounded border border-emerald-600/60 bg-emerald-900/40 px-2 py-1.5 text-xs text-emerald-200">
-          <span className="leading-none">🎉</span>
+          <Icon emoji="🎉" className="text-base leading-none" />
           <div className="flex-1">
             <p className="font-medium">E1 · 远古时代 到此结束</p>
             <p className="mt-0.5 text-emerald-300/80">

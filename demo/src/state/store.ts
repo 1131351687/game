@@ -19,6 +19,19 @@ export interface Message {
   important: boolean;
 }
 
+/** 玩家设置 */
+export interface GameSettings {
+  /**
+   * 是否显示图标（emoji）。
+   * 关闭后进入「纯文字模式」——所有 emoji 都不渲染，界面更素净。
+   */
+  showIcons: boolean;
+}
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  showIcons: true,
+};
+
 export interface GameState {
   running: boolean;
   version: number;
@@ -56,6 +69,7 @@ export interface GameState {
 
   messages: Message[];
   lastActiveAt: number;
+  settings: GameSettings;
 
   // ── Actions ──
   setRunning: (v: boolean) => void;
@@ -75,6 +89,9 @@ export interface GameState {
   doLongTick: () => void;
   addMessage: (text: string, category?: Message['category'], important?: boolean) => void;
   clearMessages: () => void;
+  /** 切换图标显示（纯文字模式开关） */
+  toggleIcons: () => void;
+  updateSettings: (patch: Partial<GameSettings>) => void;
   takeSnapshot: () => Partial<GameState>;
   loadSnapshot: (data: Partial<GameState>) => void;
   resetGame: () => void;
@@ -101,6 +118,7 @@ const initialState = () => ({
   stats: { startTime: Date.now(), playTime: 0, totalResearched: 0 },
   messages: [] as Message[],
   lastActiveAt: Date.now(),
+  settings: { ...DEFAULT_SETTINGS },
 });
 
 /** 从完整 state 中提取引擎需要的只读切片 */
@@ -274,6 +292,10 @@ export const useStore = create<GameState>((set, get) => ({
 
   clearMessages: () => set({ messages: [] }),
 
+  toggleIcons: () => set(s => ({ settings: { ...s.settings, showIcons: !s.settings.showIcons } })),
+
+  updateSettings: (patch) => set(s => ({ settings: { ...s.settings, ...patch } })),
+
   // ── 存档 ──
   takeSnapshot: () => {
     const s = get();
@@ -293,6 +315,8 @@ export const useStore = create<GameState>((set, get) => ({
       queue: s.queue,
       stats: s.stats,
       lastActiveAt: Date.now(),
+      // 设置随存档保存（图标开关等偏好跟着玩家走）
+      settings: s.settings,
     };
   },
 

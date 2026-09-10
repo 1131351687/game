@@ -13,6 +13,7 @@ import { FireDashboard } from './ui/components/FireDashboard';
 import { JobPanel } from './ui/components/JobPanel';
 import { BuildingPanel } from './ui/components/BuildingPanel';
 import { CivilizationPanel } from './ui/components/CivilizationPanel';
+import { SettingsMenu } from './ui/components/SettingsMenu';
 import { HintBar } from './ui/components/HintBar';
 import { MessageLog } from './ui/components/MessageLog';
 import { isModuleUnlocked } from './game/reveal';
@@ -41,8 +42,14 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-gray-900 text-gray-200">
-      {/* ① 顶部资源条 —— 常驻最上方 */}
-      <TopBar />
+      {/* ① 顶部：资源条 + 右上角设置按钮 */}
+      <div className="relative shrink-0">
+        <TopBar />
+        {/* 设置按钮悬浮在资源条右上角，不占用资源条的布局空间 */}
+        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+          <SettingsMenu />
+        </div>
+      </div>
 
       {/* ② 火种仪表盘 —— 掌握火之后的常驻核心元素 */}
       {fireUnlocked && <FireDashboard />}

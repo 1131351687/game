@@ -8,7 +8,7 @@
 // 本文件不依赖任何其它文件的改动，可独立编译。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import { canResearch, isTechAvailable, countResearched } from '../../game/engine';
 import { isTechRevealed } from '../../game/reveal';
@@ -24,6 +24,7 @@ import { JOBS } from '../../data/jobs';
 import { BUILDINGS } from '../../data/buildings';
 import { QUEUE } from '../../data/constants';
 import { formatNumber } from '../../core/format';
+import { Icon } from './Icon';
 
 // ─────────────────────────────────────────────
 // 世界坐标常量（像素）
@@ -328,7 +329,8 @@ export function TechTree() {
       {/* ── 顶部信息条 ── */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0 text-sm">
         <span className="text-gray-300">
-          经验：<span className="text-yellow-300 font-semibold">{formatNumber(view.experience)}</span> 💡
+          经验：<span className="text-yellow-300 font-semibold">{formatNumber(view.experience)}</span>{' '}
+          <Icon emoji="💡" className="text-xs" />
         </span>
         <span className="text-gray-300">
           已研究：<span className="text-emerald-400 font-semibold">{researchedCount}</span>
@@ -482,11 +484,11 @@ export function TechTree() {
             }
             if (isActive) cls += ' ring-2 ring-white/70';
 
-            // 节点上直接显示成本 / 还差多少
-            let costLine: string;
+            // 节点上直接显示成本 / 还差多少（成本 emoji 走 Icon，纯文字模式自动隐藏）
+            let costLine: ReactNode;
             if (state === 'researched') costLine = '已研究';
             else if (state === 'short') costLine = `还差 ${formatNumber(node.deficit)}`;
-            else costLine = `${formatNumber(def.cost)} 💡`;
+            else costLine = (<>{formatNumber(def.cost)} <Icon emoji="💡" className="text-[10px]" /></>);
 
             return (
               <button
@@ -580,7 +582,8 @@ export function TechTree() {
             {/* 成本与状态：reason 直接取自 canResearch */}
             <div className="mt-3 space-y-1">
               <div className="text-gray-400">
-                成本：<span className="text-yellow-300">{formatNumber(active.def.cost)}</span> 💡
+                成本：<span className="text-yellow-300">{formatNumber(active.def.cost)}</span>{' '}
+                <Icon emoji="💡" className="text-xs" />
                 {active.state === 'short' && (
                   <span className="ml-2 text-amber-400">还差 {formatNumber(active.deficit)}</span>
                 )}
@@ -643,7 +646,11 @@ export function TechTree() {
                 onClick={() => handleResearch(active.def.id)}
                 className="flex-1 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:text-gray-500 disabled:cursor-not-allowed text-white font-medium transition-colors"
               >
-                {active.state === 'researched' ? '已研究' : `研究（${formatNumber(active.def.cost)} 💡）`}
+                {active.state === 'researched'
+                  ? '已研究'
+                  : (
+                    <>研究（{formatNumber(active.def.cost)} <Icon emoji="💡" className="text-xs" />）</>
+                  )}
               </button>
               <button
                 type="button"

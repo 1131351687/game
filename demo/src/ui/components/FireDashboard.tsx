@@ -5,6 +5,10 @@
 // 现改为**紧凑横向条状布局**（高度 ≤ 64px，py-2）：🔥 火种 [线性进度条] 72/100 稳定 ×1.0 −2.0/秒 [投料] [自动维持]
 //
 // 火种会持续衰减，玩家必须投入木材维持；火源因子同时影响人口增长与食物加成。
+//
+// 视觉简约化：去掉卡片外框与深色底，进度条变细（h-2）并直接融入页面；
+// 只有「档位配色」「危险红闪」「自动维持已开启」这三类关键状态保留颜色，
+// 按钮改为无边框、仅 hover 时显色。所有 emoji 走 <Icon>，兼容纯文字模式。
 
 import { useStore, toEngineState } from '../../state/store';
 import {
@@ -16,6 +20,7 @@ import {
 } from '../../game/engine';
 import { FIRE, type FireTier } from '../../data/constants';
 import { formatNumber, formatTime } from '../../core/format';
+import { Icon } from './Icon';
 
 /**
  * 三档（含熄灭）进度条填充色。
@@ -31,6 +36,10 @@ const TIER_BAR: Record<FireTier, string> = {
 
 /** 低于此值进入危险区：进度条与数字变红闪烁 */
 const DANGER_THRESHOLD = 20;
+
+/** 投料按钮：默认无边框的轻量文字按钮，仅 hover 时透出暖色 */
+const FUEL_BTN =
+  'rounded-md px-2 py-1 font-mono text-xs font-semibold tabular-nums transition-colors';
 
 export function FireDashboard() {
   const state = useStore();
@@ -58,16 +67,16 @@ export function FireDashboard() {
   const burnOut = decay > 0 ? fire / decay : Number.POSITIVE_INFINITY;
 
   return (
-    <section className="flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto border-b border-gray-700 bg-gray-800 px-4 py-2 text-sm leading-tight">
+    <section className="flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto border-b border-gray-800 px-4 py-2 text-sm leading-tight">
       {/* ── 标题 ── */}
-      <span className="flex shrink-0 items-center gap-1 font-bold text-gray-300">
-        <span className="text-sm">🔥</span>
+      <span className="flex shrink-0 items-center gap-1.5 text-gray-500">
+        <Icon emoji="🔥" className="text-sm" />
         <span>火种</span>
       </span>
 
-      {/* ── 线性进度条（危险时红色闪烁）── */}
+      {/* ── 线性进度条（危险时红色闪烁）—— 细条、无外框，融入页面 ── */}
       <div
-        className="relative h-4 min-w-[7rem] flex-1 overflow-hidden rounded-full bg-gray-900"
+        className="relative h-2 min-w-[7rem] flex-1 overflow-hidden rounded-md bg-gray-800/60"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={max}
@@ -75,51 +84,55 @@ export function FireDashboard() {
         aria-label={`火种 ${Math.floor(fire)} / ${formatNumber(max, 0)}`}
       >
         <div
-          className={`h-full rounded-full transition-all duration-300 ${
-            danger ? 'animate-pulse' : ''
-          }`}
+          className={`h-full rounded-md transition-all duration-300 ${danger ? 'animate-pulse' : ''}`}
           style={{ width: `${ratio * 100}%`, backgroundColor: barColor }}
         />
       </div>
 
       {/* ── 数值：等宽 + 右对齐，位数变化不抖动；危险时变红闪烁 ── */}
       <span
-        className={`shrink-0 min-w-[5rem] text-right font-mono font-bold tabular-nums ${
+        className={`shrink-0 min-w-[5rem] text-right font-mono font-semibold tabular-nums ${
           danger ? 'animate-pulse text-red-400' : tierInfo.color
         }`}
       >
         {Math.floor(fire)}
-        <span className="font-normal text-gray-500"> / {formatNumber(max, 0)}</span>
+        <span className="font-normal text-gray-600"> / {formatNumber(max, 0)}</span>
       </span>
 
       {/* ── 档位 + 火源因子 ── */}
       <span
-        className={`shrink-0 whitespace-nowrap font-semibold ${
+        className={`shrink-0 whitespace-nowrap text-xs ${
           danger ? 'text-red-400' : tierInfo.color
         }`}
       >
         {tierInfo.name}
       </span>
-      <span className="shrink-0 whitespace-nowrap rounded bg-gray-900 px-1.5 py-0.5 text-xs text-gray-300">
+      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-500">
         ×{factor.toFixed(2)}
       </span>
 
       {/* ── 衰减速率 / 预计熄灭时间 ── */}
-      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-red-400">
+      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-red-400/80">
         −{decay.toFixed(2)}/秒
       </span>
-      <span className="shrink-0 whitespace-nowrap text-xs text-gray-500">
+      <span className="shrink-0 whitespace-nowrap text-xs text-gray-600">
         {formatTime(burnOut)}后熄灭
       </span>
 
-      {/* ── 操作：手动投料（木材不足时禁用）── */}
-      <span className="shrink-0 whitespace-nowrap text-xs text-gray-500">
-        🪵
-        <span className={`ml-1 font-mono tabular-nums ${state.wood < FIRE.WOOD_INPUT_STEPS[0] ? 'text-red-400' : ''}`}>
+      {/* ── 当前木材存量（投料按钮旁，不足时标红）── */}
+      <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-gray-500">
+        <Icon emoji="🪵" className="text-xs" />
+        <span
+          className={`font-mono tabular-nums ${
+            state.wood < FIRE.WOOD_INPUT_STEPS[0] ? 'text-red-400' : ''
+          }`}
+        >
           {formatNumber(state.wood, 0)}
         </span>
       </span>
-      <div className="flex shrink-0 items-center gap-1.5">
+
+      {/* ── 操作：手动投料（木材不足时禁用）── */}
+      <div className="flex shrink-0 items-center gap-1">
         {FIRE.WOOD_INPUT_STEPS.map(step => {
           const disabled = state.wood < step;
           return (
@@ -133,10 +146,10 @@ export function FireDashboard() {
                   ? `木材不足（需要 ${step}，现有 ${Math.floor(state.wood)}）`
                   : `消耗 ${step} 木材，火种 +${step * FIRE.PER_WOOD}`
               }
-              className={`rounded px-2 py-1 font-mono text-xs font-semibold tabular-nums transition-colors ${
+              className={`${FUEL_BTN} ${
                 disabled
-                  ? 'cursor-not-allowed bg-gray-800 text-gray-600'
-                  : 'bg-orange-600 text-white hover:bg-orange-500 active:bg-orange-700'
+                  ? 'cursor-not-allowed text-gray-700'
+                  : 'text-gray-400 hover:bg-orange-500/15 hover:text-orange-300 active:bg-orange-500/25'
               }`}
             >
               +{step}
@@ -145,16 +158,16 @@ export function FireDashboard() {
         })}
       </div>
 
-      {/* ── 操作：自动维持开关 ── */}
+      {/* ── 操作：自动维持开关（开启属于「已达成」状态，保留绿色）── */}
       <button
         type="button"
         onClick={toggleAutoMaintain}
         aria-pressed={state.autoMaintainFire}
         title={`低于 ${FIRE.AUTO_MAINTAIN_THRESHOLD} 时自动投入木材`}
-        className={`shrink-0 whitespace-nowrap rounded px-2 py-1 text-xs font-semibold transition-colors ${
+        className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-xs transition-colors ${
           state.autoMaintainFire
-            ? 'bg-green-600 text-white hover:bg-green-500'
-            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            ? 'text-emerald-400 hover:bg-emerald-500/10'
+            : 'text-gray-600 hover:bg-gray-800/60 hover:text-gray-400'
         }`}
       >
         自动维持 {state.autoMaintainFire ? '✓' : '✗'}
