@@ -1,17 +1,20 @@
-// 三级循环调度器
-// fastLoop: 250ms - 资源累积、UI 数字刷新
-// midLoop: 1s - 事件检查、队列进度
-// longLoop: 5s (1 游戏日) - 存档、成就检查
+// 三级循环调度器 + 存档 + 离线收益
+// fastLoop : 250ms  资源累积 / 人口 / 火种
+// midLoop  : 1s     队列检查（当前由 doTick 内处理）
+// longLoop : 5s     统计 + 自动存档
 
-import { useStore } from '../../state/store';
-import { updateAllOutputs, tickGame } from '../../game/engine';
+import { useStore, type GameState } from '../../state/store';
+import { LOOP, QUEUE } from '../../data/constants';
 
-const MID_RATIO = 4;   // 1000ms / 250ms
-const LONG_RATIO = 20; // 5000ms / 250ms
+const MID_RATIO = LOOP.MID_RATIO;   // 4
+const LONG_RATIO = LOOP.LONG_RATIO; // 20
 
 let loopTick = 0;
 let worker: Worker | null = null;
 
+// ─────────────────────────────────────────────
+// 时钟
+// ─────────────────────────────────────────────
 export function startClock(): void {
   if (worker) return;
 
@@ -25,7 +28,7 @@ export function startClock(): void {
     }
   });
 
-  worker.postMessage({ loop: 'start', period: 250 });
+  worker.postMessage({ loop: 'start', period: LOOP.FAST_MS });
 }
 
 export function stopClock(): void {
@@ -35,7 +38,7 @@ export function stopClock(): void {
 }
 
 export function execGameLoops(periods = 1): void {
-  // 单次最多 1 分钟 catch-up
+  // 单次最多补 1 分钟，防止长时间挂起后一次性算爆
   const maxCatchUp = LONG_RATIO * 12;
   periods = Math.min(periods, maxCatchUp);
 
@@ -46,63 +49,51 @@ export function execGameLoops(periods = 1): void {
 
     fastLoop();
     if (doMid) midLoop();
-    doCallbacks();
     if (doLong) longLoop();
 
-    // 防溢出
     if (doMid && doLong) loopTick = 0;
   }
 }
 
 export function fastLoop(): void {
-  // 250ms：资源累积 + 派生量更新
-  const state = useStore.getState();
-  if (!state.running) return;
-
-  // 先更新产出派生量
-  updateAllOutputs();
-
-  // 再执行资源累积
-  tickGame(0.25);
+  const s = useStore.getState();
+  if (!s.running) return;
+  s.doTick(LOOP.DT);
 }
 
 export function midLoop(): void {
-  // 1s：事件检查（demo 中简化）
+  // 队列推进已在 doTick 内处理；此处保留扩展位
 }
 
 export function longLoop(): void {
-  // 5s：存档 + 统计
-  const state = useStore.getState();
-  useStore.setState({
-    stats: {
-      ...state.stats,
-      playTime: state.stats.playTime + 5,
-    },
-  });
-  // 定时存档（简化：每次 longLoop 都存）
+  const s = useStore.getState();
+  s.doLongTick();
   saveGame();
 }
 
-export function doCallbacks(): void {
-  // 每 tick 跑，确保永久结果被存档
+// ─────────────────────────────────────────────
+// 存档（localStorage + 版本号）
+// ─────────────────────────────────────────────
+const SAVE_KEY = 'civilis_save';
+const SAVE_VERSION = 1;
+
+interface SaveData {
+  version: number;
+  savedAt: number;
+  state: Partial<GameState>;
 }
 
-// 简单的 localStorage 存档（demo 用，正式版用 IndexedDB）
-const SAVE_KEY = 'civilis_save';
-
 export function saveGame(): void {
-  const state = useStore.getState();
-  const snapshot = {
-    resources: state.resources,
-    techs: state.techs,
-    stats: state.stats,
-    settings: state.settings,
-    prestige: state.prestige,
+  const s = useStore.getState();
+  const snapshot: SaveData = {
+    version: SAVE_VERSION,
+    savedAt: Date.now(),
+    state: s.takeSnapshot(),
   };
   try {
     localStorage.setItem(SAVE_KEY, JSON.stringify(snapshot));
   } catch (e) {
-    console.error('Save failed', e);
+    console.error('[civilis] 存档失败', e);
   }
 }
 
@@ -110,16 +101,67 @@ export function loadGame(): boolean {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return false;
-    const snapshot = JSON.parse(raw);
-    useStore.setState(snapshot);
+
+    const data = JSON.parse(raw) as SaveData;
+    if (!data.state) return false;
+
+    // 版本迁移位（当前仅 v1，未来在此加 migration）
+    const migrated = migrate(data);
+
+    useStore.getState().loadSnapshot(migrated.state);
     return true;
   } catch (e) {
-    console.error('Load failed', e);
+    console.error('[civilis] 读档失败', e);
     return false;
   }
 }
 
+function migrate(data: SaveData): SaveData {
+  // 目前只有 v1；未来新增字段时在此按版本补默认值
+  return data;
+}
+
 export function clearGame(): void {
   localStorage.removeItem(SAVE_KEY);
-  useStore.setState(useStore.getState().initialState);
+  useStore.getState().resetGame();
+}
+
+// ─────────────────────────────────────────────
+// 离线收益（T3.2）
+// 按 50% 效率推进，上限 8 小时
+// ─────────────────────────────────────────────
+export interface OfflineResult {
+  elapsedSec: number;
+  effectiveSec: number;
+  researches: string[];
+}
+
+export function applyOfflineProgress(): OfflineResult | null {
+  const s = useStore.getState();
+  const elapsed = (Date.now() - (s.lastActiveAt || Date.now())) / 1000;
+  if (elapsed < 60) return null; // 少于 1 分钟不结算
+
+  const capped = Math.min(elapsed, QUEUE.OFFLINE_CAP_SEC);
+  const effective = capped * QUEUE.OFFLINE_EFFICIENCY;
+
+  // 以 1 秒为步长模拟推进（上限 8 小时 → 最多 14400 步，可接受）
+  const step = 1;
+  let remaining = effective;
+  const researches: string[] = [];
+
+  // 记录研究前状态，便于统计完成了哪些
+  const before = { ...s.techs };
+
+  while (remaining > 0) {
+    const dt = Math.min(step, remaining);
+    useStore.getState().doTick(dt);
+    remaining -= dt;
+  }
+
+  const after = useStore.getState().techs;
+  for (const id of Object.keys(after)) {
+    if (after[id] && !before[id]) researches.push(id);
+  }
+
+  return { elapsedSec: elapsed, effectiveSec: effective, researches };
 }

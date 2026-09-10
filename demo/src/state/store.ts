@@ -1,243 +1,306 @@
-// Zustand 状态管理 - 游戏核心状态
+// E1 远古时代 · 状态管理
+// 数值与规则见 design/game/02-tech-eras.md
+
 import { create } from 'zustand';
-import { JOB_DEFS } from '../game/engine';
+import { JOBS, type JobId } from '../data/jobs';
+import { BUILDINGS, type BuildingId } from '../data/buildings';
+import { TECH_MAP } from '../data/techs';
+import { INITIAL_STATE, QUEUE, LOOP } from '../data/constants';
+import * as engine from '../game/engine';
 
-// 资源定义（运行时状态）
-export interface ResourceState {
-  id: string;
-  count: number;
-  storage: number;
-  unlocked: boolean;
-  outputPerSecond: number;
-}
-
-// 科技状态
-export interface TechState {
-  id: string;
-  unlocked: boolean;
-  level: number;
-}
-
-// 设置
-export interface Settings {
-  locale: string;
-  theme: 'dark' | 'light';
-  pause: boolean;
-  speed: 1 | 2 | 4 | 8;
-  expose: boolean;
-}
-
-// 统计
-export interface Stats {
-  startTime: number;
-  playTime: number;
-  totalFood: number;
-  totalResearch: number;
-  techsUnlocked: number;
-}
-
-// 重置状态
-export interface PrestigeState {
-  level: number;
-  points: number;
-}
-
-// 消息
+// ─────────────────────────────────────────────
+// 类型
+// ─────────────────────────────────────────────
 export interface Message {
   id: string;
   text: string;
-  category: string;
+  category: 'all' | 'tech' | 'event' | 'warn';
   timestamp: number;
   important: boolean;
 }
 
 export interface GameState {
   running: boolean;
+  version: number;
 
-  // 游戏数据
-  resources: Record<string, ResourceState>;
-  jobs: Record<string, { count: number; unlocked: boolean }>;
-  techs: Record<string, TechState>;
-  government: { regime: string; military: number };
-  prestige: PrestigeState;
-  settings: Settings;
+  // 资源
+  food: number;
+  wood: number;
+  stone: number;
+  experience: number;
+
+  // 人口与火种
+  population: number;
+  fire: number;
+  autoMaintainFire: boolean;
+
+  // 岗位与建筑
+  jobs: Record<string, number>;
+  buildings: Record<string, number>;
+
+  // 科技与队列
+  techs: Record<string, boolean>;
+  queue: string[];
+  /** 当前正在研究（队列首位）的已投入进度（0–1），用于进度环 */
+  researchProgress: number;
+
+  // 统计
+  stats: {
+    startTime: number;
+    playTime: number;
+    totalResearched: number;
+  };
+
   messages: Message[];
-  stats: Stats;
+  lastActiveAt: number;
 
-  // Actions
-  setRunning: (running: boolean) => void;
-  unlockResource: (id: string) => void;
-  buyResource: (id: string, count: number) => boolean;
-  buyResourceMax: (id: string) => number;
-  setJobCount: (id: string, count: number) => void;
-  unlockTech: (id: string) => boolean;
-  changeGovernment: (id: string) => void;
-  addMessage: (text: string, category?: string, important?: boolean) => void;
-  doPrestige: () => void;
+  // ── Actions ──
+  setRunning: (v: boolean) => void;
+  addFuel: (wood: number) => void;
+  toggleAutoMaintain: () => void;
+  setJobCount: (jobId: JobId, count: number) => void;
+  assignAllIdle: (jobId: JobId) => void;
+  clearJobs: () => void;
+  build: (buildingId: BuildingId) => boolean;
+  research: (techId: string) => boolean;
+  enqueue: (techId: string) => void;
+  dequeue: (index: number) => void;
+  reorderQueue: (from: number, to: number) => void;
+  /** 由 fastLoop 调用 */
+  doTick: (dt: number) => void;
+  /** 由 longLoop 调用 */
+  doLongTick: () => void;
+  addMessage: (text: string, category?: Message['category'], important?: boolean) => void;
   clearMessages: () => void;
-  togglePause: () => void;
-  setSpeed: (speed: 1 | 2 | 4 | 8) => void;
-
-  // 初始状态（用于重置）
-  initialState: () => Partial<GameState>;
+  takeSnapshot: () => Partial<GameState>;
+  loadSnapshot: (data: Partial<GameState>) => void;
+  resetGame: () => void;
 }
 
-// 初始状态工厂
-const createInitialState = () => ({
+const SAVE_VERSION = 1;
+
+const initialState = () => ({
   running: false,
-  resources: {
-    food: { id: 'food', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-    wood: { id: 'wood', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-    stone: { id: 'stone', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-    manpower: { id: 'manpower', count: 10, storage: 100, unlocked: true, outputPerSecond: 0 },
-    research: { id: 'research', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-  },
-  jobs: {
-    farmer: { count: 0, unlocked: true },
-    lumberjack: { count: 0, unlocked: true },
-    miner: { count: 0, unlocked: true },
-    scientist: { count: 0, unlocked: true },
-  },
-  techs: {},
-  government: { regime: 'none', military: 0 },
-  prestige: { level: 0, points: 0 },
-  settings: {
-    locale: 'zh-CN',
-    theme: 'dark' as 'dark' | 'light',
-    pause: false,
-    speed: 1 as 1 | 2 | 4 | 8,
-    expose: false,
-  },
-  messages: [],
-  stats: {
-    startTime: Date.now(),
-    playTime: 0,
-    totalFood: 0,
-    totalResearch: 0,
-    techsUnlocked: 0,
-  },
+  version: SAVE_VERSION,
+  food: INITIAL_STATE.food,
+  wood: INITIAL_STATE.wood,
+  stone: INITIAL_STATE.stone,
+  experience: INITIAL_STATE.experience,
+  population: INITIAL_STATE.population,
+  fire: INITIAL_STATE.fire,
+  autoMaintainFire: true,
+  jobs: Object.fromEntries(JOBS.map(j => [j.id, 0])) as Record<string, number>,
+  buildings: Object.fromEntries(BUILDINGS.map(b => [b.id, 0])) as Record<string, number>,
+  techs: {} as Record<string, boolean>,
+  queue: [] as string[],
+  researchProgress: 0,
+  stats: { startTime: Date.now(), playTime: 0, totalResearched: 0 },
+  messages: [] as Message[],
+  lastActiveAt: Date.now(),
 });
 
+/** 从完整 state 中提取引擎需要的只读切片 */
+function engineView(s: GameState): engine.E1State {
+  return {
+    food: s.food,
+    wood: s.wood,
+    stone: s.stone,
+    experience: s.experience,
+    population: s.population,
+    fire: s.fire,
+    jobs: s.jobs,
+    buildings: s.buildings,
+    techs: s.techs,
+    autoMaintainFire: s.autoMaintainFire,
+  };
+}
+
+/**
+ * 组件里这样用：
+ *   const s = useStore();
+ *   const view = toEngineState(s);
+ * 然后把 view 传给 engine 的各个计算函数。
+ */
+export const toEngineState = engineView;
+
 export const useStore = create<GameState>((set, get) => ({
-  ...createInitialState(),
+  ...initialState(),
 
-  setRunning: (running) => set({ running }),
+  setRunning: (v) => set({ running: v }),
 
-  unlockResource: (id) => set(state => ({
-    resources: {
-      ...state.resources,
-      [id]: { ...state.resources[id], unlocked: true },
-    },
-  })),
+  addFuel: (wood) => {
+    const s = get();
+    const r = engine.addFuel(engineView(s), wood);
+    set({ fire: r.fire, wood: r.wood });
+  },
 
-  buyResource: (id, count) => {
-    const state = get();
-    const res = state.resources[id];
-    if (!res || !res.unlocked) return false;
-    if (res.count + count > res.storage) return false;
-    set(s => ({
-      resources: {
-        ...s.resources,
-        [id]: { ...s.resources[id], count: s.resources[id].count + count },
-      },
-    }));
+  toggleAutoMaintain: () => set(s => ({ autoMaintainFire: !s.autoMaintainFire })),
+
+  setJobCount: (jobId, count) => {
+    const s = get();
+    if (!engine.isJobUnlocked(jobId, engineView(s))) return;
+
+    const others = engine.getAssignedPopulation(engineView(s)) - (s.jobs[jobId] ?? 0);
+    const maxAllowed = Math.max(0, Math.floor(s.population - others));
+    const clamped = Math.max(0, Math.min(Math.floor(count), maxAllowed));
+    set({ jobs: { ...s.jobs, [jobId]: clamped } });
+  },
+
+  assignAllIdle: (jobId) => {
+    const s = get();
+    if (!engine.isJobUnlocked(jobId, engineView(s))) return;
+    const idle = engine.getIdlePopulation(engineView(s));
+    set({ jobs: { ...s.jobs, [jobId]: (s.jobs[jobId] ?? 0) + Math.floor(idle) } });
+  },
+
+  clearJobs: () => {
+    const s = get();
+    set({ jobs: { ...s.jobs, ...Object.fromEntries(JOBS.map(j => [j.id, 0])) } });
+  },
+
+  build: (buildingId) => {
+    const s = get();
+    const view = engineView(s);
+    if (!engine.isBuildingUnlocked(buildingId, view)) return false;
+    if (!engine.canAffordBuilding(buildingId, view)) return false;
+
+    const cost = engine.getBuildingCost(buildingId, view);
+    const next: Partial<GameState> = {
+      buildings: { ...s.buildings, [buildingId]: (s.buildings[buildingId] ?? 0) + 1 },
+    };
+    for (const [res, amount] of Object.entries(cost)) {
+      if (res === 'wood') next.wood = s.wood - (amount as number);
+      if (res === 'stone') next.stone = s.stone - (amount as number);
+      if (res === 'food') next.food = s.food - (amount as number);
+    }
+    set(next);
+    const def = BUILDINGS.find(b => b.id === buildingId);
+    get().addMessage(`建成「${def?.name ?? buildingId}」`, 'event');
     return true;
   },
 
-  buyResourceMax: (id) => {
-    const state = get();
-    const res = state.resources[id];
-    if (!res || !res.unlocked) return 0;
-    const spaceLeft = res.storage - res.count;
-    set(s => ({
-      resources: {
-        ...s.resources,
-        [id]: { ...s.resources[id], count: res.count + spaceLeft },
-      },
-    }));
-    return spaceLeft;
-  },
+  research: (techId) => {
+    const s = get();
+    const check = engine.canResearch(techId, engineView(s));
+    if (!check.ok) return false;
 
-  setJobCount: (id, count) => {
-    const state = get();
-    const manpower = state.resources.manpower.count;
-    const inputCost = JOB_DEFS[id as keyof typeof JOB_DEFS]?.inputCost ?? 1;
-    // 按岗位人力消耗上限 clamp，防止人力池变负
-    const clamped = Math.max(0, Math.min(count, Math.floor(manpower / inputCost)));
-    set(s => ({
-      jobs: {
-        ...s.jobs,
-        [id]: { ...s.jobs[id], count: clamped },
-      },
-      resources: {
-        ...s.resources,
-        manpower: { ...s.resources.manpower, count: s.resources.manpower.count - (clamped - s.jobs[id].count) },
-      },
-    }));
-  },
-
-  unlockTech: (id) => {
-    const state = get();
-    if (state.resources.research.count < 100) return false;
-    set(s => ({
-      resources: {
-        ...s.resources,
-        research: { ...s.resources.research, count: s.resources.research.count - 100 },
-      },
-      techs: {
-        ...s.techs,
-        [id]: { id, unlocked: true, level: 1 },
-      },
-      stats: { ...s.stats, techsUnlocked: s.stats.techsUnlocked + 1 },
-    }));
-    get().addMessage(`解锁科技：${id}`, 'achievements', true);
+    const def = TECH_MAP[techId];
+    set({
+      experience: s.experience - def.cost,
+      techs: { ...s.techs, [techId]: true },
+      stats: { ...s.stats, totalResearched: s.stats.totalResearched + 1 },
+    });
+    get().addMessage(`研究完成：${def.name}`, 'tech', def.type === 'gate');
     return true;
   },
 
-  changeGovernment: (id) => set({
-    government: { ...get().government, regime: id },
-  }),
+  enqueue: (techId) => {
+    const s = get();
+    if (s.queue.length >= QUEUE.MAX_LENGTH) return;
+    if (s.queue.includes(techId) || s.techs[techId]) return;
+    set({ queue: [...s.queue, techId] });
+  },
+
+  dequeue: (index) => {
+    const s = get();
+    set({ queue: s.queue.filter((_, i) => i !== index), researchProgress: 0 });
+  },
+
+  reorderQueue: (from, to) => {
+    const s = get();
+    const q = [...s.queue];
+    if (from < 0 || from >= q.length || to < 0 || to >= q.length) return;
+    const [item] = q.splice(from, 1);
+    q.splice(to, 0, item);
+    set({ queue: q });
+  },
+
+  // ── 主循环 ──
+  doTick: (dt) => {
+    const s = get();
+    if (!s.running) return;
+
+    const r = engine.tick(engineView(s), dt);
+    set({
+      food: r.food,
+      wood: r.wood,
+      stone: r.stone,
+      experience: r.experience,
+      population: r.population,
+      fire: r.fire,
+    });
+
+    // 队列首位自动研究
+    const after = get();
+    if (after.queue.length > 0) {
+      const head = after.queue[0];
+      const def = TECH_MAP[head];
+      if (def && after.experience >= def.cost) {
+        // 前置检查
+        const check = engine.canResearch(head, engineView({ ...after, experience: after.experience }));
+        if (check.ok) {
+          after.research(head);
+          set({ queue: get().queue.filter((_, i) => i !== 0) });
+          set({ researchProgress: 0 });
+        }
+      }
+    }
+  },
+
+  doLongTick: () => {
+    const s = get();
+    set({
+      stats: { ...s.stats, playTime: s.stats.playTime + LOOP.AUTOSAVE_SEC },
+      lastActiveAt: Date.now(),
+    });
+  },
 
   addMessage: (text, category = 'all', important = false) => {
     const msg: Message = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       text,
       category,
       timestamp: Date.now(),
       important,
     };
-    set(s => ({ messages: [...s.messages.slice(-99), msg] }));
-  },
-
-  doPrestige: () => {
-    const state = get();
-    const points = Math.floor(Math.sqrt(state.stats.totalFood / 1e6));
-    if (points <= 0) return;
-    set({
-      resources: {
-        food: { id: 'food', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-        wood: { id: 'wood', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-        stone: { id: 'stone', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-        manpower: { id: 'manpower', count: 10, storage: 100, unlocked: true, outputPerSecond: 0 },
-        research: { id: 'research', count: 0, storage: 1000, unlocked: true, outputPerSecond: 0 },
-      },
-      jobs: {
-        farmer: { count: 0, unlocked: true },
-        lumberjack: { count: 0, unlocked: true },
-        miner: { count: 0, unlocked: true },
-        scientist: { count: 0, unlocked: true },
-      },
-      prestige: {
-        level: state.prestige.level + 1,
-        points: state.prestige.points + points,
-      },
-    });
-    get().addMessage(`重置！获得 ${points} 点`, 'achievements', true);
+    set(s => ({ messages: [...s.messages.slice(-79), msg] }));
   },
 
   clearMessages: () => set({ messages: [] }),
-  togglePause: () => set(s => ({ settings: { ...s.settings, pause: !s.settings.pause } })),
-  setSpeed: (speed) => set(s => ({ settings: { ...s.settings, speed } })),
 
-  initialState: () => createInitialState(),
+  // ── 存档 ──
+  takeSnapshot: () => {
+    const s = get();
+    return {
+      version: SAVE_VERSION,
+      food: s.food,
+      wood: s.wood,
+      stone: s.stone,
+      experience: s.experience,
+      population: s.population,
+      fire: s.fire,
+      autoMaintainFire: s.autoMaintainFire,
+      jobs: s.jobs,
+      buildings: s.buildings,
+      techs: s.techs,
+      queue: s.queue,
+      stats: s.stats,
+      lastActiveAt: Date.now(),
+    };
+  },
+
+  loadSnapshot: (data) => {
+    set({ ...data, messages: [], running: false });
+  },
+
+  resetGame: () => set({ ...initialState(), running: true }),
 }));
+
+// ─────────────────────────────────────────────
+// 派生量辅助（组件里用 selector 调用，避免重复计算）
+// ─────────────────────────────────────────────
+export function selectView(): engine.E1State {
+  return engineView(useStore.getState());
+}
+
+export { engine };

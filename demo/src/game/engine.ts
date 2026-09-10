@@ -1,123 +1,485 @@
-// 游戏引擎 - 资源产出与岗位计算
-// 放置游戏核心：sqrt 递减收益，防止后期数值爆炸
+// E1 远古时代 · 游戏引擎
+// 只做纯计算；状态变更由 store 负责
+// 数值来源：design/game/02-tech-eras.md 第 11 节
 
-import { useStore } from '../state/store';
+import { TECHS, TECH_MAP, type TechEffects } from '../data/techs';
+import { JOBS, JOB_MAP, type JobId } from '../data/jobs';
+import { BUILDING_MAP, type BuildingId } from '../data/buildings';
+import type { ResourceId } from '../data/resources';
+import {
+  FIRE,
+  FIRE_TIER_INFO,
+  POPULATION,
+  FOOD_FACTOR,
+  BUILDING_EFFECTS,
+  getFireTier,
+  getToolMultiplier,
+  type FireTier,
+} from '../data/constants';
 
-// 岗位定义
-export const JOB_DEFS = {
-  farmer: { input: 'manpower', inputCost: 1, output: 'food', outputRate: 0.5 },
-  lumberjack: { input: 'manpower', inputCost: 1, output: 'wood', outputRate: 0.5 },
-  miner: { input: 'manpower', inputCost: 1, output: 'stone', outputRate: 0.4 },
-  scientist: { input: 'manpower', inputCost: 2, output: 'research', outputRate: 0.1 },
-} as const;
-
-// 政府加成
-export const GOVERNMENTS = {
-  none: { name: '原始部落', economy: 1.0, research: 1.0, military: 0 },
-  democracy: { name: '民主', economy: 1.0, research: 1.5, military: 0.5 },
-  empire: { name: '帝国', economy: 1.5, research: 1.0, military: 2.0 },
-} as const;
-
-// 计算岗位产出（sqrt 递减收益）
-export function calcJobOutput(jobId: string, count: number): number {
-  const def = JOB_DEFS[jobId as keyof typeof JOB_DEFS];
-  if (!def || count <= 0) return 0;
-  return Math.sqrt(count) * def.outputRate;
+// ─────────────────────────────────────────────
+// 状态形状（引擎只读）
+// ─────────────────────────────────────────────
+export interface E1State {
+  food: number;
+  wood: number;
+  stone: number;
+  experience: number;
+  population: number;
+  fire: number;
+  jobs: Record<string, number>;
+  buildings: Record<string, number>;
+  techs: Record<string, boolean>;
+  autoMaintainFire: boolean;
 }
 
-// 计算某个资源的总产出/秒
-export function calcResourceOutput(resourceId: string): number {
-  const state = useStore.getState();
+// ─────────────────────────────────────────────
+// 科技效果聚合
+// ─────────────────────────────────────────────
+export interface AggregatedEffects {
+  fireEnabled: boolean;
+  activeFireRestore: boolean;
+  fireDecayMultiplier: number;
+  fireMaxBonus: number;
+  removeWeakFoodPenalty: boolean;
+  foodMultiplier: number;
+  stoneMultiplier: number;
+  expMultiplier: number;
+  gathererMultiplier: number;
+  toolTier: number;
+  buildingCostMultiplier: number;
+  stabilityBonus: number;
+  huntPartyThreshold: number;
+  huntPartyBonus: number;
+  foodStorageMultiplier: number;
+  enableAdvance: boolean;
+}
 
-  // 找到产出这个资源的所有岗位
-  let output = 0;
-  for (const [jobId, job] of Object.entries(state.jobs)) {
-    const def = JOB_DEFS[jobId as keyof typeof JOB_DEFS];
-    if (!def) continue;
-    if (def.output === resourceId) {
-      output += calcJobOutput(jobId, job.count);
+const DEFAULT_EFFECTS: AggregatedEffects = {
+  fireEnabled: false,
+  activeFireRestore: false,
+  fireDecayMultiplier: 1,
+  fireMaxBonus: 0,
+  removeWeakFoodPenalty: false,
+  foodMultiplier: 1,
+  stoneMultiplier: 1,
+  expMultiplier: 1,
+  gathererMultiplier: 1,
+  toolTier: 0,
+  buildingCostMultiplier: 1,
+  stabilityBonus: 0,
+  huntPartyThreshold: 0,
+  huntPartyBonus: 0,
+  foodStorageMultiplier: 1,
+  enableAdvance: false,
+};
+
+export function aggregateEffects(state: E1State): AggregatedEffects {
+  const acc: AggregatedEffects = { ...DEFAULT_EFFECTS };
+
+  for (const tech of TECHS) {
+    if (!state.techs[tech.id]) continue;
+    const e: TechEffects = tech.effects;
+
+    if (e.enableFire) acc.fireEnabled = true;
+    if (e.activeFireRestore) acc.activeFireRestore = true;
+    if (e.fireDecayMultiplier !== undefined) acc.fireDecayMultiplier *= e.fireDecayMultiplier;
+    if (e.fireMaxBonus) acc.fireMaxBonus += e.fireMaxBonus;
+    if (e.removeWeakFoodPenalty) acc.removeWeakFoodPenalty = true;
+    if (e.foodMultiplier) acc.foodMultiplier *= e.foodMultiplier;
+    if (e.stoneMultiplier) acc.stoneMultiplier *= e.stoneMultiplier;
+    if (e.expMultiplier) acc.expMultiplier *= e.expMultiplier;
+    if (e.gathererMultiplier) acc.gathererMultiplier *= e.gathererMultiplier;
+    if (e.setToolTier !== undefined) acc.toolTier = Math.max(acc.toolTier, e.setToolTier);
+    if (e.buildingCostMultiplier) acc.buildingCostMultiplier *= e.buildingCostMultiplier;
+    if (e.stabilityBonus) acc.stabilityBonus += e.stabilityBonus;
+    if (e.huntPartyThreshold) acc.huntPartyThreshold = e.huntPartyThreshold;
+    if (e.huntPartyBonus) acc.huntPartyBonus = e.huntPartyBonus;
+    if (e.foodStorageMultiplier) acc.foodStorageMultiplier *= e.foodStorageMultiplier;
+    if (e.enableAdvance) acc.enableAdvance = true;
+  }
+
+  return acc;
+}
+
+// ─────────────────────────────────────────────
+// T2.1 火种系统
+// ─────────────────────────────────────────────
+
+export function getFireMax(state: E1State): number {
+  const eff = aggregateEffects(state);
+  const hearths = state.buildings.hearth ?? 0;
+  return FIRE.MAX + eff.fireMaxBonus + hearths * BUILDING_EFFECTS.HEARTH_MAX_BONUS;
+}
+
+export function getFireDecay(state: E1State): number {
+  const eff = aggregateEffects(state);
+  const hearths = state.buildings.hearth ?? 0;
+  let decay = FIRE.DECAY_PER_SEC * eff.fireDecayMultiplier;
+  for (let i = 0; i < hearths; i++) {
+    decay *= 1 - BUILDING_EFFECTS.HEARTH_DECAY_REDUCTION;
+  }
+  return decay;
+}
+
+/** 推进火种 dt 秒（含自动维持消耗木材） */
+export function tickFire(
+  state: E1State,
+  dt: number
+): { fire: number; wood: number; maintained: boolean } {
+  let fire = state.fire;
+  let wood = state.wood;
+  let maintained = false;
+
+  if (!aggregateEffects(state).fireEnabled) {
+    return { fire: 0, wood, maintained: false };
+  }
+
+  if (state.autoMaintainFire && fire < FIRE.AUTO_MAINTAIN_THRESHOLD && wood >= 1) {
+    const need = Math.ceil((FIRE.AUTO_MAINTAIN_THRESHOLD - fire) / FIRE.PER_WOOD);
+    const use = Math.min(need, Math.floor(wood));
+    if (use > 0) {
+      wood -= use;
+      fire = Math.min(fire + use * FIRE.PER_WOOD, getFireMax(state));
+      maintained = true;
     }
   }
 
-  // 政府加成
-  const gov = GOVERNMENTS[state.government.regime as keyof typeof GOVERNMENTS];
-  if (resourceId === 'research') output *= gov.research;
-  else output *= gov.economy;
-
-  // 科技加成
-  if (state.techs['production_boost']?.unlocked) output *= 1.5;
-
-  // 重置加成（每个重置点 +5%）
-  output *= 1 + state.prestige.points * 0.05;
-
-  return output;
+  fire = Math.max(0, fire - getFireDecay(state) * dt);
+  return { fire, wood, maintained };
 }
 
-// 更新所有资源产出（每 fastLoop 调用一次）
-export function updateAllOutputs(): void {
-  const state = useStore.getState();
-  const newResources = { ...state.resources };
+/** 手动投入木材 */
+export function addFuel(state: E1State, woodAmount: number): { fire: number; wood: number } {
+  const use = Math.min(woodAmount, Math.floor(state.wood));
+  const fire = Math.min(state.fire + use * FIRE.PER_WOOD, getFireMax(state));
+  return { fire, wood: state.wood - use };
+}
 
-  for (const id of Object.keys(newResources)) {
-    const newOutput = calcResourceOutput(id);
-    newResources[id] = { ...newResources[id], outputPerSecond: newOutput };
+export function getFireFactor(state: E1State): number {
+  return FIRE_TIER_INFO[getFireTier(state.fire)].factor;
+}
+
+export function getFireTierInfo(state: E1State): {
+  tier: FireTier;
+  name: string;
+  factor: number;
+  color: string;
+} {
+  const tier = getFireTier(state.fire);
+  const info = FIRE_TIER_INFO[tier];
+  return { tier, name: info.name, factor: info.factor, color: info.color };
+}
+
+/** 火种带来的食物加成（热石煮食可取消微弱档惩罚） */
+export function getFireFoodBonus(state: E1State): number {
+  const tier = getFireTier(state.fire);
+  const eff = aggregateEffects(state);
+  if (tier === 'weak' && eff.removeWeakFoodPenalty) {
+    return FIRE_TIER_INFO.stable.foodBonus;
+  }
+  return FIRE_TIER_INFO[tier].foodBonus;
+}
+
+// ─────────────────────────────────────────────
+// T2.2 人口模型（逻辑斯蒂增长）
+// ─────────────────────────────────────────────
+
+export function getCapacity(state: E1State): number {
+  const houses = state.buildings.house ?? 0;
+  return POPULATION.BASE_CAPACITY + houses * POPULATION.CAPACITY_PER_HOUSE;
+}
+
+export function getFoodConsumption(state: E1State): number {
+  return state.population * POPULATION.FOOD_CONSUMPTION_PER_PERSON;
+}
+
+export function getFoodProduction(state: E1State): number {
+  return calcResourceOutput('food', state);
+}
+
+export function getFoodFactor(state: E1State): number {
+  const prod = getFoodProduction(state);
+  const cons = getFoodConsumption(state);
+  if (cons <= 0) return FOOD_FACTOR.ABUNDANT;
+  if (state.food <= 0 && prod < cons) return FOOD_FACTOR.FAMINE;
+  if (prod < cons) return FOOD_FACTOR.TIGHT;
+  if (prod > cons * 2) return FOOD_FACTOR.ABUNDANT;
+  return FOOD_FACTOR.NORMAL;
+}
+
+/** 人口增长速率（每秒），可正可负 */
+export function getPopulationGrowth(state: E1State): number {
+  const K = getCapacity(state);
+  const P = state.population;
+  const fireFactor = getFireFactor(state);
+
+  if (fireFactor === 0) return -POPULATION.STARVATION_DECAY;
+
+  const r = POPULATION.BASE_GROWTH_RATE * fireFactor;
+  const foodFactor = getFoodFactor(state);
+  if (foodFactor < 0) return -POPULATION.STARVATION_DECAY;
+
+  return r * P * (1 - P / K) * foodFactor;
+}
+
+// ─────────────────────────────────────────────
+// T2.3 资源产出
+// ─────────────────────────────────────────────
+
+export function calcJobOutput(jobId: JobId, state: E1State): number {
+  const def = JOB_MAP[jobId];
+  const count = state.jobs[jobId] ?? 0;
+  if (count <= 0) return 0;
+
+  const eff = aggregateEffects(state);
+  const workshops = state.buildings.workshop ?? 0;
+  let rate = def.outputRate * count;
+
+  if (def.scaledByTool) {
+    const workshopBonus = workshops * BUILDING_EFFECTS.WORKSHOP_BONUS;
+    rate *= getToolMultiplier(eff.toolTier, workshopBonus);
+  }
+  if (jobId === 'gatherer') rate *= eff.gathererMultiplier;
+  if (jobId === 'hunter' && eff.huntPartyThreshold > 0 && count >= eff.huntPartyThreshold) {
+    rate *= 1 + eff.huntPartyBonus;
   }
 
-  useStore.setState({ resources: newResources });
+  return rate;
 }
 
-// 更新游戏状态（被 fastLoop 调用）
-export function tickGame(dt: number): void {
-  const state = useStore.getState();
-  if (state.settings.pause) return;
+export function calcResourceOutput(resourceId: ResourceId, state: E1State): number {
+  if (resourceId === 'experience') return calcExperienceOutput(state);
+  if (resourceId === 'population') return getPopulationGrowth(state);
 
-  // 更新资源累积
-  const newResources = { ...state.resources };
-  for (const [id, res] of Object.entries(newResources)) {
-    if (!res.unlocked) continue;
-    const newCount = Math.min(res.count + res.outputPerSecond * dt, res.storage);
-    newResources[id] = { ...res, count: newCount };
+  const eff = aggregateEffects(state);
+  let total = 0;
 
-    // 累计统计
-    if (id === 'food') {
-      useStore.setState(s => ({
-        stats: { ...s.stats, totalFood: s.stats.totalFood + (newCount - res.count) },
-      }));
-    }
-    if (id === 'research') {
-      useStore.setState(s => ({
-        stats: { ...s.stats, totalResearch: s.stats.totalResearch + (newCount - res.count) },
-      }));
+  for (const job of JOBS) {
+    if (job.output !== resourceId) continue;
+    total += calcJobOutput(job.id, state);
+  }
+
+  if (resourceId === 'food') {
+    total *= 1 + getFireFoodBonus(state);
+    total *= eff.foodMultiplier;
+  }
+  if (resourceId === 'stone') total *= eff.stoneMultiplier;
+
+  return total;
+}
+
+// ─────────────────────────────────────────────
+// T2.4 经验产出
+// ─────────────────────────────────────────────
+export function calcExperienceOutput(state: E1State): number {
+  const eff = aggregateEffects(state);
+  return state.population * POPULATION.EXP_PER_PERSON * eff.expMultiplier;
+}
+
+// ─────────────────────────────────────────────
+// 建筑
+// ─────────────────────────────────────────────
+export function getBuildingCost(
+  buildingId: BuildingId,
+  state: E1State
+): Partial<Record<ResourceId, number>> {
+  const def = BUILDING_MAP[buildingId];
+  const owned = state.buildings[buildingId] ?? 0;
+  const eff = aggregateEffects(state);
+  const mult = Math.pow(def.costMultiplier, owned) * eff.buildingCostMultiplier;
+
+  const out: Partial<Record<ResourceId, number>> = {};
+  for (const [res, amount] of Object.entries(def.cost)) {
+    out[res as ResourceId] = Math.ceil((amount as number) * mult);
+  }
+  return out;
+}
+
+export function canAffordBuilding(buildingId: BuildingId, state: E1State): boolean {
+  const cost = getBuildingCost(buildingId, state);
+  for (const [res, amount] of Object.entries(cost)) {
+    if ((state[res as 'food' | 'wood' | 'stone'] ?? 0) < (amount as number)) return false;
+  }
+  return true;
+}
+
+export function isBuildingUnlocked(buildingId: BuildingId, state: E1State): boolean {
+  const def = BUILDING_MAP[buildingId];
+  if (!def.requires.tech) return true;
+  return !!state.techs[def.requires.tech];
+}
+
+// ─────────────────────────────────────────────
+// 岗位
+// ─────────────────────────────────────────────
+export function isJobUnlocked(jobId: JobId, state: E1State): boolean {
+  const def = JOB_MAP[jobId];
+  if (def.requires.tech && !state.techs[def.requires.tech]) return false;
+  if (def.requires.toolTier !== undefined) {
+    if (aggregateEffects(state).toolTier < def.requires.toolTier) return false;
+  }
+  return true;
+}
+
+export function getAssignedPopulation(state: E1State): number {
+  return Object.values(state.jobs).reduce((s, n) => s + n, 0);
+}
+
+export function getIdlePopulation(state: E1State): number {
+  return Math.max(0, state.population - getAssignedPopulation(state));
+}
+
+// ─────────────────────────────────────────────
+// T2.5 科技树引擎
+// ─────────────────────────────────────────────
+export interface ResearchCheck {
+  ok: boolean;
+  reason?: string;
+}
+
+export function canResearch(techId: string, state: E1State): ResearchCheck {
+  const def = TECH_MAP[techId];
+  if (!def) return { ok: false, reason: '未知科技' };
+  if (state.techs[techId]) return { ok: false, reason: '已研究' };
+
+  for (const req of def.requires) {
+    if (!state.techs[req]) {
+      return { ok: false, reason: `需要「${TECH_MAP[req]?.name ?? req}」` };
     }
   }
 
-  useStore.setState({ resources: newResources });
+  if (def.requiresAny && def.requiresAny.length > 0) {
+    if (!def.requiresAny.some(r => state.techs[r])) {
+      const names = def.requiresAny.map(r => `「${TECH_MAP[r]?.name ?? r}」`).join(' 或 ');
+      return { ok: false, reason: `需走通任一条分支：${names}` };
+    }
+  }
+
+  if (state.experience < def.cost) {
+    return { ok: false, reason: `经验不足（还差 ${Math.ceil(def.cost - state.experience)}）` };
+  }
+
+  return { ok: true };
 }
 
-// 格式化数字（K/M/B/T）
-const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
-
-export function formatNumber(n: number, decimals = 1): string {
-  if (n === 0) return '0';
-  if (n < 0) return '-' + formatNumber(-n, decimals);
-  if (n < 1) return n.toFixed(decimals);
-
-  const magnitude = Math.floor(Math.log10(n));
-  const idx = Math.floor(magnitude / 3);
-
-  if (idx >= SUFFIXES.length) return n.toExponential(decimals);
-
-  const suffix = SUFFIXES[idx];
-  const scaled = n / Math.pow(1000, idx);
-  return `${scaled.toFixed(decimals)}${suffix}`;
+/** 前置是否满足（不论经验够不够）—— 用于"可研究"高亮 */
+export function isTechAvailable(techId: string, state: E1State): boolean {
+  const def = TECH_MAP[techId];
+  if (!def || state.techs[techId]) return false;
+  for (const req of def.requires) {
+    if (!state.techs[req]) return false;
+  }
+  if (def.requiresAny && def.requiresAny.length > 0) {
+    if (!def.requiresAny.some(r => state.techs[r])) return false;
+  }
+  return true;
 }
 
-// 格式化时间
-export function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
+export function countResearched(state: E1State): number {
+  return Object.values(state.techs).filter(Boolean).length;
 }
+
+// ─────────────────────────────────────────────
+// T3.3 时代跃迁
+// ─────────────────────────────────────────────
+export interface AdvanceCheck {
+  ok: boolean;
+  items: { label: string; done: boolean; detail: string }[];
+}
+
+export function checkAdvance(state: E1State): AdvanceCheck {
+  const eff = aggregateEffects(state);
+  const houses = state.buildings.house ?? 0;
+
+  const items = [
+    {
+      label: '研究「植物栽培」',
+      done: eff.enableAdvance,
+      detail: state.techs['plant_cultivation'] ? '已完成' : '尚未研究',
+    },
+    { label: '食物储备 ≥ 300', done: state.food >= 300, detail: `${Math.floor(state.food)} / 300` },
+    { label: '建成 3 座住所', done: houses >= 3, detail: `${houses} / 3` },
+    { label: '人口 ≥ 15', done: state.population >= 15, detail: `${Math.floor(state.population)} / 15` },
+  ];
+
+  return { ok: items.every(i => i.done), items };
+}
+
+// ─────────────────────────────────────────────
+// 资源上限
+// ─────────────────────────────────────────────
+export function getResourceStorage(resourceId: ResourceId, state: E1State): number {
+  const eff = aggregateEffects(state);
+  switch (resourceId) {
+    case 'food':
+      return 500 * eff.foodStorageMultiplier;
+    case 'wood':
+      return 500;
+    case 'stone':
+      return 500;
+    default:
+      return Number.POSITIVE_INFINITY;
+  }
+}
+
+// ─────────────────────────────────────────────
+// T4.6 卡点提示
+// ─────────────────────────────────────────────
+export function getBottleneck(state: E1State): string | null {
+  if (!aggregateEffects(state).fireEnabled) return null;
+
+  if (getFireFactor(state) <= 0.5) {
+    return '火源太弱 —— 派更多人去伐木，或手动投入木材';
+  }
+  if (getPopulationGrowth(state) <= 0.001 && state.population >= getCapacity(state) - 0.5) {
+    return '房屋不足 —— 建造更多住所提升人口上限';
+  }
+  if (getFoodFactor(state) <= 0) {
+    return '食物短缺 —— 派更多人去采集或狩猎';
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────
+// 批量推进（fastLoop 调用）
+// ─────────────────────────────────────────────
+export interface TickResult {
+  food: number;
+  wood: number;
+  stone: number;
+  experience: number;
+  population: number;
+  fire: number;
+}
+
+export function tick(state: E1State, dt: number): TickResult {
+  // 1) 产出
+  const foodGain = calcResourceOutput('food', state) * dt;
+  const woodGain = calcResourceOutput('wood', state) * dt;
+  const stoneGain = calcResourceOutput('stone', state) * dt;
+  const expGain = calcExperienceOutput(state) * dt;
+
+  let wood = Math.min(state.wood + woodGain, getResourceStorage('wood', state));
+  const stone = Math.min(state.stone + stoneGain, getResourceStorage('stone', state));
+  const experience = state.experience + expGain;
+
+  // 2) 火种（自动维持消耗木材）
+  const fireResult = tickFire({ ...state, wood }, dt);
+  wood = fireResult.wood;
+  const fire = fireResult.fire;
+
+  // 3) 人口 + 食物消耗
+  const K = getCapacity(state);
+  const growth = getPopulationGrowth(state);
+  let population = Math.max(0, Math.min(state.population + growth * dt, K));
+  const consumption = population * POPULATION.FOOD_CONSUMPTION_PER_PERSON * dt;
+
+  let food = state.food + foodGain - consumption;
+  food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
+
+  return { food, wood, stone, experience, population, fire };
+}
+
+export { JOBS, TECHS, TECH_MAP, BUILDING_MAP };
+export type { JobId, BuildingId, ResourceId };
