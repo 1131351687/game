@@ -25,7 +25,10 @@ export interface E1State {
   wood: number;
   stone: number;
   experience: number;
+  /** 人口：**始终为整数**（小数增长累积在 populationProgress 里） */
   population: number;
+  /** 人口增长的累积进度（0..1）；满 1 时人口 +1 */
+  populationProgress: number;
   fire: number;
   jobs: Record<string, number>;
   buildings: Record<string, number>;
@@ -464,6 +467,7 @@ export interface TickResult {
   stone: number;
   experience: number;
   population: number;
+  populationProgress: number;
   fire: number;
 }
 
@@ -483,16 +487,44 @@ export function tick(state: E1State, dt: number): TickResult {
   wood = fireResult.wood;
   const fire = fireResult.fire;
 
-  // 3) 人口 + 食物消耗
+  // 3) 人口：**整数增长**
+  //
+  // 为什么不能直接保留小数人口：
+  //   逻辑斯蒂曲线是渐近逼近上限的（P 越接近 K 增长越慢），
+  //   人口会永远停在 K−ε（实测 K=4 时停在 3.9999…）。
+  //   而岗位分配用 Math.floor(人口) 计算可分配数，于是满员时
+  //   最后一个位置永远排不上人 —— 这是玩家能直接感知的 bug。
+  //
+  // 方案：人口保持整数，小数增长累积进 populationProgress，满 1 才 +1 人。
   const K = getCapacity(state);
   const growth = getPopulationGrowth(state);
-  let population = Math.max(0, Math.min(state.population + growth * dt, K));
+  let population = state.population;
+  let progress = state.populationProgress ?? 0;
+
+  progress += growth * dt;
+
+  if (growth >= 0) {
+    while (progress >= 1 && population < K) {
+      population += 1;
+      progress -= 1;
+    }
+    // 已满员：不再累积（否则进度会虚假增长）
+    if (population >= K) progress = 0;
+  } else {
+    // 负增长（饥荒/火灭）：进度向负方向累积，满 −1 减 1 人
+    while (progress <= -1 && population > 0) {
+      population -= 1;
+      progress += 1;
+    }
+    if (population <= 0) progress = 0;
+  }
+
   const consumption = population * POPULATION.FOOD_CONSUMPTION_PER_PERSON * dt;
 
   let food = state.food + foodGain - consumption;
   food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
 
-  return { food, wood, stone, experience, population, fire };
+  return { food, wood, stone, experience, population, populationProgress: progress, fire };
 }
 
 export { JOBS, TECHS, TECH_MAP, BUILDING_MAP };

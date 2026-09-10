@@ -1,4 +1,4 @@
-﻿// 配平验证 / 自动试玩
+// 配平验证 / 自动试玩
 //
 // 用法：
 //   npx tsx src/dev/simulate.ts           仅跑开局模拟
@@ -18,6 +18,7 @@ function makeState(): E1State {
     stone: 0,
     experience: 0,
     population: POPULATION.START,
+    populationProgress: 0,
     fire: 0,
     jobs: { gatherer: 0, woodcutter: 0, knapper: 0, hunter: 0 },
     buildings: { house: 0, hearth: 0, workshop: 0 },
@@ -33,6 +34,7 @@ function advance(s: E1State, dt: number): void {
   s.stone = r.stone;
   s.experience = r.experience;
   s.population = r.population;
+  s.populationProgress = r.populationProgress;
   s.fire = r.fire;
 }
 

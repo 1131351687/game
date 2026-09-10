@@ -30,7 +30,10 @@ export interface GameState {
   experience: number;
 
   // 人口与火种
+  /** 人口：始终为整数 */
   population: number;
+  /** 人口增长的累积进度（0..1）—— 保证人口离散增长，满员时能排满所有岗位 */
+  populationProgress: number;
   fire: number;
   autoMaintainFire: boolean;
 
@@ -87,6 +90,7 @@ const initialState = () => ({
   stone: INITIAL_STATE.stone,
   experience: INITIAL_STATE.experience,
   population: INITIAL_STATE.population,
+  populationProgress: 0,
   fire: INITIAL_STATE.fire,
   autoMaintainFire: true,
   jobs: Object.fromEntries(JOBS.map(j => [j.id, 0])) as Record<string, number>,
@@ -107,6 +111,7 @@ function engineView(s: GameState): engine.E1State {
     stone: s.stone,
     experience: s.experience,
     population: s.population,
+    populationProgress: s.populationProgress,
     fire: s.fire,
     jobs: s.jobs,
     buildings: s.buildings,
@@ -227,6 +232,7 @@ export const useStore = create<GameState>((set, get) => ({
       stone: r.stone,
       experience: r.experience,
       population: r.population,
+      populationProgress: r.populationProgress,
       fire: r.fire,
     });
 
@@ -278,6 +284,7 @@ export const useStore = create<GameState>((set, get) => ({
       stone: s.stone,
       experience: s.experience,
       population: s.population,
+      populationProgress: s.populationProgress,
       fire: s.fire,
       autoMaintainFire: s.autoMaintainFire,
       jobs: s.jobs,
