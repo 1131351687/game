@@ -69,6 +69,8 @@ function openingSim(): void {
 function autoplay(totalSec = 1200): void {
   const s = makeState();
   const researched: string[] = [];
+  /** 首次达成门槛科技的秒数；-1 表示未达成 */
+  let firstGateAt = -1;
 
   // 像真实玩家那样「重新分配」而不是只加不减
   const autoAssign = (): void => {
@@ -117,23 +119,31 @@ function autoplay(totalSec = 1200): void {
     }
   };
 
-  // 两种研究策略：
-  //   greedy = 贪心买最便宜的（广度优先，会拖慢门槛）
-  //   focus  = 先走通「火之技艺」分支再直取门槛（符合设计意图的专注打法）
-  // 注：tsx 的 argv 布局与 node 不同，故扫描全部参数而非按固定下标取值
+  // 三种研究策略：
+  //   greedy  = 贪心买最便宜的（广度优先，会把最贵的门槛拖到最后）
+  //   focus   = 火之技艺优先，但买不起时退而买便宜的（实战常见的折中打法）
+  //   beeline = 只买「通往门槛的必需项」，其余一律跳过（极限速通，验证最短通路）
   const args = process.argv.slice(1);
-  const strategy = args.includes('focus') ? 'focus' : 'greedy';
+  const strategy = args.includes('beeline') ? 'beeline' : args.includes('focus') ? 'focus' : 'greedy';
   const FIRE_BRANCH = ['fire_starting', 'cooking', 'hearth_construction', 'hot_rock_cooking', 'torch', 'fire_preservation'];
+  // 通关必需：核心 + 一条完整分支（火之技艺最便宜） + 住所（跃迁条件要 3 座、人口 ≥15） + 门槛
+  const REQUIRED = new Set(['fire_mastery', ...FIRE_BRANCH, 'shelter_building', 'plant_cultivation']);
 
-  const autoResearch = (): void => {
+  const autoResearch = (now: number): void => {
     const cands = TECHS.filter(
       t => !s.techs[t.id] && isTechAvailable(t.id, s) && canResearch(t.id, s).ok
     );
     if (cands.length === 0) return;
 
     let pick;
-    if (strategy === 'focus') {
-      // 优先级：火之技艺分支 → 门槛科技 → 其余
+    if (strategy === 'beeline') {
+      // 只买必需项；买不起就等着
+      const next = TECHS.filter(
+        t => REQUIRED.has(t.id) && !s.techs[t.id] && isTechAvailable(t.id, s) && canResearch(t.id, s).ok
+      ).sort((a, b) => a.cost - b.cost)[0];
+      if (!next) return;
+      pick = next;
+    } else if (strategy === 'focus') {
       const nextFire = FIRE_BRANCH.find(id => !s.techs[id] && isTechAvailable(id, s) && canResearch(id, s).ok);
       const gate = cands.find(t => t.id === 'plant_cultivation');
       pick = nextFire ? TECHS.find(t => t.id === nextFire)! : (gate ?? cands.sort((a, b) => a.cost - b.cost)[0]);
@@ -145,6 +155,7 @@ function autoplay(totalSec = 1200): void {
     s.experience -= pick.cost;
     s.techs[pick.id] = true;
     researched.push(pick.name);
+    if (pick.id === 'plant_cultivation') firstGateAt = Math.round(now);
   };
 
   const autoBuild = (): void => {
@@ -162,7 +173,7 @@ function autoplay(totalSec = 1200): void {
   for (let t = 0; t < totalSec; t += 0.25) {
     advance(s, 0.25);
     autoAssign();
-    autoResearch();
+    autoResearch(t);
     autoBuild();
 
     if (marks.includes(Math.round(t))) {
@@ -175,7 +186,7 @@ function autoplay(totalSec = 1200): void {
     }
   }
 
-  console.log('=== 自动试玩（20 分钟，模拟"还算聪明"的玩家）===\n');
+  console.log(`=== 自动试玩（${totalSec / 60} 分钟 · 策略=${strategy}）===\n`);
   console.log(log.join('\n'));
   console.log('');
   console.log(`完成研究 ${researched.length}/20 项：`);
@@ -183,9 +194,9 @@ function autoplay(totalSec = 1200): void {
   console.log('');
   console.log(`经验产出速率（末态）: ${calcExperienceOutput(s).toFixed(2)}/秒`);
   if (s.techs['plant_cultivation']) {
-    console.log('✅ 已达成门槛科技「植物栽培」');
+    console.log(`✅ 已达成门槛「植物栽培」，耗时 ${firstGateAt}s（${(firstGateAt / 60).toFixed(1)} 分钟）`);
   } else {
-    console.log('❌ 未达成门槛科技「植物栽培」—— 配平偏紧');
+    console.log('❌ 未达门槛「植物栽培」');
   }
 }
 
@@ -194,5 +205,5 @@ if (args.includes('autoplay')) {
   autoplay();
 } else {
   openingSim();
-  console.log('提示：加 autoplay 参数跑 20 分钟自动试玩；再加 focus 使用专注策略');
+  console.log('提示：autoplay 跑 20 分钟自动试玩；再加 focus / beeline 换研究策略');
 }
