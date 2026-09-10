@@ -498,7 +498,9 @@ export function tick(state: E1State, dt: number): TickResult {
   // 方案：人口保持整数，小数增长累积进 populationProgress，满 1 才 +1 人。
   const K = getCapacity(state);
   const growth = getPopulationGrowth(state);
-  let population = state.population;
+  // Math.floor 兜底：旧存档可能存了小数人口（修复前遗留），
+  // 这里强制归整，保证人口始终是整数
+  let population = Math.floor(state.population);
   let progress = state.populationProgress ?? 0;
 
   progress += growth * dt;
