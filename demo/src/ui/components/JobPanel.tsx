@@ -1,6 +1,7 @@
 // 岗位分配：每行一个岗位，显示人数与产出，提供 -10/-1/+1/+10/Max 分配控件
 import { useStore, toEngineState } from '../../state/store';
-import { JOBS, type JobDef } from '../../data/jobs';
+import type { JobDef } from '../../data/jobs';
+import { getRevealedJobs } from '../../game/reveal';
 import { RESOURCE_MAP } from '../../data/resources';
 import { TECH_MAP } from '../../data/techs';
 import { TOOL_TIERS } from '../../data/constants';
@@ -94,7 +95,7 @@ export function JobPanel() {
           </span>
         </div>
         <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-900">
-          {JOBS.map(job => {
+          {getRevealedJobs(view).map(job => {
             const count = state.jobs[job.id] ?? 0;
             const pct = assigned > 0 ? (count / assigned) * 100 : 0;
             if (pct <= 0) return null;
@@ -109,7 +110,7 @@ export function JobPanel() {
           })}
         </div>
         <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-          {JOBS.map(job => {
+          {getRevealedJobs(view).map(job => {
             const count = state.jobs[job.id] ?? 0;
             const pct = assigned > 0 ? (count / assigned) * 100 : 0;
             return (
@@ -123,7 +124,7 @@ export function JobPanel() {
       </div>
 
       {/* ── 岗位列表 ── */}
-      {JOBS.map(job => {
+      {getRevealedJobs(view).map(job => {
         const count = state.jobs[job.id] ?? 0;
         const unlocked = isJobUnlocked(job.id, view);
         const output = calcJobOutput(job.id, view);

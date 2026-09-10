@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import { MATERIAL_RESOURCES, RESOURCE_MAP, type ResourceId } from '../../data/resources';
+import { isResourceRevealed } from '../../game/reveal';
 import {
   calcExperienceOutput,
   calcResourceOutput,
@@ -99,7 +100,7 @@ export function ResourcePanel() {
     <section className="space-y-2">
       <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">📦 资源</h2>
 
-      {MATERIAL_RESOURCES.map(id => {
+      {MATERIAL_RESOURCES.filter(id => isResourceRevealed(id, view)).map(id => {
         // 经验走独立的产出函数，其余资源按岗位产出汇总
         const rate = id === 'experience' ? calcExperienceOutput(view) : calcResourceOutput(id, view);
         const storage = getResourceStorage(id, view);

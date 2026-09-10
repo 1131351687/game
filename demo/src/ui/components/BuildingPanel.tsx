@@ -4,6 +4,7 @@ import { BUILDINGS, type BuildingDef } from '../../data/buildings';
 import { RESOURCE_MAP, type ResourceId } from '../../data/resources';
 import { TECH_MAP } from '../../data/techs';
 import { canAffordBuilding, getBuildingCost, isBuildingUnlocked } from '../../game/engine';
+import { getRevealedBuildings } from '../../game/reveal';
 import { formatNumber } from '../../core/format';
 
 /** 建筑对应的人口的哪一种限制（BUILDINGS[].limit） */
@@ -49,7 +50,7 @@ export function BuildingPanel() {
         <span className="text-xs tabular-nums text-gray-500">已建 {totalBuilt} 座</span>
       </header>
 
-      {BUILDINGS.map(b => {
+      {getRevealedBuildings(view).map(b => {
         const unlocked = isBuildingUnlocked(b.id, view);
         const owned = state.buildings[b.id] ?? 0;
         const cost = getBuildingCost(b.id, view);

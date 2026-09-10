@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import { canResearch, isTechAvailable, countResearched } from '../../game/engine';
+import { isTechRevealed } from '../../game/reveal';
 import {
   TECHS,
   TECH_MAP,
@@ -212,8 +213,9 @@ export function TechTree() {
   };
 
   // ── 节点与连线（规则全部来自引擎，界面不重复实现）──
+  // 渐进揭示：只渲染 isTechRevealed 为真的节点，让科技树随研究逐步生长
   const nodes = useMemo<TechNode[]>(() => {
-    return TECHS.map(def => {
+    return TECHS.filter(def => isTechRevealed(def.id, view)).map(def => {
       const researched = view.techs[def.id] === true;
       const check = canResearch(def.id, view);
       const available = isTechAvailable(def.id, view);
@@ -244,6 +246,8 @@ export function TechTree() {
   const edges = useMemo<TechEdge[]>(() => {
     const list: TechEdge[] = [];
     for (const def of TECHS) {
+      // 只画两端都已揭示的连线
+      if (!isTechRevealed(def.id, view)) continue;
       for (const req of def.requires) {
         list.push({ from: req, to: def.id, or: false, active: view.techs[req] === true });
       }
