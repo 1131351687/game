@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../state/store';
+import { ResetButton } from './ResetButton';
 
 type Filter = 'all' | 'tech' | 'event' | 'warn';
 
@@ -70,13 +71,16 @@ export function MessageLog() {
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={clearMessages}
-          className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-800 hover:text-gray-300"
-        >
-          清空
-        </button>
+        <div className="flex items-center gap-1">
+          <ResetButton />
+          <button
+            type="button"
+            onClick={clearMessages}
+            className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-800 hover:text-gray-300"
+          >
+            清空
+          </button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="space-y-0.5">
