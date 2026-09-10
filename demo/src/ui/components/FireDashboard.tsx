@@ -53,6 +53,17 @@ export function FireDashboard() {
   const fireEnabled = aggregateEffects(view).fireEnabled;
   if (!fireEnabled) return null;
 
+  // ── 定居时代起：火源退出主流程 ──
+  //
+  // 设计文档 §13「火源区（降级）」：火源从 E1 的顶部大号仪表盘**移入「基础设施」折叠区**，
+  // 标签改为「火源 · 人口舒适度基础」，语义是「×1.0 恒定，无需维护」。
+  // 本组件不渲染任何内容即等价于"已折叠"。
+  //
+  // 为什么必须撤掉而不是照常显示：E2 的 tickFire 会冻结火值（维护取消），
+  // 若继续显示，界面会挂着「−1.00/秒」「N 秒后熄灭」的假倒计时，
+  // 以及一个点了也没用的「自动维持」开关 —— 数值与视图必须同源。
+  if (state.era !== 'E1') return null;
+
   const fire = state.fire;
   const max = getFireMax(view);
   const decay = getFireDecay(view);

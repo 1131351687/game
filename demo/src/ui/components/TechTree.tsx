@@ -52,6 +52,16 @@ const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.m
 const JOB_NAME = new Map<string, string>(JOBS.map(j => [String(j.id), j.name]));
 const BUILDING_NAME = new Map<string, string>(BUILDINGS.map(b => [String(b.id), b.name]));
 
+// 映射型效果（seasonAgriBonus / jobMultiplier / resourceMultiplier）的子键 → 中文名
+const EFFECT_TARGET_NAME = new Map<string, string>([
+  ...JOB_NAME,
+  ...BUILDING_NAME,
+  ['spring', '春季'],
+  ['summer', '夏季'],
+  ['autumn', '秋季'],
+  ['winter', '冬季'],
+]);
+
 // ─────────────────────────────────────────────
 // effects → 可读文案
 // 逐个 key 显式取值（TechEffects 是 interface，没有隐式索引签名，
@@ -76,6 +86,32 @@ const EFFECT_LABEL: Record<keyof TechEffects, string> = {
   unlockJobs: '解锁岗位：',
   unlockBuildings: '解锁建筑：',
   enableAdvance: '开启时代跃迁',
+
+  // ── E2 定居时代 ──
+  enableSeasons: '开启季节循环',
+  springAgriMul: '春季农业倍率 +',
+  summerAgriMul: '夏季农业倍率 +',
+  autumnAgriMul: '秋季农业倍率 +',
+  winterAgriMul: '冬季农业倍率 +',
+  grainMultiplier: '谷物产出 ×',
+  jobMultiplier: '岗位效率 ×',
+  resourceMultiplier: '资源产出 ×',
+  unlockResources: '解锁资源：',
+  livestockFoodMul: '牲畜产出 ×',
+  summerHerderMul: '夏季牧人效率 ×',
+  penCapacityAdd: '每座畜栏存栏 +',
+  livestockTier: '牲畜世代 →',
+  livestockFamineSurvival: '饥荒牲畜存活率 ',
+  fieldYieldMul: '田地出产 ×',
+  fieldEfficiencyCap: '田地效率上限 →',
+  feedCostMultiplier: '饲料成本 ×',
+  villageHouseCostMul: '民居成本 ×',
+  granaryPerUnit: '单座粮仓容量 →',
+  granaryCapacityMul: '粮仓总容量 ×',
+  kilnBonus: '陶窑容量加成 →',
+  granaryOverflowBonus: '粮仓溢出阈值 +',
+  jobSwitchCostMul: '岗位切换成本 ×',
+  removeCapacityCap: '取消承载力硬顶',
 };
 
 const EFFECT_KEYS = Object.keys(EFFECT_LABEL) as (keyof TechEffects)[];
@@ -88,6 +124,17 @@ function describeEffect(key: keyof TechEffects, value: TechEffects[keyof TechEff
   if (Array.isArray(value)) {
     const names = (value as readonly string[]).map(id => JOB_NAME.get(id) ?? BUILDING_NAME.get(id) ?? id);
     return names.length > 0 ? `${EFFECT_LABEL[key]}${names.join('、')}` : null;
+  }
+  if (typeof value === 'object') {
+    // 映射型效果：seasonAgriBonus / jobMultiplier / resourceMultiplier
+    const entries = Object.entries(value as Record<string, unknown>).filter(
+      ([, v]) => typeof v === 'number'
+    );
+    if (entries.length === 0) return null;
+    const parts = entries.map(
+      ([k, v]) => `${EFFECT_TARGET_NAME.get(k) ?? k}${formatNumber(v as number, 2)}`
+    );
+    return `${EFFECT_LABEL[key]}${parts.join('、')}`;
   }
   return null;
 }

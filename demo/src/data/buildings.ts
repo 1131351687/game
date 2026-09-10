@@ -4,7 +4,7 @@
 import type { EraId } from './era';
 import type { ResourceId } from './resources';
 
-export type BuildingId = 'house' | 'hearth' | 'workshop';
+export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln';
 
 export interface BuildingDef {
   id: BuildingId;
@@ -59,6 +59,61 @@ export const BUILDINGS: BuildingDef[] = [
     limit: 'output',
     era: 'E1',
     desc: '集中制作工具，使工具世代效果提升 20%。',
+  },
+  {
+    id: 'village_house',
+    name: '村落民居',
+    icon: '🏘️',
+    cost: { wood: 40, stone: 20 },
+    costMultiplier: 1.0,
+    requires: { tech: 'settled_construction' },
+    limit: 'population',
+    era: 'E2',
+    desc: '定居时代的标准住所，每座提升人口上限 4；取消 E1 承载力硬顶。',
+  },
+  {
+    id: 'field',
+    name: '田地',
+    icon: '🌾',
+    cost: { wood: 80, stone: 50 },
+    costMultiplier: 1.0,
+    requires: { tech: 'agriculture' },
+    limit: 'output',
+    era: 'E2',
+    desc: '农夫的耕作地，每座提供 3 个工作位；需至少 2 名农夫方可产出。',
+  },
+  {
+    id: 'granary',
+    name: '粮仓',
+    icon: '🏺',
+    cost: { wood: 120, stone: 80 },
+    costMultiplier: 1.0,
+    requires: { tech: 'granary_building' },
+    limit: 'output',
+    era: 'E2',
+    desc: '储存谷物，每座提升谷物上限 800；配合陶窑可进一步提升。',
+  },
+  {
+    id: 'animal_pen',
+    name: '畜栏',
+    icon: '🐐',
+    cost: { wood: 60, stone: 40 },
+    costMultiplier: 1.0,
+    requires: { tech: 'animal_domestication' },
+    limit: 'output',
+    era: 'E2',
+    desc: '圈养牲畜，每座提升牲畜上限 20 并提供 3 个牧人工作位。',
+  },
+  {
+    id: 'kiln',
+    name: '陶窑',
+    icon: '🏺',
+    cost: { stone: 100, wood: 40 },
+    costMultiplier: 1.0,
+    requires: { tech: 'pottery' },
+    limit: 'output',
+    era: 'E2',
+    desc: '烧制陶器，每座提升谷物上限 15%（最多 3 座生效）。',
   },
 ];
 

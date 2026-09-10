@@ -4,7 +4,7 @@
 import type { EraId } from './era';
 import type { ResourceId } from './resources';
 
-export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter';
+export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver';
 
 export interface JobDef {
   id: JobId;
@@ -77,6 +77,39 @@ export const JOBS: JobDef[] = [
     scaledByTool: true,
     era: 'E1',
     desc: '效率是采集者的 2.4 倍，但需先掌握工具世代。',
+  },
+  {
+    id: 'farmer',
+    name: '农夫',
+    icon: '🌾',
+    output: 'grain',
+    outputRate: 0.8,
+    requires: { tech: 'agriculture' },
+    scaledByTool: false,
+    era: 'E2',
+    desc: '在田地上耕作，产出受季节倍率与田地效率（min(1.0, 农夫数/(田数×3))）影响。',
+  },
+  {
+    id: 'herder',
+    name: '牧人',
+    icon: '🐐',
+    output: 'livestock',
+    outputRate: 0.25,
+    requires: { tech: 'animal_domestication' },
+    scaledByTool: false,
+    era: 'E2',
+    desc: '在畜栏旁放牧，无季节波动；每座畜栏提供 3 个工作位，上限 +20 牲畜。',
+  },
+  {
+    id: 'weaver',
+    name: '织工',
+    icon: '🧵',
+    output: 'fabric',
+    outputRate: 0.15,
+    requires: { tech: 'textile' },
+    scaledByTool: false,
+    era: 'E2',
+    desc: '纺织织物提升舒适度；覆盖度计入火源舒适度因子。',
   },
 ];
 

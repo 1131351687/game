@@ -8,11 +8,20 @@ import { BUILDING_MAP, type BuildingId } from '../data/buildings';
 import type { ResourceId } from '../data/resources';
 import { ERAS, eraDistance, eraDecay, type EraId } from '../data/era';
 import {
+  getFoodFactorFromStorage,
+  getSeasonGrowthFactor,
+  getSeasonOutputMultiplier,
+  getGranaryCapacity,
+  getSeasonFromElapsed,
+  type SeasonId,
+} from './season';
+import {
   FIRE,
   FIRE_TIER_INFO,
   POPULATION,
   FOOD_FACTOR,
   BUILDING_EFFECTS,
+  E2,
   getFireTier,
   getToolMultiplier,
   type FireTier,
@@ -37,6 +46,25 @@ export interface EraState {
   buildings: Record<string, number>;
   techs: Record<string, boolean>;
   autoMaintainFire: boolean;
+
+  // ─────────────────────────────────────────────
+  // E2 定居时代
+  // ─────────────────────────────────────────────
+
+  /** 谷物：定居时代的主粮，受粮仓容量限制 */
+  grain: number;
+  /** 活体牲畜：既是储备也是畜力，**不占粮仓容量** */
+  livestock: number;
+  /** 织物 */
+  fabric: number;
+  /**
+   * 本时代已经过的秒数。
+   *
+   * 这是季节循环的**唯一驱动源**：季节完全由它推导（`getSeasonFromElapsed`），
+   * 不另存「当前季节」字段——两个字段迟早会互相矛盾。
+   * 跨时代跃迁时归零，所以每个时代都从春天开始。
+   */
+  eraElapsedSec: number;
 }
 
 /** @deprecated 旧名单时代命名，仅为向后兼容保留。新代码请用 EraState */
@@ -62,6 +90,54 @@ export interface AggregatedEffects {
   huntPartyBonus: number;
   foodStorageMultiplier: number;
   enableAdvance: boolean;
+
+  // ─────────────────────────────────────────────
+  // E2 定居时代（核心科技：农业）
+  // ─────────────────────────────────────────────
+
+  /** 季节循环是否开启（农业核心科技） */
+  seasonsEnabled: boolean;
+  /** 四季农业倍率加成（加法，叠加在季节基础值之上） */
+  seasonAgriBonus: Record<SeasonId, number>;
+  /** 谷物总产出乘数 */
+  grainMultiplier: number;
+  /** 按岗位的效率乘数 */
+  jobMultiplier: Partial<Record<JobId, number>>;
+  /** 按资源的产出乘数 */
+  resourceMultiplier: Partial<Record<ResourceId, number>>;
+
+  /** 牲畜产食物乘数 */
+  livestockFoodMul: number;
+  /** 夏季牧人效率乘数 */
+  summerHerderMul: number;
+  /** 每座畜栏存栏上限加成 */
+  penCapacityAdd: number;
+  /** 牲畜世代等级（取最大） */
+  livestockTier: number;
+  /** 饥荒时牲畜存活率（0=全死，0.5=活一半；取最大） */
+  livestockFamineSurvival: number;
+
+  /** 田地出产乘数 */
+  fieldYieldMul: number;
+  /** 田地效率上限（取最大） */
+  fieldEfficiencyCap: number;
+  /** 饲料成本乘数（<1 降低） */
+  feedCostMultiplier: number;
+
+  /** 村落民居成本乘数 */
+  villageHouseCostMul: number;
+  /** 单座粮仓容量（取最大） */
+  granaryPerUnit: number;
+  /** 粮仓总容量乘数 */
+  granaryCapacityMul: number;
+  /** 陶窑容量加成（取最大） */
+  kilnBonus: number;
+  /** 粮仓溢出阈值加成 */
+  granaryOverflowBonus: number;
+  /** 岗位切换成本乘数（<1 降低） */
+  jobSwitchCostMul: number;
+  /** 取消 E1 承载力硬顶 */
+  removeCapacityCap: boolean;
 }
 
 const DEFAULT_EFFECTS: AggregatedEffects = {
@@ -81,10 +157,40 @@ const DEFAULT_EFFECTS: AggregatedEffects = {
   huntPartyBonus: 0,
   foodStorageMultiplier: 1,
   enableAdvance: false,
+
+  // ── E2 定居时代 ──
+  seasonsEnabled: false,
+  seasonAgriBonus: { spring: 0, summer: 0, autumn: 0, winter: 0 },
+  grainMultiplier: 1,
+  jobMultiplier: {},
+  resourceMultiplier: {},
+  livestockFoodMul: 1,
+  summerHerderMul: 1,
+  penCapacityAdd: 0,
+  livestockTier: 0,
+  livestockFamineSurvival: 0,
+  fieldYieldMul: 1,
+  fieldEfficiencyCap: 1,
+  feedCostMultiplier: 1,
+  villageHouseCostMul: 1,
+  granaryPerUnit: 0,
+  granaryCapacityMul: 1,
+  kilnBonus: 0,
+  granaryOverflowBonus: 0,
+  jobSwitchCostMul: 1,
+  removeCapacityCap: false,
 };
 
 export function aggregateEffects(state: E1State): AggregatedEffects {
-  const acc: AggregatedEffects = { ...DEFAULT_EFFECTS };
+  // 注意：seasonAgriBonus / jobMultiplier / resourceMultiplier 是引用类型，
+  // 必须新建。若沿用浅拷贝，写入会穿透到 DEFAULT_EFFECTS 上，
+  // 污染此后所有调用（E1 的配平会被悄悄改掉）。
+  const acc: AggregatedEffects = {
+    ...DEFAULT_EFFECTS,
+    seasonAgriBonus: { ...DEFAULT_EFFECTS.seasonAgriBonus },
+    jobMultiplier: {},
+    resourceMultiplier: {},
+  };
 
   for (const tech of TECHS) {
     if (!state.techs[tech.id]) continue;
@@ -124,6 +230,68 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     if (e.stabilityBonus) acc.stabilityBonus += add(e.stabilityBonus);
     if (e.huntPartyBonus) acc.huntPartyBonus = add(e.huntPartyBonus);
     if (e.foodStorageMultiplier) acc.foodStorageMultiplier *= mul(e.foodStorageMultiplier);
+
+    // — E2 布尔/解锁型：不衰减 —
+    if (e.enableSeasons) acc.seasonsEnabled = true;
+    if (e.removeCapacityCap) acc.removeCapacityCap = true;
+
+    // — E2 绝对设置型：取「已研究科技中的最大值」，不衰减 —
+    //
+    // 这些是能力上限而非产量加成：地基期也不该退回石器时代的水准。
+    if (e.fieldEfficiencyCap !== undefined) {
+      acc.fieldEfficiencyCap = Math.max(acc.fieldEfficiencyCap, e.fieldEfficiencyCap);
+    }
+    if (e.livestockTier !== undefined) {
+      acc.livestockTier = Math.max(acc.livestockTier, e.livestockTier);
+    }
+    if (e.granaryPerUnit !== undefined) {
+      acc.granaryPerUnit = Math.max(acc.granaryPerUnit, e.granaryPerUnit);
+    }
+    if (e.kilnBonus !== undefined) {
+      acc.kilnBonus = Math.max(acc.kilnBonus, e.kilnBonus);
+    }
+    if (e.livestockFamineSurvival !== undefined) {
+      acc.livestockFamineSurvival = Math.max(
+        acc.livestockFamineSurvival,
+        e.livestockFamineSurvival
+      );
+    }
+
+    // — E2 季节倍率加成：加法键，按时代衰减 —
+    if (e.springAgriMul) acc.seasonAgriBonus.spring += add(e.springAgriMul);
+    if (e.summerAgriMul) acc.seasonAgriBonus.summer += add(e.summerAgriMul);
+    if (e.autumnAgriMul) acc.seasonAgriBonus.autumn += add(e.autumnAgriMul);
+    if (e.winterAgriMul) acc.seasonAgriBonus.winter += add(e.winterAgriMul);
+
+    // — E2 乘法键：按时代衰减 —
+    if (e.grainMultiplier) acc.grainMultiplier *= mul(e.grainMultiplier);
+    if (e.livestockFoodMul) acc.livestockFoodMul *= mul(e.livestockFoodMul);
+    if (e.summerHerderMul) acc.summerHerderMul *= mul(e.summerHerderMul);
+    if (e.fieldYieldMul) acc.fieldYieldMul *= mul(e.fieldYieldMul);
+    if (e.feedCostMultiplier) acc.feedCostMultiplier *= mul(e.feedCostMultiplier);
+    if (e.villageHouseCostMul) acc.villageHouseCostMul *= mul(e.villageHouseCostMul);
+    if (e.granaryCapacityMul) acc.granaryCapacityMul *= mul(e.granaryCapacityMul);
+    if (e.jobSwitchCostMul) acc.jobSwitchCostMul *= mul(e.jobSwitchCostMul);
+
+    // — E2 加法键：按时代衰减 —
+    if (e.penCapacityAdd) acc.penCapacityAdd += add(e.penCapacityAdd);
+    if (e.granaryOverflowBonus) acc.granaryOverflowBonus += add(e.granaryOverflowBonus);
+
+    // — E2 按岗位 / 按资源的乘数 —
+    if (e.jobMultiplier) {
+      for (const [job, m] of Object.entries(e.jobMultiplier)) {
+        if (m === undefined) continue;
+        const id = job as JobId;
+        acc.jobMultiplier[id] = (acc.jobMultiplier[id] ?? 1) * mul(m);
+      }
+    }
+    if (e.resourceMultiplier) {
+      for (const [res, m] of Object.entries(e.resourceMultiplier)) {
+        if (m === undefined) continue;
+        const id = res as ResourceId;
+        acc.resourceMultiplier[id] = (acc.resourceMultiplier[id] ?? 1) * mul(m);
+      }
+    }
   }
 
   return acc;
@@ -140,6 +308,11 @@ export function getFireMax(state: E1State): number {
 }
 
 export function getFireDecay(state: E1State): number {
+  // 定居时代（E2 起）：火源转为恒定，不再衰减也不再需要维护。
+  // tickFire 早已对非 E1 提前返回（火值冻结），若这里仍返回非零值，
+  // UI 会显示一个「N 秒后熄灭」的假倒计时 —— 引擎与视图必须同源。
+  if (state.era !== 'E1') return 0;
+
   const eff = aggregateEffects(state);
   const hearths = state.buildings.hearth ?? 0;
   let decay = FIRE.DECAY_PER_SEC * eff.fireDecayMultiplier;
@@ -227,7 +400,25 @@ export function getFireFoodBonus(state: E1State): number {
 
 export function getCapacity(state: E1State): number {
   const houses = state.buildings.house ?? 0;
-  return POPULATION.BASE_CAPACITY + houses * POPULATION.CAPACITY_PER_HOUSE;
+  const villageHouses = state.buildings.village_house ?? 0;
+  const fields = state.buildings.field ?? 0;
+  const farmers = state.jobs.farmer ?? 0;
+
+  // 只有「已耕作」的田地才算承载力：田地必须凑够最低农夫数才在种。
+  const cultivatedFields = Math.min(
+    fields,
+    Math.floor(farmers / E2.FIELD_MIN_FARMERS)
+  );
+
+  // E1 的住所不会因为进入定居时代而失效——跃迁瞬间 K 必须连续。
+  // 设计文档 §6：E2 起始 K=16 = E1 基础 4 + 3 住所 × 4。
+  // 定居时代在此之上叠加村落民居与已耕作田地。
+  return (
+    POPULATION.BASE_CAPACITY +
+    houses * POPULATION.CAPACITY_PER_HOUSE +
+    villageHouses * E2.CAPACITY_PER_VILLAGE_HOUSE +
+    cultivatedFields * E2.CAPACITY_PER_FIELD
+  );
 }
 
 export function getFoodConsumption(state: E1State): number {
@@ -239,6 +430,16 @@ export function getFoodProduction(state: E1State): number {
 }
 
 export function getFoodFactor(state: E1State): number {
+  // ── E2 定居时代：主粮换成谷物 ──
+  //
+  // 流式「产出/消耗」比值在这里没有意义：定居时代的问题不是"今天够不够吃"，
+  // 而是"入冬前攒了多少"。所以食物因子直接由人均储粮推导
+  // （设计文档 §5：≥60→1.0，≥32→0.8，≥12→0.4，<12→0，=0→−0.5）。
+  if (aggregateEffects(state).seasonsEnabled) {
+    const perPerson = state.population > 0 ? state.grain / state.population : state.grain;
+    return getFoodFactorFromStorage(perPerson);
+  }
+
   const prod = getFoodProduction(state);
   const cons = getFoodConsumption(state);
   if (cons <= 0) return FOOD_FACTOR.ABUNDANT;
@@ -254,22 +455,32 @@ export function getPopulationGrowth(state: E1State): number {
   const K = getCapacity(state);
   const P = state.population;
 
+  // 季节因子：只在开启季节循环（E2 农业）后生效，E1 恒为 1.0
+  // —— 因此远古时代的配平逐字节不变。
+  // 冬季为负（−0.15）：人口自然回落，这是"青黄不接"的机制表达，
+  // 而不是靠饿死人来惩罚玩家。
+  const seasonR = eff.seasonsEnabled ? getSeasonGrowthFactor(state.eraElapsedSec) : 1;
+
   // 火种系统尚未开启（还没研究「掌握火」）：
   // 此时不存在"熄灭惩罚"，火源因子按中性 1.0 处理。
   // —— 否则开局 fire=0 会被误判为"火灭了"，人口在几秒内死光。
   if (!eff.fireEnabled) {
-    const r0 = POPULATION.BASE_GROWTH_RATE;
+    const r0 = POPULATION.BASE_GROWTH_RATE * seasonR;
     const foodFactor0 = getFoodFactor(state);
     if (foodFactor0 < 0) return -POPULATION.STARVATION_DECAY;
     return r0 * P * (1 - P / K) * foodFactor0;
   }
 
-  const fireFactor = getFireFactor(state);
+  // 火源因子：定居时代（E2 起）火源转为恒定，不再作为生存开关。
+  // 设计文档 §13：「火源 · 人口舒适度基础」，标签为「当前 ×1.0（恒定，无需维护）」。
+  // 若沿用 E1 的「熄灭 → 饥荒」规则，玩家只要带着 fire=0 跃迁（例如木材耗尽时），
+  // 定居时代就会陷入永久 −0.5/秒 的人口衰减 —— 一个玩家无法自救的死局。
+  const fireFactor = state.era === 'E1' ? getFireFactor(state) : 1;
 
-  // 火种已开启但熄灭了 → 生存惩罚
+  // 火种已开启但熄灭了 → 生存惩罚（仅远古时代）
   if (fireFactor === 0) return -POPULATION.STARVATION_DECAY;
 
-  const r = POPULATION.BASE_GROWTH_RATE * fireFactor;
+  const r = POPULATION.BASE_GROWTH_RATE * fireFactor * seasonR;
   const foodFactor = getFoodFactor(state);
   if (foodFactor < 0) return -POPULATION.STARVATION_DECAY;
 
@@ -298,6 +509,32 @@ export function calcJobOutput(jobId: JobId, state: E1State): number {
     rate *= 1 + eff.huntPartyBonus;
   }
 
+  // ── E2 定居时代 ──
+
+  // 科技给的按岗位乘数（跨时代通用）
+  rate *= eff.jobMultiplier[jobId] ?? 1;
+
+  if (eff.seasonsEnabled) {
+    if (jobId === 'farmer') {
+      // 田地效率：田地是农夫的工作位，农夫不够就有一部分田闲着。
+      // 覆盖度 = min(上限, 农夫数 / (田数×每田工位))；没有田则不产出。
+      const fields = state.buildings.field ?? 0;
+      const coverage =
+        fields > 0
+          ? Math.min(eff.fieldEfficiencyCap, count / (fields * E2.JOBS_PER_FIELD))
+          : 0;
+      rate *=
+        getSeasonOutputMultiplier(state.eraElapsedSec, true) * coverage * eff.fieldYieldMul;
+    } else if (jobId === 'woodcutter' || jobId === 'knapper') {
+      // 冬季伐木/打石 ×0.7
+      rate *= getSeasonOutputMultiplier(state.eraElapsedSec, false);
+    }
+    // 牧人 / 织工 / 猎人：无季节波动
+    if (jobId === 'herder' && getSeasonFromElapsed(state.eraElapsedSec) === 'summer') {
+      rate *= eff.summerHerderMul;
+    }
+  }
+
   return rate;
 }
 
@@ -318,6 +555,14 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
     total *= eff.foodMultiplier;
   }
   if (resourceId === 'stone') total *= eff.stoneMultiplier;
+
+  // ── E2 ──
+  if (resourceId === 'grain') total *= eff.grainMultiplier;
+  if (resourceId === 'livestock') total *= eff.livestockFoodMul;
+
+  // 科技给的按资源乘数（跨时代通用）
+  const perResource = eff.resourceMultiplier[resourceId];
+  if (perResource !== undefined) total *= perResource;
 
   return total;
 }
@@ -351,8 +596,11 @@ export function getBuildingCost(
 
 export function canAffordBuilding(buildingId: BuildingId, state: E1State): boolean {
   const cost = getBuildingCost(buildingId, state);
+  // 成本键可能是任意资源（E1 用木材/石头，E2 起谷物也可能进入成本表），
+  // 所以这里按资源名取存量，而不是只白名单 food/wood/stone。
   for (const [res, amount] of Object.entries(cost)) {
-    if ((state[res as 'food' | 'wood' | 'stone'] ?? 0) < (amount as number)) return false;
+    const owned = state[res as keyof E1State];
+    if (typeof owned !== 'number' || owned < (amount as number)) return false;
   }
   return true;
 }
@@ -447,7 +695,24 @@ export function checkAdvance(state: E1State): AdvanceCheck {
   const meta = ERAS[state.era];
   const { gateTech, advanceConditions: cond } = meta;
   const gateName = TECH_MAP[gateTech]?.name ?? gateTech;
-  const houses = state.buildings.house ?? 0;
+
+  // ── 时代的「主粮」与「住所」在不同时代是不同字段 ──
+  //
+  //   E1 人口吃 food，住所是 house
+  //   E2 人口改吃 grain（0.25/秒/人），住所由「住所 → 村落民居」升级为 village_house
+  //
+  // 不做这个映射，定居时代的跃迁检查会永远输出
+  // 「食物储备 0/800」「建成住所 0/5」—— 因为这两个字段在 E2 根本不是主资源。
+  // 玩家即便把 E2 玩到极致也永远无法跃迁，是硬阻断。
+  //
+  // ⚠️ ERAS.E1/E2 的 advanceConditions 数值本身仍是**占位值**（见 era.ts 注释），
+  //    这里只修正"读哪个字段"，不动数值，配平定稿后仍需校准。
+  //    E3 及以后若引入新的主粮 / 住所体系，需要在这里继续扩展映射。
+  const settled = state.era !== 'E1';
+  const staple = settled ? state.grain : state.food;
+  const housing = settled ? (state.buildings.village_house ?? 0) : (state.buildings.house ?? 0);
+  const stapleLabel = settled ? '谷物储备' : '食物储备';
+  const housingLabel = settled ? '村落民居' : '住所';
 
   const items = [
     {
@@ -456,14 +721,14 @@ export function checkAdvance(state: E1State): AdvanceCheck {
       detail: state.techs[gateTech] ? '已完成' : '尚未研究',
     },
     {
-      label: `食物储备 ≥ ${cond.minFood}`,
-      done: state.food >= cond.minFood,
-      detail: `${Math.floor(state.food)} / ${cond.minFood}`,
+      label: `${stapleLabel} ≥ ${cond.minFood}`,
+      done: staple >= cond.minFood,
+      detail: `${Math.floor(staple)} / ${cond.minFood}`,
     },
     {
-      label: `建成 ${cond.minHouses} 座住所`,
-      done: houses >= cond.minHouses,
-      detail: `${houses} / ${cond.minHouses}`,
+      label: `建成 ${cond.minHouses} 座${housingLabel}`,
+      done: housing >= cond.minHouses,
+      detail: `${housing} / ${cond.minHouses}`,
     },
     {
       label: `人口 ≥ ${cond.minPopulation}`,
@@ -488,6 +753,22 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
       return 500;
     case 'stone':
       return 500;
+    case 'grain': {
+      // 谷物容量 = (400 + Σ粮仓×单仓容量) × (1 + 陶窑加成×min(陶窑数,3) + 陶罐储藏加成)
+      // 「谷仓通风系统」再按溢出阈值放宽容量的 20%。
+      const granaries = state.buildings.granary ?? 0;
+      const kilns = state.buildings.kiln ?? 0;
+      const jarStorageBonus = eff.granaryCapacityMul - 1;
+      const base = getGranaryCapacity(
+        granaries,
+        kilns,
+        jarStorageBonus,
+        eff.granaryPerUnit > 0 ? eff.granaryPerUnit : undefined,
+        eff.kilnBonus > 0 ? eff.kilnBonus : undefined
+      );
+      return base * (1 + eff.granaryOverflowBonus);
+    }
+    // 牲畜是活体储备，不占粮仓容量；织物同理
     default:
       return Number.POSITIVE_INFINITY;
   }
@@ -497,8 +778,27 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
 // T4.6 卡点提示
 // ─────────────────────────────────────────────
 export function getBottleneck(state: E1State): string | null {
-  if (!aggregateEffects(state).fireEnabled) return null;
+  const eff = aggregateEffects(state);
+  if (!eff.fireEnabled) return null;
 
+  // ── E2 定居时代：压力从「火种」换成「季节 + 谷仓」 ──
+  // 火源在本时代恒定、无需维护，因此不再作为卡点提示（否则会一直误报"火源太弱"）
+  if (eff.seasonsEnabled) {
+    if (getFoodFactor(state) <= 0) {
+      return '谷仓告急 —— 秋季派更多人下田，或宰杀牲畜换粮';
+    }
+    if (getPopulationGrowth(state) <= 0.001 && state.population >= getCapacity(state) - 0.5) {
+      const farmers = state.jobs.farmer ?? 0;
+      const fields = state.buildings.field ?? 0;
+      if (fields > 0 && farmers < fields * E2.JOBS_PER_FIELD) {
+        return '田地缺人耕作 —— 每块田需至少 2 名农夫才计入承载力';
+      }
+      return '住处不足 —— 建造村落民居，或开垦更多田地提升人口上限';
+    }
+    return null;
+  }
+
+  // ── E1 远古时代：火源 → 人口上限 → 食物 ──
   if (getFireFactor(state) <= 0.5) {
     return '火源太弱 —— 派更多人去伐木，或手动投入木材';
   }
@@ -522,9 +822,19 @@ export interface TickResult {
   population: number;
   populationProgress: number;
   fire: number;
+  // ── E2 定居时代 ──
+  grain: number;
+  livestock: number;
+  fabric: number;
+  eraElapsedSec: number;
 }
 
 export function tick(state: E1State, dt: number): TickResult {
+  const eff = aggregateEffects(state);
+
+  // 本时代已经过的秒数——季节循环的驱动源
+  const eraElapsedSec = (state.eraElapsedSec ?? 0) + dt;
+
   // 1) 产出
   const foodGain = calcResourceOutput('food', state) * dt;
   const woodGain = calcResourceOutput('wood', state) * dt;
@@ -579,7 +889,59 @@ export function tick(state: E1State, dt: number): TickResult {
   let food = state.food + foodGain - consumption;
   food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
 
-  return { food, wood, stone, experience, population, populationProgress: progress, fire };
+  // ─────────────────────────────────────────────
+  // 4) E2 定居时代：谷物 / 牲畜 / 织物
+  // ─────────────────────────────────────────────
+  //
+  // 谷物是定居时代的主粮，且有**硬容量**（粮仓）——这是「秋天必须攒够」
+  // 这个核心玩法的落地点：产出集中在秋季，但仓库装不下就只能眼看着烂掉。
+  let grain = state.grain ?? 0;
+  let livestock = state.livestock ?? 0;
+  let fabric = state.fabric ?? 0;
+
+  if (eff.seasonsEnabled) {
+    const grainGain = calcResourceOutput('grain', state) * dt;
+    const livestockGain = calcResourceOutput('livestock', state) * dt;
+    const fabricGain = calcResourceOutput('fabric', state) * dt;
+
+    // 牲畜先按畜栏存栏上限封顶（畜栏 = 活体库存的"仓库"）
+    const pens = state.buildings.animal_pen ?? 0;
+    const penCap = pens * (E2.PEN_CAPACITY + eff.penCapacityAdd);
+    livestock = Math.min(livestock + livestockGain, penCap);
+
+    // 人吃谷物；牲畜吃饲料（「畜力与厩肥」可降饲料成本）
+    const grainConsumption =
+      population * E2.GRAIN_PER_PERSON_SEC * dt +
+      livestock * E2.FEED_PER_LIVESTOCK_SEC * eff.feedCostMultiplier * dt;
+
+    grain = grain + grainGain - grainConsumption;
+
+    // 谷物见底 → 牲畜闹饥荒。
+    // 默认（无兽医知识）存活率为 0，即"饥荒牲畜死亡率 100%"；
+    // 「兽医知识」把它提到 50%。注意这里只损失牲畜，不损失人口与科技。
+    if (grain < 0) {
+      grain = 0;
+      const loss = 1 - eff.livestockFamineSurvival;
+      if (loss > 0) livestock = Math.max(0, livestock * (1 - loss));
+    }
+
+    grain = Math.min(grain, getResourceStorage('grain', state));
+    fabric = Math.max(0, fabric + fabricGain);
+  }
+
+  return {
+    food,
+    wood,
+    stone,
+    experience,
+    population,
+    populationProgress: progress,
+    fire,
+    grain,
+    livestock,
+    fabric,
+    eraElapsedSec,
+  };
 }
 
 export { JOBS, TECHS, TECH_MAP, BUILDING_MAP };

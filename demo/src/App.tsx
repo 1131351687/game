@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { useStore, toEngineState } from './state/store';
 import { TopBar } from './ui/components/TopBar';
 import { FireDashboard } from './ui/components/FireDashboard';
+import { SeasonBar } from './ui/components/SeasonBar';
 import { JobPanel } from './ui/components/JobPanel';
 import { BuildingPanel } from './ui/components/BuildingPanel';
 import { CivilizationPanel } from './ui/components/CivilizationPanel';
@@ -56,8 +57,11 @@ export default function App() {
         </div>
       </div>
 
-      {/* ② 火种仪表盘 —— 掌握火之后的常驻核心元素 */}
+      {/* ② 火种仪表盘 —— 掌握火之后的常驻核心元素（E2 起转为恒定，由 SeasonBar 接棒） */}
       {fireUnlocked && <FireDashboard />}
+
+      {/* ②′ 季节面板 —— 定居时代（研究「农业」后）的常驻核心元素 */}
+      <SeasonBar />
 
       {/* ③ 卡点提示（无卡点时不渲染） */}
       <HintBar />

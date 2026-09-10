@@ -218,6 +218,12 @@ function hasEnough(
       return view.wood >= need;
     case 'stone':
       return view.stone >= need;
+    case 'grain':
+      return view.grain >= need;
+    case 'livestock':
+      return view.livestock >= need;
+    case 'fabric':
+      return view.fabric >= need;
     case 'experience':
       return view.experience >= need;
     default:

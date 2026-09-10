@@ -18,9 +18,9 @@
 import { useState } from 'react';
 
 import { useStore, toEngineState } from '../../state/store';
-import { countResearched, calcExperienceOutput } from '../../game/engine';
+import { calcExperienceOutput } from '../../game/engine';
 import { isModuleUnlocked } from '../../game/reveal';
-import { TECHS } from '../../data/techs';
+import { techsOfEra } from '../../data/techs';
 import { formatNumber, formatRate } from '../../core/format';
 
 import { Icon } from './Icon';
@@ -36,8 +36,13 @@ export function CivilizationPanel() {
   // 视图切换属于纯展示状态，不进 store（刷新/存档不需要记住）
   const [mode, setMode] = useState<'categories' | 'tree'>('categories');
 
-  const researched = countResearched(view);
-  const total = TECHS.length;
+  // 已学 / 总数都按**当前时代**统计。
+  // 若沿用全局 TECHS.length，加入 E2 的 30 项科技后，
+  // 远古时代的顶栏会从「已学 0 / 20」变成「已学 0 / 50」——
+  // 玩家的文明进度读数被稀释（E1 的 20 项占不到一半），远古时代的界面也被无端改动。
+  const eraTechs = techsOfEra(s.era);
+  const researched = eraTechs.filter(t => s.techs[t.id]).length;
+  const total = eraTechs.length;
   const expOutput = calcExperienceOutput(view);
 
   // 渐进解锁：条件未达成时整块面板不渲染（避免开局信息过载）

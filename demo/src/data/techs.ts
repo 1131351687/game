@@ -7,9 +7,32 @@
 import type { EraId } from './era';
 import type { JobId } from './jobs';
 import type { BuildingId } from './buildings';
+import type { ResourceId } from './resources';
 
-/** 科技所属分支 */
-export type TechBranch = 'core' | 'fire' | 'tool' | 'society' | 'gate';
+// E2 定居时代科技片段（各 9–10 项，分开维护便于配平与复盘）
+import { E2_TECHS_FARMING } from './e2-techs-farming';
+import { E2_TECHS_HERDING } from './e2-techs-herding';
+import { E2_TECHS_SETTLEMENT } from './e2-techs-settlement';
+
+/**
+ * 科技所属分支。
+ *
+ * - E1 远古时代：core(文明之光·火) / fire / tool / society / gate
+ * - E2 定居时代：core(文明之光·农业) / farming / herding / settlement / gate
+ *
+ * `core` 与 `gate` 是跨时代共用的「层级」——每个时代各有自己的核心科技与门槛科技，
+ * 但在文明模块中都归入"文明之光"与"时代之门"两档；三条发展分支则各时代不同名。
+ * UI 依据「当前时代实际用到的分支」动态渲染，因此这里可以放全部 8 个取值。
+ */
+export type TechBranch =
+  | 'core'
+  | 'fire'
+  | 'tool'
+  | 'society'
+  | 'farming'
+  | 'herding'
+  | 'settlement'
+  | 'gate';
 
 /** 科技类型（设计规范：解锁 ≥40% / 质变 ≥25% / 数值 ≤25%） */
 export type TechType = 'unlock' | 'qualitative' | 'numeric' | 'gate';
@@ -51,6 +74,67 @@ export interface TechEffects {
   unlockBuildings?: BuildingId[];
   /** 解锁时代跃迁 */
   enableAdvance?: boolean;
+
+  // ─────────────────────────────────────────────
+  // E2 定居时代（核心科技：农业）
+  //
+  // 命名约定：
+  //  - `*Mul` / `*Multiplier` 结尾 = 乘法键，聚合方式 1+(m-1)×衰减系数
+  //  - `*Add`  结尾            = 加法键，聚合方式 v×衰减系数
+  //  - `*Cap` / `*Tier` / `*PerUnit` = 绝对设置键，取"已研究科技中的最大值"
+  // ─────────────────────────────────────────────
+
+  /** 开启季节循环（农业核心科技） */
+  enableSeasons?: boolean;
+  /** 春季农业倍率加成（加在季节基础值 0.5 之上） */
+  springAgriMul?: number;
+  /** 夏季农业倍率加成（基础值 1.0） */
+  summerAgriMul?: number;
+  /** 秋季农业倍率加成（基础值 2.5） */
+  autumnAgriMul?: number;
+  /** 冬季农业倍率加成（基础值 0.05） */
+  winterAgriMul?: number;
+  /** 谷物总产出乘数 */
+  grainMultiplier?: number;
+  /** 按岗位的效率乘数（跨时代通用，例：{ farmer: 1.25 }） */
+  jobMultiplier?: Partial<Record<JobId, number>>;
+  /** 按资源的产出乘数 */
+  resourceMultiplier?: Partial<Record<ResourceId, number>>;
+  /** 解锁资源 */
+  unlockResources?: ResourceId[];
+
+  /** 牲畜产食物乘数（乳/肉） */
+  livestockFoodMul?: number;
+  /** 夏季牧人效率乘数 */
+  summerHerderMul?: number;
+  /** 每座畜栏的存栏上限加成 */
+  penCapacityAdd?: number;
+  /** 牲畜世代等级（绝对设置，取最大） */
+  livestockTier?: number;
+  /** 饥荒时牲畜存活率（1=全活，0.5=死一半） */
+  livestockFamineSurvival?: number;
+
+  /** 田地出产乘数 */
+  fieldYieldMul?: number;
+  /** 田地效率上限（绝对设置，取最大） */
+  fieldEfficiencyCap?: number;
+  /** 饲料成本乘数（<1 为降低） */
+  feedCostMultiplier?: number;
+
+  /** 村落民居成本乘数 */
+  villageHouseCostMul?: number;
+  /** 单座粮仓容量（绝对设置，取最大） */
+  granaryPerUnit?: number;
+  /** 粮仓总容量乘数 */
+  granaryCapacityMul?: number;
+  /** 陶窑容量加成（绝对设置，取最大） */
+  kilnBonus?: number;
+  /** 粮仓溢出阈值加成 */
+  granaryOverflowBonus?: number;
+  /** 岗位切换成本乘数（<1 为降低） */
+  jobSwitchCostMul?: number;
+  /** 取消 E1 承载力硬顶（定居营造） */
+  removeCapacityCap?: boolean;
 }
 
 export interface TechDef {
@@ -79,7 +163,8 @@ export interface TechDef {
   desc: string;
 }
 
-export const TECHS: TechDef[] = [
+/** E1 远古时代 · 全部 20 项科技 */
+const E1_TECHS: TechDef[] = [
   // ─────────────── 核心 ───────────────
   {
     id: 'fire_mastery',
@@ -354,6 +439,42 @@ export const TECHS: TechDef[] = [
   },
 ];
 
+/** E2 定居时代 · 核心科技（文明之光：农业） */
+const E2_TECHS_CORE: TechDef[] = [
+  {
+    id: 'agriculture',
+    name: '农业',
+    icon: '🌾',
+    branch: 'core',
+    era: 'E2',
+    cost: 120,
+    type: 'unlock',
+    requires: [],
+    effects: {
+      enableSeasons: true,
+      unlockJobs: ['farmer'],
+      unlockBuildings: ['field'],
+    },
+    position: { x: 0, y: 0 },
+    desc: '定居时代的文明之光。开启季节循环——产出随春夏秋冬起伏，粮食必须在秋天攒够。',
+  },
+];
+
+/**
+ * 全量科技表（E1 远古时代 + E2 定居时代）。
+ *
+ * 数组顺序 = 核心 → 三分支 → 门槛，仅为便于阅读；UI 不依赖该顺序，
+ * 但 `TOTAL_TECH_COST` 与配平脚本要求全部科技都在这里。
+ * E1 部分保持原样不动：远古时代的配平基准（beeline 932s）依赖它逐字节不变。
+ */
+export const TECHS: TechDef[] = [
+  ...E1_TECHS,
+  ...E2_TECHS_CORE,
+  ...E2_TECHS_FARMING,
+  ...E2_TECHS_HERDING,
+  ...E2_TECHS_SETTLEMENT,
+];
+
 export const TECH_MAP: Record<string, TechDef> = Object.fromEntries(
   TECHS.map(t => [t.id, t])
 );
@@ -363,8 +484,27 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   fire: TECHS.filter(t => t.branch === 'fire'),
   tool: TECHS.filter(t => t.branch === 'tool'),
   society: TECHS.filter(t => t.branch === 'society'),
+  farming: TECHS.filter(t => t.branch === 'farming'),
+  herding: TECHS.filter(t => t.branch === 'herding'),
+  settlement: TECHS.filter(t => t.branch === 'settlement'),
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
+
+/**
+ * 指定时代 + 指定分支的科技。
+ *
+ * `core` 与 `gate` 是跨时代共用的层级名，三条发展分支则各时代不同名。
+ * UI 必须走这个函数，而不是直接读 `TECHS_BY_BRANCH`——否则会把上一个时代
+ * 已经研究完的科技（它们仍然 `researched === true`）一起列进当前时代。
+ */
+export function techsOfEraBranch(era: EraId, branch: TechBranch): TechDef[] {
+  return TECHS_BY_BRANCH[branch].filter(t => t.era === era);
+}
+
+/** 指定时代实际用到的分支，按 `BRANCH_ORDER` 排序（空分支自动剔除） */
+export function branchesOfEra(era: EraId): TechBranch[] {
+  return BRANCH_ORDER.filter(b => TECHS_BY_BRANCH[b].some(t => t.era === era));
+}
 
 /**
  * 返回指定时代的全部科技
@@ -423,6 +563,31 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
     desc: '人口上限与群体稳定',
     role: '分支 · 规模',
   },
+  // ── E2 定居时代的三条分支 ──
+  farming: {
+    name: '耕作与节律',
+    kind: 'branch',
+    order: 5,
+    color: '#84cc16',
+    desc: '顺应四季：春播、夏长、秋收',
+    role: '分支 · 根基',
+  },
+  herding: {
+    name: '驯养与活体储备',
+    kind: 'branch',
+    order: 6,
+    color: '#f59e0b',
+    desc: '活着的粮食——牲畜既是储备，也是畜力',
+    role: '分支 · 韧性',
+  },
+  settlement: {
+    name: '定居与储藏基建',
+    kind: 'branch',
+    order: 7,
+    color: '#14b8a6',
+    desc: '造粮仓储余粮、修房屋扩聚落',
+    role: '分支 · 规模',
+  },
   gate: {
     name: '时代之门',
     kind: 'gate',
@@ -433,8 +598,25 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
   },
 };
 
-/** 按层级顺序排列的类别（文明之光 → 三条分支 → 时代之门） */
-export const BRANCH_ORDER: TechBranch[] = ['core', 'fire', 'tool', 'society', 'gate'];
+/**
+ * 类别全序（文明之光 → 各时代三条分支 → 时代之门）。
+ *
+ * 这里列全部 8 个分支；某个时代用不到的分支在其中没有科技，
+ * UI 侧用 `branchesOfEra(era)` 过滤掉空分支后再渲染。
+ */
+export const BRANCH_ORDER: TechBranch[] = [
+  'core',
+  'fire',
+  'tool',
+  'society',
+  'farming',
+  'herding',
+  'settlement',
+  'gate',
+];
 
-/** 全部科技总成本（用于配平校验，应为 2505） */
+/** 全部科技总成本（E1 + E2，配平校验用） */
 export const TOTAL_TECH_COST = TECHS.reduce((sum, t) => sum + t.cost, 0);
+
+/** E1 总成本——回归基准，必须恒为 2505（改动 E1 数据即视为破坏性变更） */
+export const E1_TOTAL_TECH_COST = E1_TECHS.reduce((sum, t) => sum + t.cost, 0);

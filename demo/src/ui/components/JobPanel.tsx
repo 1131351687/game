@@ -38,6 +38,10 @@ const JOB_BAR: Record<string, string> = {
   woodcutter: 'bg-amber-500/70',
   knapper: 'bg-slate-400/70',
   hunter: 'bg-rose-500/70',
+  // ── E2 定居时代 ──
+  farmer: 'bg-lime-500/70',
+  herder: 'bg-orange-400/70',
+  weaver: 'bg-violet-400/70',
 };
 
 /** 未解锁时的原因文案（来自 JOBS[].requires） */
@@ -300,8 +304,15 @@ export function JobPanel() {
       </div>
 
       <p className="text-xs leading-relaxed text-gray-600">
-        人口既是劳动力也是经验来源：人越多，经验积累越快；但每人每秒消耗 0.2 食物。
-        分配时优先保证食物产出高于消耗。
+        人口既是劳动力也是经验来源：人越多，经验积累越快；
+        {state.era === 'E1' ? (
+          <>但每人每秒消耗 0.2 食物。分配时优先保证食物产出高于消耗。</>
+        ) : (
+          <>
+            但每人每秒消耗 0.25 谷物（牲畜另耗饲料）—— 定居时代的关键是<strong>秋季多下田</strong>，
+            在入冬前把粮仓攒到冬耗之上。
+          </>
+        )}
       </p>
     </section>
   );

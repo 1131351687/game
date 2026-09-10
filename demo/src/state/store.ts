@@ -47,6 +47,19 @@ export interface GameState {
   stone: number;
   experience: number;
 
+  // ── E2 定居时代资源 ──
+  /** 谷物：定居时代的主粮，受粮仓容量**硬限制** */
+  grain: number;
+  /** 活体牲畜：不占粮仓容量的活体储备，也是畜力来源 */
+  livestock: number;
+  /** 织物 */
+  fabric: number;
+  /**
+   * 本时代已经过的秒数 —— 季节循环的**唯一驱动源**。
+   * 跨时代跃迁时归零，所以每个时代都从春天开始。
+   */
+  eraElapsedSec: number;
+
   // 人口与火种
   /** 人口：始终为整数 */
   population: number;
@@ -104,7 +117,7 @@ export interface GameState {
   advanceEra: () => boolean;
 }
 
-const SAVE_VERSION = 2;
+const SAVE_VERSION = 3;
 
 const initialState = () => ({
   running: false,
@@ -114,6 +127,10 @@ const initialState = () => ({
   wood: INITIAL_STATE.wood,
   stone: INITIAL_STATE.stone,
   experience: INITIAL_STATE.experience,
+  grain: 0,
+  livestock: 0,
+  fabric: 0,
+  eraElapsedSec: 0,
   population: INITIAL_STATE.population,
   populationProgress: 0,
   fire: INITIAL_STATE.fire,
@@ -137,6 +154,10 @@ function engineView(s: GameState): engine.EraState {
     wood: s.wood,
     stone: s.stone,
     experience: s.experience,
+    grain: s.grain,
+    livestock: s.livestock,
+    fabric: s.fabric,
+    eraElapsedSec: s.eraElapsedSec,
     population: s.population,
     populationProgress: s.populationProgress,
     fire: s.fire,
@@ -200,10 +221,12 @@ export const useStore = create<GameState>((set, get) => ({
     const next: Partial<GameState> = {
       buildings: { ...s.buildings, [buildingId]: (s.buildings[buildingId] ?? 0) + 1 },
     };
+    // 按成本表逐项扣除。写成资源名驱动而不是 if (res === 'wood')/('stone')/('food')，
+    // 否则 E2/E3 一旦出现谷物等新成本的建筑，就会变成"不花资源白拿"。
     for (const [res, amount] of Object.entries(cost)) {
-      if (res === 'wood') next.wood = s.wood - (amount as number);
-      if (res === 'stone') next.stone = s.stone - (amount as number);
-      if (res === 'food') next.food = s.food - (amount as number);
+      const key = res as 'food' | 'wood' | 'stone' | 'grain' | 'livestock' | 'fabric';
+      const owned = s[key];
+      if (typeof owned === 'number') next[key] = owned - (amount as number);
     }
     set(next);
     const def = BUILDINGS.find(b => b.id === buildingId);
@@ -258,6 +281,10 @@ export const useStore = create<GameState>((set, get) => ({
       wood: r.wood,
       stone: r.stone,
       experience: r.experience,
+      grain: r.grain,
+      livestock: r.livestock,
+      fabric: r.fabric,
+      eraElapsedSec: r.eraElapsedSec,
       population: r.population,
       populationProgress: r.populationProgress,
       fire: r.fire,
@@ -315,6 +342,10 @@ export const useStore = create<GameState>((set, get) => ({
       wood: s.wood,
       stone: s.stone,
       experience: s.experience,
+      grain: s.grain,
+      livestock: s.livestock,
+      fabric: s.fabric,
+      eraElapsedSec: s.eraElapsedSec,
       population: s.population,
       populationProgress: s.populationProgress,
       fire: s.fire,
@@ -331,10 +362,16 @@ export const useStore = create<GameState>((set, get) => ({
   },
 
   loadSnapshot: (data) => {
-    // 存档迁移：v1 及更早的存档没有 era 字段，按远古时代补上
+    // 存档迁移：
+    //   v1 及更早 —— 没有 era 字段，按远古时代补上
+    //   v2 及更早 —— 没有 E2 的谷物/牲畜/织物，也没有季节计时，一律补 0
     const migrated: Partial<GameState> = {
       ...data,
       era: (data.era as EraId | undefined) ?? 'E1',
+      grain: data.grain ?? 0,
+      livestock: data.livestock ?? 0,
+      fabric: data.fabric ?? 0,
+      eraElapsedSec: data.eraElapsedSec ?? 0,
       version: SAVE_VERSION,
     };
     set({ ...migrated, messages: [], running: false });
@@ -362,19 +399,47 @@ export const useStore = create<GameState>((set, get) => ({
     // 3. 继承项：科技（按时代距离自动衰减）、经验、统计、设置
     //    保留原因：玩家的研究成果代表文明积累，不应因时代更迭而清零
     //    科技的效果会在 aggregateEffects 中按 decay = max(0.2, 0.6^d) 自动衰减
-    // 4. 重置项：资源 / 岗位 / 建筑 / 队列 / 人口
+    // 4. 重置项：资源 / 岗位 / 队列 / 人口
     //    清零资源的原因：E2 的新资源体系（谷物/牲畜/织物）取代了 E1 的木材石头
     //    作为主资源；新时代表面上有全新资源，旧资源清零避免数值叠加混乱
-    //    清零建筑/岗位：新时代的建筑与岗位体系重新开局，与"文明重走"主题一致
+    //    清零岗位：新时代的岗位体系重新开局，与"文明重走"主题一致
+    //
+    // 5. 建筑：**住宅跨时代继承**，其余清零
+    //
+    //    为什么住宅必须继承：承载力 K 必须在跃迁瞬间连续。
+    //    E2 起始人口 15（设计文档 §6 衔接表），若住宅被清零则 K = 基础 4，
+    //    逻辑斯蒂项 (1 − P/K) = 1 − 15/4 直接转负，人口会在数十秒内崩到 4，
+    //    定居时代当场不可玩。
+    //    设计文档 §4「住所 → 村落民居 升级路径」给出的正是答案：
+    //    住所（K +4）升级为村落民居（K +4），**数值不变**，只是聚落形态改变。
+    //    3 座住所 → 3 座村落民居 → K = 4 + 3×4 = 16，与设计文档 §12 时间线
+    //    「第 1 年人口 15 → 18」逐帧吻合（r=0.03、P=15、K=16 → +0.011/秒）。
+    //
+    //    火塘 / 作坊不继承：E2 火源转为恒定（无需维护），工具加成由猎人继承。
+    const nextBuildings = Object.fromEntries(
+      BUILDINGS.map(b => [b.id, 0])
+    ) as Record<string, number>;
+    if (nextEraId === 'E2') {
+      nextBuildings.village_house = s.buildings.house ?? 0;
+    }
+
     set({
       era: nextEraId,
       food: 0,
       wood: 0,
       stone: 0,
+      // E2 起始：谷物 300（设计文档 §6：靠 E1 遗产的 300 谷物撑过第一次越冬），
+      // 牲畜与织物从零开始
+      grain: 300,
+      livestock: 0,
+      fabric: 0,
+      // 季节计时归零 —— 新时代从春天开始
+      eraElapsedSec: 0,
       jobs: Object.fromEntries(JOBS.map(j => [j.id, 0])) as Record<string, number>,
-      buildings: Object.fromEntries(BUILDINGS.map(b => [b.id, 0])) as Record<string, number>,
+      buildings: nextBuildings,
       queue: [] as string[],
-      population: 2,
+      // 承接 E1 的人口规模（设计文档 §6：跃迁时人口 15，K=16）
+      population: 15,
       populationProgress: 0,
       // researchProgress 也归零——新队列开头无正在进行的研究
       researchProgress: 0,

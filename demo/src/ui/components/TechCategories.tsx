@@ -25,9 +25,9 @@ import { useStore, toEngineState } from '../../state/store';
 import { canResearch, isTechAvailable } from '../../game/engine';
 import { isTechRevealed } from '../../game/reveal';
 import {
-  TECHS_BY_BRANCH,
+  branchesOfEra,
+  techsOfEraBranch,
   BRANCH_INFO,
-  BRANCH_ORDER,
   type TechBranch,
   type TechDef,
   type TechEffects,
@@ -201,10 +201,10 @@ export function TechCategories() {
   // 队列用 Set 做 O(1) 查询（队列很短，但避免每行都 includes 扫一遍）
   const queueSet = useMemo(() => new Set(s.queue), [s.queue]);
 
-  // ── 组装 5 个类别区块 ──
+  // ── 组装当前时代的类别区块（只列本时代科技，已传承的上一时代科技不再重复列出）──
   const groups = useMemo<BranchGroup[]>(() => {
-    return BRANCH_ORDER.map(branch => {
-      const all = TECHS_BY_BRANCH[branch];
+    return branchesOfEra(s.era).map(branch => {
+      const all = techsOfEraBranch(s.era, branch);
       const rows: TechRow[] = [];
 
       for (const def of all) {

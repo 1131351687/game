@@ -2,7 +2,7 @@
 
 import type { EraId } from './era';
 
-export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population';
+export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'grain' | 'livestock' | 'fabric';
 
 export interface ResourceDef {
   id: ResourceId;
@@ -59,6 +59,30 @@ export const RESOURCES: ResourceDef[] = [
     era: 'E1',
     desc: '既是全部岗位的劳动力，也是经验的来源。上限由住所决定。',
   },
+  {
+    id: 'grain',
+    name: '谷物',
+    icon: '🌾',
+    category: 'material',
+    era: 'E2',
+    desc: '定居时代的核心资源。人口每日消耗、开垦田地、喂养牲畜均需谷物；受粮仓上限约束，溢出即浪费。',
+  },
+  {
+    id: 'livestock',
+    name: '牲畜',
+    icon: '🐐',
+    category: 'material',
+    era: 'E2',
+    desc: '活体储备：宰杀可获 30–38 谷物（不占粮仓上限）；每头每日消耗 0.02 谷物作为饲料。',
+  },
+  {
+    id: 'fabric',
+    name: '织物',
+    icon: '🧶',
+    category: 'material',
+    era: 'E2',
+    desc: '舒适度因子=火源×(1+0.25×织物覆盖度)，覆盖度由织工产出累计，取值 0→1.0。',
+  },
 ];
 
 export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
@@ -66,7 +90,7 @@ export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
 ) as Record<ResourceId, ResourceDef>;
 
 /** 可在 UI 资源栏显示的实体资源（排除人口，人口单独显示） */
-export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience'];
+export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'grain', 'livestock', 'fabric'];
 
 /**
  * 返回指定时代的全部资源
