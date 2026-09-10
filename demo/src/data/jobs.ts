@@ -41,7 +41,9 @@ export const JOBS: JobDef[] = [
     name: '伐木者',
     icon: '🪓',
     output: 'wood',
-    outputRate: 0.4,
+    // 首轮实测 0.4/s：维持火种就要 0.333/s，只剩 0.067/s 造建筑，木材严重不足
+    // 调到 0.6/s 后，1 个伐木工可同时维持火种并积累建筑木材
+    outputRate: 0.6,
     requires: {},
     scaledByTool: false,
     desc: '收集木柴。火种会持续衰减，伐木者不足则火将熄灭。',

@@ -426,7 +426,8 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
   const eff = aggregateEffects(state);
   switch (resourceId) {
     case 'food':
-      return 500 * eff.foodStorageMultiplier;
+      // 首轮实测 500 太早撞上限（10 分钟就满），浪费产出
+      return 1000 * eff.foodStorageMultiplier;
     case 'wood':
       return 500;
     case 'stone':
