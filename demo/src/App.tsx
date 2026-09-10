@@ -10,12 +10,10 @@ import { useState } from 'react';
 import { useStore, toEngineState } from './state/store';
 import { TopBar } from './ui/components/TopBar';
 import { FireDashboard } from './ui/components/FireDashboard';
-import { TechTree } from './ui/components/TechTree';
 import { JobPanel } from './ui/components/JobPanel';
 import { BuildingPanel } from './ui/components/BuildingPanel';
-import { QueuePanel } from './ui/components/QueuePanel';
+import { CivilizationPanel } from './ui/components/CivilizationPanel';
 import { HintBar } from './ui/components/HintBar';
-import { AdvancePanel } from './ui/components/AdvancePanel';
 import { MessageLog } from './ui/components/MessageLog';
 import { isModuleUnlocked } from './game/reveal';
 
@@ -34,10 +32,9 @@ export default function App() {
 
   const fireUnlocked = isModuleUnlocked('fire', view);
 
-  // 渐进解锁：建筑模块在任一建筑可见后才出现；队列在研究 2 项后并入「文明」
+  // 渐进解锁：建筑模块在任一建筑可见后才出现
+  // （队列与跃迁由 CivilizationPanel 内部按 reveal 规则处理）
   const showBuildings = isModuleUnlocked('buildings', view);
-  const showQueue = isModuleUnlocked('queue', view);
-  const showAdvance = isModuleUnlocked('advance', view);
 
   const tabs: TabId[] = ['work', 'civilization'];
   if (showBuildings) tabs.splice(1, 0, 'buildings');
@@ -82,26 +79,7 @@ export default function App() {
           </div>
         )}
 
-        {tab === 'civilization' && (
-          <div className="space-y-5">
-            {/* 时代跃迁：达成条件后才出现 */}
-            {showAdvance && (
-              <div className="mx-auto max-w-4xl">
-                <AdvancePanel />
-              </div>
-            )}
-
-            {/* 研究队列：研究 2 项后出现 */}
-            {showQueue && (
-              <div className="mx-auto max-w-4xl">
-                <QueuePanel />
-              </div>
-            )}
-
-            {/* 科技树 —— 文明页的主体 */}
-            <TechTree />
-          </div>
-        )}
+        {tab === 'civilization' && <CivilizationPanel />}
       </main>
 
       {/* ⑥ 消息日志 */}

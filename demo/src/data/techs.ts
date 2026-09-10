@@ -337,13 +337,67 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
 
-export const BRANCH_INFO: Record<TechBranch, { name: string; color: string; desc: string }> = {
-  core: { name: '核心', color: '#ef4444', desc: '一切的起点' },
-  fire: { name: '火之技艺', color: '#f97316', desc: '食物效率与火种强度 · 稳健路线' },
-  tool: { name: '石器与工具', color: '#3b82f6', desc: '狩猎效率 · 省人力路线' },
-  society: { name: '群体与定居', color: '#22c55e', desc: '人口上限与稳定 · 规模路线' },
-  gate: { name: '门槛', color: '#a855f7', desc: '通往下一个时代' },
+/** 科技类别在「文明」模块中的元数据 */
+export interface BranchMeta {
+  /** 类别名 */
+  name: string;
+  /** 层级：core=文明之光（起点）｜branch=三条发展分支｜gate=时代之门（终点） */
+  kind: 'core' | 'branch' | 'gate';
+  /** 在模块中的显示顺序（由小到大） */
+  order: number;
+  /** 主色 */
+  color: string;
+  /** 一句话说明这条路线的特点 */
+  desc: string;
+  /** 层级标签（显示在类别标题右侧） */
+  role: string;
+}
+
+export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
+  core: {
+    name: '文明之光',
+    kind: 'core',
+    order: 0,
+    color: '#facc15',
+    desc: '一切的起点。掌握它，文明才真正开始',
+    role: '核心',
+  },
+  fire: {
+    name: '火之技艺',
+    kind: 'branch',
+    order: 1,
+    color: '#f97316',
+    desc: '食物效率与火种强度',
+    role: '分支 · 稳健',
+  },
+  tool: {
+    name: '石器与工具',
+    kind: 'branch',
+    order: 2,
+    color: '#3b82f6',
+    desc: '狩猎效率，省下人力',
+    role: '分支 · 效率',
+  },
+  society: {
+    name: '群体与定居',
+    kind: 'branch',
+    order: 3,
+    color: '#22c55e',
+    desc: '人口上限与群体稳定',
+    role: '分支 · 规模',
+  },
+  gate: {
+    name: '时代之门',
+    kind: 'gate',
+    order: 4,
+    color: '#a855f7',
+    desc: '通往下一个时代',
+    role: '门槛',
+  },
 };
+
+/** 按层级顺序排列的类别（文明之光 → 三条分支 → 时代之门） */
+export const BRANCH_ORDER: TechBranch[] = ['core', 'fire', 'tool', 'society', 'gate'];
 
 /** 全部科技总成本（用于配平校验，应为 2505） */
 export const TOTAL_TECH_COST = TECHS.reduce((sum, t) => sum + t.cost, 0);
