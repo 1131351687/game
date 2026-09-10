@@ -210,10 +210,23 @@ export function getFoodFactor(state: E1State): number {
 
 /** 人口增长速率（每秒），可正可负 */
 export function getPopulationGrowth(state: E1State): number {
+  const eff = aggregateEffects(state);
   const K = getCapacity(state);
   const P = state.population;
+
+  // 火种系统尚未开启（还没研究「掌握火」）：
+  // 此时不存在"熄灭惩罚"，火源因子按中性 1.0 处理。
+  // —— 否则开局 fire=0 会被误判为"火灭了"，人口在几秒内死光。
+  if (!eff.fireEnabled) {
+    const r0 = POPULATION.BASE_GROWTH_RATE;
+    const foodFactor0 = getFoodFactor(state);
+    if (foodFactor0 < 0) return -POPULATION.STARVATION_DECAY;
+    return r0 * P * (1 - P / K) * foodFactor0;
+  }
+
   const fireFactor = getFireFactor(state);
 
+  // 火种已开启但熄灭了 → 生存惩罚
   if (fireFactor === 0) return -POPULATION.STARVATION_DECAY;
 
   const r = POPULATION.BASE_GROWTH_RATE * fireFactor;
