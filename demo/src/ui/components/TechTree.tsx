@@ -150,18 +150,42 @@ export function TechTree() {
   const movedRef = useRef(false);
   const [dragging, setDragging] = useState(false);
 
-  // 初始视图：整体缩放到容器内，并把树的底部对齐容器底部
-  const fitView = useCallback(() => {
+  /** 是否已经成功做过一次初始 fitView（用于「高度为 0 时稍后重试」的重试门闸） */
+  const fittedRef = useRef(false);
+
+  // 初始视图：整体缩放到容器内，并把树的底部对齐容器底部。
+  // 返回 false 表示容器尺寸还不是有效值（例如刚挂载时高度为 0），
+  // 此时必须跳过 —— 否则缩放系数会被算成异常值，需要稍后重试。
+  const fitView = useCallback((): boolean => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) return false;
     const rect = el.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
+    if (rect.width === 0 || rect.height === 0) return false;
     const k = clamp(Math.min((rect.width - 32) / WORLD_W, (rect.height - 32) / WORLD_H), 0.35, 1.2);
     setTf({ k, x: (rect.width - WORLD_W * k) / 2, y: rect.height - WORLD_H * k - 12 });
+    return true;
   }, []);
 
+  // 首次 fitView + 容器尺寸无效时的重试。
+  // 根节点现在有确定高度，正常情况下首帧就能算对；这里仍保留两道兜底：
+  // 1) requestAnimationFrame —— 布局尚未完成时下一帧再来一次；
+  // 2) ResizeObserver —— 容器被隐藏（display:none / 高度 0）后再显示时补做。
+  // 只补做「尚未成功过」的那一次，避免用户手动平移缩放后被强制重置。
   useEffect(() => {
-    fitView();
+    const el = containerRef.current;
+    if (!el) return;
+    const tryFit = (): void => {
+      if (fittedRef.current) return;
+      if (fitView()) fittedRef.current = true;
+    };
+    tryFit();
+    const raf = requestAnimationFrame(tryFit);
+    const ro = new ResizeObserver(tryFit);
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, [fitView]);
 
   // 滚轮缩放：以光标为锚点。React 的 onWheel 在根节点上是 passive 的，
@@ -283,7 +307,16 @@ export function TechTree() {
   };
 
   return (
-    <div className="flex flex-col w-full h-full min-h-[520px] bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
+    // 外层只负责底部留白：MessageLog 是 fixed bottom-0（最高约 160px），
+    // pb-40 加在画布「外面」，这样画布自身仍是 overflow-hidden，不会被撑破。
+    <div className="w-full pb-40">
+      {/*
+        根节点使用「确定的视口高度」而不是 h-full：
+        父级 <main> 是 overflow-y-auto 的普通块容器（非 flex），h-full 在其中会失效；
+        原先的 min-h-[520px] 又会把外层 <main> 顶出双滚动条。
+        这里给出明确高度，内部画布 overflow-hidden 自行平移/缩放，绝不撑破外层。
+      */}
+      <div className="flex flex-col w-full h-[min(70vh,720px)] min-h-[420px] bg-gray-900 rounded-lg border border-gray-800 overflow-hidden">
       {/* 呼吸发光动画（Tailwind 默认没有这组 keyframes，只能就地注入） */}
       <style>{`
         @keyframes ttPulse {
@@ -329,7 +362,10 @@ export function TechTree() {
           </button>
           <button
             type="button"
-            onClick={fitView}
+            onClick={() => {
+              // 手动重置：无论之前是否成功过，都强制重算一次
+              if (fitView()) fittedRef.current = true;
+            }}
             className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200"
           >
             重置视图
@@ -467,7 +503,12 @@ export function TechTree() {
                 onClick={() => {
                   if (movedRef.current) return; // 拖拽结束后的误触
                   setSelectedId(def.id);
-                  if (node.canDo) handleResearch(def.id);
+                  if (node.canDo) {
+                    handleResearch(def.id);
+                  } else if (state !== 'researched') {
+                    // 明确反馈，避免玩家点了没反应以为界面坏了
+                    s.addMessage(`${def.name}：${node.reason ?? '暂时无法研究'}`, 'warn');
+                  }
                 }}
                 title={def.name}
               >
@@ -616,6 +657,7 @@ export function TechTree() {
             <div className="mt-2 text-[11px] text-gray-500">提示：也可以直接右键节点加入研究队列。</div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

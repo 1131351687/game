@@ -1,5 +1,11 @@
-// 火种仪表盘 —— 本作最主要的视觉元素
+// 火种仪表盘 —— 页面第 ② 层，位于 TopBar 之下、Tab 之上
+//
+// 设计变更（布局重构后）：本组件原先是「顶部大号常驻仪表盘」（SVG 环形进度 + text-5xl 大字），
+// 但下方还有 Tab 栏与内容区，再占一大块垂直空间就会把内容区压扁。
+// 现改为**紧凑横向条状布局**（高度 ≤ 64px，py-2）：🔥 火种 [线性进度条] 72/100 稳定 ×1.0 −2.0/秒 [投料] [自动维持]
+//
 // 火种会持续衰减，玩家必须投入木材维持；火源因子同时影响人口增长与食物加成。
+
 import { useStore, toEngineState } from '../../state/store';
 import {
   aggregateEffects,
@@ -12,29 +18,31 @@ import { FIRE, type FireTier } from '../../data/constants';
 import { formatNumber, formatTime } from '../../core/format';
 
 /**
- * 三档（含熄灭）配色，用于 SVG 环形进度条描边。
- * 文案色直接用 FIRE_TIER_INFO.color（Tailwind 会在 constants.ts 中扫描到这些类名）。
+ * 三档（含熄灭）进度条填充色。
+ * 文案色直接用 getFireTierInfo(view).color（Tailwind 在 constants.ts 中能扫描到这些类名），
+ * 进度条是 backgroundColor，需要一个对应的十六进制值，故在此映射。
  */
-const TIER_RING: Record<FireTier, string> = {
+const TIER_BAR: Record<FireTier, string> = {
   out: '#6b7280', // 熄灭 · 灰
   weak: '#fb923c', // 微弱 · 橙
   stable: '#fdba74', // 稳定 · 橙黄
   blazing: '#fde047', // 旺盛 · 金
 };
 
-/** 低于此值进入危险区：进度条变红闪烁 */
+/** 低于此值进入危险区：进度条与数字变红闪烁 */
 const DANGER_THRESHOLD = 20;
-
-const RING_R = 66;
-const RING_C = 2 * Math.PI * RING_R;
 
 export function FireDashboard() {
   const state = useStore();
   const view = toEngineState(state);
   const { addFuel, toggleAutoMaintain } = state;
 
-  // 是否已研究「掌握火」—— 未研究时火种系统整体未开启
+  // 是否已研究「掌握火」—— 未研究时火种系统整体未开启。
+  // 兜底判断：App.tsx 已用 isModuleUnlocked('fire', view) 控制外层渲染，
+  // 而该函数内部正是 aggregateEffects(view).fireEnabled，二者取值完全一致，
+  // 因此这里返回 null 不会与之冲突，也就不存在重复判断导致的闪烁。
   const fireEnabled = aggregateEffects(view).fireEnabled;
+  if (!fireEnabled) return null;
 
   const fire = state.fire;
   const max = getFireMax(view);
@@ -43,185 +51,117 @@ export function FireDashboard() {
   const tierInfo = getFireTierInfo(view);
 
   const ratio = max > 0 ? Math.min(1, Math.max(0, fire / max)) : 0;
-  const dash = RING_C * ratio;
-  const danger = fireEnabled && fire < DANGER_THRESHOLD;
-  const stroke = fireEnabled ? TIER_RING[tierInfo.tier] : TIER_RING.out;
+  const danger = fire < DANGER_THRESHOLD;
+  const barColor = danger ? '#ef4444' : TIER_BAR[tierInfo.tier];
 
   // 以当前衰减速率还能烧多久 —— 制造压力感
   const burnOut = decay > 0 ? fire / decay : Number.POSITIVE_INFINITY;
 
   return (
-    <section className="rounded-xl border border-gray-700 bg-gradient-to-b from-gray-800 to-gray-900 p-4 shadow-lg">
-      <header className="flex items-baseline justify-between">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400">🔥 火种</h2>
-        <span className="text-xs text-gray-500">
-          上限 {formatNumber(max, 0)} · 每 1 🪵 = +{FIRE.PER_WOOD} 火种
+    <section className="flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto border-b border-gray-700 bg-gray-800 px-4 py-2 text-sm leading-tight">
+      {/* ── 标题 ── */}
+      <span className="flex shrink-0 items-center gap-1 font-bold text-gray-300">
+        <span className="text-sm">🔥</span>
+        <span>火种</span>
+      </span>
+
+      {/* ── 线性进度条（危险时红色闪烁）── */}
+      <div
+        className="relative h-4 min-w-[7rem] flex-1 overflow-hidden rounded-full bg-gray-900"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={max}
+        aria-valuenow={Math.floor(fire)}
+        aria-label={`火种 ${Math.floor(fire)} / ${formatNumber(max, 0)}`}
+      >
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${
+            danger ? 'animate-pulse' : ''
+          }`}
+          style={{ width: `${ratio * 100}%`, backgroundColor: barColor }}
+        />
+      </div>
+
+      {/* ── 数值：等宽 + 右对齐，位数变化不抖动；危险时变红闪烁 ── */}
+      <span
+        className={`shrink-0 min-w-[5rem] text-right font-mono font-bold tabular-nums ${
+          danger ? 'animate-pulse text-red-400' : tierInfo.color
+        }`}
+      >
+        {Math.floor(fire)}
+        <span className="font-normal text-gray-500"> / {formatNumber(max, 0)}</span>
+      </span>
+
+      {/* ── 档位 + 火源因子 ── */}
+      <span
+        className={`shrink-0 whitespace-nowrap font-semibold ${
+          danger ? 'text-red-400' : tierInfo.color
+        }`}
+      >
+        {tierInfo.name}
+      </span>
+      <span className="shrink-0 whitespace-nowrap rounded bg-gray-900 px-1.5 py-0.5 text-xs text-gray-300">
+        ×{factor.toFixed(2)}
+      </span>
+
+      {/* ── 衰减速率 / 预计熄灭时间 ── */}
+      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-red-400">
+        −{decay.toFixed(2)}/秒
+      </span>
+      <span className="shrink-0 whitespace-nowrap text-xs text-gray-500">
+        {formatTime(burnOut)}后熄灭
+      </span>
+
+      {/* ── 操作：手动投料（木材不足时禁用）── */}
+      <span className="shrink-0 whitespace-nowrap text-xs text-gray-500">
+        🪵
+        <span className={`ml-1 font-mono tabular-nums ${state.wood < FIRE.WOOD_INPUT_STEPS[0] ? 'text-red-400' : ''}`}>
+          {formatNumber(state.wood, 0)}
         </span>
-      </header>
-
-      {!fireEnabled ? (
-        // ── 火种尚未开启 ──
-        <div className="mt-3 rounded-lg border border-dashed border-gray-700 bg-gray-900/60 p-6 text-center">
-          <div className="text-4xl">🪨</div>
-          <p className="mt-2 text-lg font-semibold text-gray-400">尚未掌握火</p>
-          <p className="mt-1 text-xs leading-relaxed text-gray-500">
-            研究科技「掌握火」以点燃第一堆火。
-            <br />
-            点燃之后火会持续衰减，必须不断投入木材维持 —— 火是人口增长的前提。
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="mt-3 flex items-center gap-4">
-            {/* ── 环形进度 + 大字火种值 ── */}
-            <div className="relative shrink-0">
-              <svg
-                width={150}
-                height={150}
-                viewBox="0 0 150 150"
-                className={danger ? 'animate-pulse' : undefined}
-                role="img"
-                aria-label={`火种 ${Math.floor(fire)} / ${formatNumber(max, 0)}`}
-              >
-                {/* 轨道 */}
-                <circle cx={75} cy={75} r={RING_R} fill="none" stroke="#1f2937" strokeWidth={14} />
-                {/* 进度（从 12 点方向顺时针） */}
-                <circle
-                  cx={75}
-                  cy={75}
-                  r={RING_R}
-                  fill="none"
-                  stroke={danger ? '#ef4444' : stroke}
-                  strokeWidth={14}
-                  strokeLinecap="round"
-                  strokeDasharray={`${dash} ${RING_C - dash}`}
-                  transform="rotate(-90 75 75)"
-                  style={{ transition: 'stroke-dasharray 200ms linear' }}
-                />
-              </svg>
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span
-                  className={`text-5xl font-black leading-none tabular-nums ${tierInfo.color}`}
-                >
-                  {Math.floor(fire)}
-                </span>
-                <span className="mt-1 text-[10px] text-gray-500">/ {formatNumber(max, 0)}</span>
-              </div>
-            </div>
-
-            {/* ── 档位 / 因子 / 衰减 ── */}
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="flex items-center gap-2">
-                <span className={`text-lg font-bold ${tierInfo.color}`}>{tierInfo.name}</span>
-                <span className="rounded bg-gray-900 px-2 py-0.5 text-xs text-gray-300">
-                  火源因子 ×{factor.toFixed(2)}
-                </span>
-              </div>
-
-              {/* 衰减速率：让玩家感到压力 */}
-              <div className="rounded-lg bg-gray-900/70 px-2.5 py-1.5">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-xs text-gray-400">衰减</span>
-                  <span className="text-sm font-semibold tabular-nums text-red-400">
-                    -{decay.toFixed(2)}/秒
-                  </span>
-                </div>
-                <div className="mt-0.5 flex items-baseline justify-between">
-                  <span className="text-xs text-gray-500">预计熄灭</span>
-                  <span className="text-xs tabular-nums text-gray-400">{formatTime(burnOut)}后</span>
-                </div>
-              </div>
-
-              <div className="text-[11px] leading-snug text-gray-500">
-                火越旺，人口增长越快、食物加成越高；熄灭则人口持续流失。
-              </div>
-            </div>
-          </div>
-
-          {/* ── 线性进度条（危险时红色闪烁）── */}
-          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-900">
-            <div
-              className={`h-full rounded-full transition-all duration-300 ${
-                danger ? 'animate-pulse bg-red-500' : ''
-              }`}
-              style={{ width: `${ratio * 100}%`, backgroundColor: danger ? undefined : stroke }}
-            />
-          </div>
-          {danger && (
-            <p className="mt-1 animate-pulse text-xs font-semibold text-red-400">
-              ⚠️ 火种告急 —— 立即投入木材，否则火将熄灭
-            </p>
-          )}
-
-          {/* ── 操作区：手动投料 ── */}
-          <div className="mt-3">
-            <div className="mb-1 flex items-baseline justify-between">
-              <span className="text-xs text-gray-400">投入木材</span>
-              <span className="text-xs tabular-nums text-gray-500">
-                库存 🪵 {formatNumber(state.wood, 0)}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {FIRE.WOOD_INPUT_STEPS.map(step => {
-                const disabled = state.wood < step;
-                return (
-                  <button
-                    key={step}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => addFuel(step)}
-                    title={`消耗 ${step} 木材，火种 +${step * FIRE.PER_WOOD}`}
-                    className={`rounded-md px-3 py-1.5 text-sm font-semibold tabular-nums transition-colors ${
-                      disabled
-                        ? 'cursor-not-allowed bg-gray-800 text-gray-600'
-                        : 'bg-orange-600 text-white hover:bg-orange-500 active:bg-orange-700'
-                    }`}
-                  >
-                    +{step} 🪵
-                  </button>
-                );
-              })}
-            </div>
-            {state.wood < FIRE.WOOD_INPUT_STEPS[0] && (
-              <p className="mt-1 text-[11px] text-red-400">木材不足，派更多人去伐木</p>
-            )}
-          </div>
-
-          {/* ── 操作区：自动维持 ── */}
-          <div className="mt-3 flex items-center justify-between rounded-lg bg-gray-900/70 px-2.5 py-2">
-            <div className="min-w-0">
-              <div className="text-sm text-gray-300">
-                自动维持
-                <span
-                  className={`ml-2 text-xs font-semibold ${
-                    state.autoMaintainFire ? 'text-green-400' : 'text-gray-500'
-                  }`}
-                >
-                  {state.autoMaintainFire ? '开' : '关'}
-                </span>
-              </div>
-              <div className="text-[11px] leading-snug text-gray-500">
-                火种低于 {FIRE.AUTO_MAINTAIN_THRESHOLD} 时自动投入木材
-              </div>
-            </div>
+      </span>
+      <div className="flex shrink-0 items-center gap-1.5">
+        {FIRE.WOOD_INPUT_STEPS.map(step => {
+          const disabled = state.wood < step;
+          return (
             <button
+              key={step}
               type="button"
-              onClick={toggleAutoMaintain}
-              aria-pressed={state.autoMaintainFire}
-              className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                state.autoMaintainFire
-                  ? 'bg-green-600 text-white hover:bg-green-500'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              disabled={disabled}
+              onClick={() => addFuel(step)}
+              title={
+                disabled
+                  ? `木材不足（需要 ${step}，现有 ${Math.floor(state.wood)}）`
+                  : `消耗 ${step} 木材，火种 +${step * FIRE.PER_WOOD}`
+              }
+              className={`rounded px-2 py-1 font-mono text-xs font-semibold tabular-nums transition-colors ${
+                disabled
+                  ? 'cursor-not-allowed bg-gray-800 text-gray-600'
+                  : 'bg-orange-600 text-white hover:bg-orange-500 active:bg-orange-700'
               }`}
             >
-              {state.autoMaintainFire ? '关闭' : '开启'}
+              +{step}
             </button>
-          </div>
-        </>
-      )}
+          );
+        })}
+      </div>
+
+      {/* ── 操作：自动维持开关 ── */}
+      <button
+        type="button"
+        onClick={toggleAutoMaintain}
+        aria-pressed={state.autoMaintainFire}
+        title={`低于 ${FIRE.AUTO_MAINTAIN_THRESHOLD} 时自动投入木材`}
+        className={`shrink-0 whitespace-nowrap rounded px-2 py-1 text-xs font-semibold transition-colors ${
+          state.autoMaintainFire
+            ? 'bg-green-600 text-white hover:bg-green-500'
+            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+        }`}
+      >
+        自动维持 {state.autoMaintainFire ? '✓' : '✗'}
+      </button>
     </section>
   );
 }
 
-// App.tsx 目前以默认导入引用本组件，这里保留默认导出以兼容两种写法
+// App.tsx 以具名导入引用本组件；保留默认导出以兼容两种写法
 export default FireDashboard;

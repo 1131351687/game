@@ -1,4 +1,7 @@
-// 消息日志：底部固定面板，按类别过滤，最新消息在最下面并自动滚到底部。
+// 消息日志：底部固定面板，可折叠
+//
+// 折叠时只占一行（显示最新一条消息），展开时显示过滤栏 + 最近 20 条。
+// 默认折叠 —— 科技树很高，垂直空间要留给主内容。
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../state/store';
@@ -21,7 +24,7 @@ const CATEGORY_STYLE: Record<Filter, { label: string; className: string }> = {
   warn: { label: '警告', className: 'text-red-400' },
 };
 
-/** 只保留最近这么多条 */
+/** 展开时只保留最近这么多条 */
 const MAX_VISIBLE = 20;
 
 /** 时间戳 → HH:MM:SS */
@@ -34,9 +37,9 @@ function formatClock(ts: number): string {
 export function MessageLog() {
   const { messages, clearMessages } = useStore();
   const [filter, setFilter] = useState<Filter>('all');
+  const [expanded, setExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // 过滤 + 只取最近 20 条；保持时间顺序（最新在最下面），所以不 reverse
   const filtered = useMemo(
     () =>
       (filter === 'all' ? messages : messages.filter(m => m.category === filter)).slice(
@@ -45,26 +48,64 @@ export function MessageLog() {
     [messages, filter]
   );
 
+  const latest = messages[messages.length - 1];
+
   // 有新消息或切换过滤时自动滚到底部
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [filtered.length, filter]);
+  }, [filtered.length, filter, expanded]);
 
+  // ── 折叠态：只有一行，显示最新消息 ──
+  if (!expanded) {
+    return (
+      <div className="flex shrink-0 items-center gap-2 border-t border-gray-700 bg-gray-900/95 px-3 py-1 text-xs">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="shrink-0 rounded px-1.5 py-0.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+          title="展开消息日志"
+        >
+          ▲ 消息
+        </button>
+        {latest ? (
+          <>
+            <span className="shrink-0 font-mono text-gray-500">{formatClock(latest.timestamp)}</span>
+            <span className={`shrink-0 ${CATEGORY_STYLE[latest.category].className}`}>
+              {CATEGORY_STYLE[latest.category].label}
+            </span>
+            <span className={`min-w-0 flex-1 truncate ${latest.important ? 'text-yellow-300' : 'text-gray-300'}`}>
+              {latest.text}
+            </span>
+          </>
+        ) : (
+          <span className="flex-1 text-gray-600">暂无消息</span>
+        )}
+        <ResetButton />
+      </div>
+    );
+  }
+
+  // ── 展开态 ──
   return (
-    <div className="fixed bottom-0 left-0 right-0 max-h-40 overflow-y-auto border-t border-gray-700 bg-gray-900/95 p-2 text-xs">
-      {/* 过滤按钮 + 清空 */}
-      <div className="sticky top-0 z-10 mb-1 flex items-center justify-between bg-gray-900/95 pb-1">
+    <div className="flex max-h-40 shrink-0 flex-col border-t border-gray-700 bg-gray-900/95 p-2 text-xs">
+      <div className="mb-1 flex items-center justify-between">
         <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+            title="收起消息日志"
+          >
+            ▼ 收起
+          </button>
           {FILTERS.map(f => (
             <button
               key={f.id}
               type="button"
               onClick={() => setFilter(f.id)}
               className={`rounded px-2 py-1 text-xs ${
-                filter === f.id
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-400 hover:text-gray-200'
+                filter === f.id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-200'
               }`}
             >
               {f.label}
@@ -83,7 +124,7 @@ export function MessageLog() {
         </div>
       </div>
 
-      <div ref={scrollRef} className="space-y-0.5">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
         {filtered.length === 0 ? (
           <p className="px-2 py-0.5 text-gray-600">暂无消息</p>
         ) : (
@@ -93,7 +134,6 @@ export function MessageLog() {
               <div
                 key={msg.id}
                 className={`flex items-baseline gap-2 rounded px-2 py-0.5 ${
-                  // 重要消息高亮
                   msg.important ? 'bg-yellow-900/50 text-yellow-300' : 'text-gray-300'
                 }`}
               >

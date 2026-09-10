@@ -16,7 +16,14 @@ export function AdvancePanel() {
   const remaining = check.items.filter(i => !i.done).length;
 
   return (
-    <div className="bg-gray-800 rounded p-3 space-y-3">
+    // 单块卡片：不再自带 max-w/mx-auto 外层容器（外层 App 已给 mx-auto max-w-4xl）。
+    // 本面板位于「文明」页最上方，不在底部，因此不需要 pb-40 让开 MessageLog。
+    // 条件全部达成时整块加一层翠绿描边，让玩家一眼看到可以跃迁了。
+    <div
+      className={`space-y-3 rounded-lg border bg-gray-800 p-3 transition-colors ${
+        check.ok ? 'border-emerald-500/70 shadow-[0_0_18px_-6px_rgba(16,185,129,0.9)]' : 'border-gray-700'
+      }`}
+    >
       <div className="flex items-baseline justify-between">
         <h3 className="text-sm font-semibold text-gray-100">时代跃迁 · 定居时代</h3>
         <span className={`text-xs ${check.ok ? 'text-green-400' : 'text-gray-400'}`}>
@@ -48,10 +55,11 @@ export function AdvancePanel() {
         type="button"
         disabled={!check.ok}
         onClick={() => setNotified(true)}
-        className={`w-full rounded py-2 text-sm font-semibold transition-colors ${
+        className={`w-full rounded py-2.5 font-semibold transition-all ${
           check.ok
-            ? 'bg-emerald-600 text-white hover:bg-emerald-500'
-            : 'cursor-not-allowed bg-gray-700 text-gray-500'
+            ? // 全部条件达成：加大加粗 + 亮翠绿 + 外发光 + 描边，做成页面最醒目的按钮
+              'bg-emerald-500 text-base text-white ring-2 ring-emerald-300/70 shadow-[0_0_24px_-2px_rgba(16,185,129,0.95)] hover:bg-emerald-400 hover:ring-emerald-200'
+            : 'cursor-not-allowed bg-gray-700 text-sm text-gray-500'
         }`}
       >
         {check.ok ? '🌾 迈向定居时代' : `迈向定居时代（还差 ${remaining} 项）`}

@@ -1,6 +1,11 @@
 // 研究队列面板 —— 挂机游戏的生命线
 // 没有队列，玩家必须守在电脑前；有了队列，离线/挂机也能自动推进研究。
 // 数值与规则见 design/game/02-tech-eras.md
+//
+// 布局约定（布局重构后）：
+// 本组件位于「文明」页中部，上面还有科技树要看，因此刻意做得紧凑 ——
+// 只有「一行表头 + 一行 5 个横向槽位 + 一行脚注」，
+// 不再自带 max-w/mx-auto 之类的外层容器（外层 App 已给 mx-auto max-w-4xl）。
 
 import { useState } from 'react';
 import type { DragEvent } from 'react';
@@ -101,39 +106,47 @@ export function QueuePanel() {
   };
 
   return (
-    <div className="bg-gray-800 rounded p-3 space-y-2">
-      {/* 顶部：队列占用 + 经验产出速率 */}
-      <div className="flex items-baseline justify-between">
+    // 单块紧凑卡片：不再套任何 max-w 容器（外层已有 mx-auto max-w-4xl）
+    <div className="space-y-1.5 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2">
+      {/* 表头：队列占用 / 经验产出速率；队列为空时把黄色警告压进同一行 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <h3 className="text-sm font-semibold text-gray-100">
           研究队列{' '}
           <span className="font-normal text-gray-400">
             {queue.length} / {QUEUE.MAX_LENGTH}
           </span>
         </h3>
-        <span className="text-xs text-gray-400">经验 {formatRate(expRate)}/s</span>
+        <span className="text-gray-400">经验 {formatRate(expRate)}/s</span>
+
+        {/* 队列为空：挂机不会推进研究 —— 黄色警告（压缩成一行，不额外占高度） */}
+        {queue.length === 0 && (
+          <span className="ml-auto flex items-center gap-1 rounded border border-yellow-600/60 bg-yellow-900/40 px-2 py-0.5 text-yellow-200">
+            <span className="leading-none">⚠️</span>
+            <span className="font-medium">队列为空 —— 挂机不会推进研究</span>
+          </span>
+        )}
+
+        {queue.length > 0 && (
+          <span className="ml-auto text-[10px] text-gray-500">
+            拖动调整顺序 · 预计时间按累计成本 ÷ 经验产出估算
+          </span>
+        )}
       </div>
 
-      {/* 队列为空：挂机不会推进研究 —— 黄色警告 */}
-      {queue.length === 0 && (
-        <div className="flex items-center gap-2 rounded border border-yellow-600/60 bg-yellow-900/40 px-2 py-1.5 text-xs text-yellow-200">
-          <span className="leading-none">⚠️</span>
-          <span className="font-medium">队列为空 —— 挂机不会推进研究</span>
-        </div>
-      )}
-
-      <div className="space-y-1">
-        {/* 固定渲染 MAX_LENGTH 个槽位，空槽用虚框占位 */}
+      {/* 5 个槽位横向排列：纵向只占一行，给下面的科技树留空间 */}
+      <div className="flex gap-1.5">
         {Array.from({ length: QUEUE.MAX_LENGTH }, (_, slot) => {
           const row = rows[slot];
 
+          // 空槽：虚框占位
           if (!row) {
             return (
               <div
                 key={`empty-${slot}`}
-                className="flex items-center gap-2 rounded border border-dashed border-gray-700 px-2 py-1.5 text-xs text-gray-600"
+                className="flex min-w-0 flex-1 items-center justify-center rounded border border-dashed border-gray-700 px-1.5 py-1.5 text-[11px] text-gray-600"
               >
-                <span className="w-5 text-center text-gray-700">{slot + 1}</span>
-                <span>空槽位</span>
+                <span className="text-gray-700">{slot + 1}</span>
+                <span className="ml-1 hidden xl:inline">空槽位</span>
               </div>
             );
           }
@@ -143,14 +156,15 @@ export function QueuePanel() {
 
           return (
             <div
-              key={row.techId}
+              // techId 可能重复，键里带上下标避免冲突
+              key={`${row.techId}-${row.index}`}
               draggable
               onDragStart={e => handleDragStart(e, row.index)}
               onDragOver={e => handleDragOver(e, row.index)}
               onDrop={e => handleDrop(e, row.index)}
               onDragEnd={handleDragEnd}
-              title="拖动可调整研究顺序"
-              className={`flex select-none items-center gap-2 rounded px-2 py-1.5 text-xs transition-colors ${
+              title={`${row.name}｜拖动可调整研究顺序`}
+              className={`flex min-w-0 flex-1 select-none flex-col gap-0.5 rounded px-1.5 py-1 text-[11px] transition-colors ${
                 isDragging
                   ? 'cursor-grabbing bg-gray-700 opacity-40'
                   : isOver
@@ -158,39 +172,42 @@ export function QueuePanel() {
                     : 'cursor-grab bg-gray-900 hover:bg-gray-700/70'
               }`}
             >
-              <span className="w-4 shrink-0 text-center leading-none text-gray-600">⋮⋮</span>
-              <span className="shrink-0 text-base leading-none">{row.icon}</span>
-
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-gray-200">{row.name}</div>
-                {row.reason !== null && (
-                  <div className="truncate text-red-400">{row.reason}</div>
-                )}
+              {/* 第 1 行：拖柄 + 图标 + 名称 + 删除 */}
+              <div className="flex min-w-0 items-center gap-1">
+                <span className="shrink-0 leading-none text-gray-600">⋮⋮</span>
+                <span className="shrink-0 leading-none">{row.icon}</span>
+                <span className="min-w-0 flex-1 truncate text-gray-200">{row.name}</span>
+                <button
+                  type="button"
+                  draggable={false}
+                  onClick={() => s.dequeue(row.index)}
+                  title="移出队列"
+                  className="shrink-0 rounded px-0.5 leading-none text-gray-500 hover:bg-gray-600 hover:text-red-300"
+                >
+                  ✕
+                </button>
               </div>
 
-              <span className="shrink-0 text-gray-400">
-                {formatNumber(row.cost)} 经验
-              </span>
-              <span className="w-20 shrink-0 text-right text-blue-400">
-                ≈ {formatTime(row.eta)}
-              </span>
+              {/* 第 2 行：成本 + 预计完成时间 */}
+              <div className="flex min-w-0 items-center justify-between gap-1">
+                <span className="shrink-0 text-gray-400">{formatNumber(row.cost)} 经验</span>
+                <span className="shrink-0 text-blue-400">≈ {formatTime(row.eta)}</span>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => s.dequeue(row.index)}
-                title="移出队列"
-                className="shrink-0 rounded px-1 leading-none text-gray-500 hover:bg-gray-600 hover:text-red-300"
-              >
-                ✕
-              </button>
+              {/* 前置未满足时的原因 */}
+              {row.reason !== null && (
+                <div className="truncate text-red-400" title={row.reason}>
+                  {row.reason}
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      <p className="text-xs text-gray-500">
-        预计时间按「累计成本 ÷ 经验产出」估算；离线研究效率{' '}
-        {Math.round(QUEUE.OFFLINE_EFFICIENCY * 100)}%，上限{' '}
+      {/* 脚注：离线规则说明，保持单行 */}
+      <p className="text-[10px] text-gray-500">
+        离线研究效率 {Math.round(QUEUE.OFFLINE_EFFICIENCY * 100)}%，上限{' '}
         {formatTime(QUEUE.OFFLINE_CAP_SEC)}。
       </p>
     </div>

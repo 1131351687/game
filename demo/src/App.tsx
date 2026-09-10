@@ -1,104 +1,110 @@
 // 根组件 · E1 远古时代
 //
-// 渐进解锁原则：开局只给玩家看两件事 —— 「派人采集」与「点亮掌握火」。
-// 其余模块随研究进度逐步放出，避免信息过载。
+// 布局（自上而下）：
+//   顶部资源条（常驻）→ 火种仪表盘（掌握火后）→ 卡点提示 → 模块 Tab → 内容 → 消息日志
+//
+// 模块分类：工作（岗位） / 建筑 / 文明（科技树 + 队列 + 跃迁）
+// 渐进解锁：未解锁的模块不显示，开局只有「工作」与「文明」两个 Tab。
 
 import { useState } from 'react';
 import { useStore, toEngineState } from './state/store';
+import { TopBar } from './ui/components/TopBar';
 import { FireDashboard } from './ui/components/FireDashboard';
 import { TechTree } from './ui/components/TechTree';
-import { ResourcePanel } from './ui/components/ResourcePanel';
 import { JobPanel } from './ui/components/JobPanel';
 import { BuildingPanel } from './ui/components/BuildingPanel';
 import { QueuePanel } from './ui/components/QueuePanel';
 import { HintBar } from './ui/components/HintBar';
 import { AdvancePanel } from './ui/components/AdvancePanel';
 import { MessageLog } from './ui/components/MessageLog';
-import { OpeningView } from './ui/components/OpeningView';
 import { isModuleUnlocked } from './game/reveal';
-import type { UiModule } from './game/reveal';
 
-const MODULE_LABEL: Record<UiModule, { label: string; icon: string }> = {
-  fire: { label: '火种', icon: '🔥' },
-  production: { label: '生产', icon: '📦' },
+type TabId = 'work' | 'civilization' | 'buildings';
+
+const TAB_INFO: Record<TabId, { label: string; icon: string }> = {
+  work: { label: '工作', icon: '👥' },
   buildings: { label: '建筑', icon: '🏕️' },
-  queue: { label: '研究队列', icon: '📋' },
-  advance: { label: '时代跃迁', icon: '🚀' },
+  civilization: { label: '文明', icon: '🔬' },
 };
-
-type TabId = 'tech' | UiModule;
 
 export default function App() {
   const s = useStore();
   const view = toEngineState(s);
-  const [tab, setTab] = useState<TabId>('tech');
+  const [tab, setTab] = useState<TabId>('civilization');
 
   const fireUnlocked = isModuleUnlocked('fire', view);
-  const modules = (['production', 'buildings', 'queue', 'advance'] as UiModule[]).filter(m =>
-    isModuleUnlocked(m, view)
-  );
 
-  // 开局：尚未掌握火 —— 走极简单页，不显示 Tab 栏
-  if (!fireUnlocked) {
-    return (
-      <div className="h-screen flex flex-col bg-gray-900 text-gray-200">
-        <OpeningView />
-        <MessageLog />
-      </div>
-    );
-  }
+  // 渐进解锁：建筑模块在任一建筑可见后才出现；队列在研究 2 项后并入「文明」
+  const showBuildings = isModuleUnlocked('buildings', view);
+  const showQueue = isModuleUnlocked('queue', view);
+  const showAdvance = isModuleUnlocked('advance', view);
 
-  // 已有模块时显示 Tab 栏；否则只显示科技树
-  const tabs: TabId[] = ['tech', ...modules];
-  const showTabBar = tabs.length > 1;
+  const tabs: TabId[] = ['work', 'civilization'];
+  if (showBuildings) tabs.splice(1, 0, 'buildings');
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 text-gray-200">
-      {/* 火种仪表盘 —— 掌握火之后的常驻核心元素 */}
-      <FireDashboard />
+    <div className="flex h-screen flex-col bg-gray-900 text-gray-200">
+      {/* ① 顶部资源条 —— 常驻最上方 */}
+      <TopBar />
 
-      {/* 卡点提示（无卡点时不渲染） */}
+      {/* ② 火种仪表盘 —— 掌握火之后的常驻核心元素 */}
+      {fireUnlocked && <FireDashboard />}
+
+      {/* ③ 卡点提示（无卡点时不渲染） */}
       <HintBar />
 
-      {/* Tab 栏：模块多于一页时才出现 */}
-      {showTabBar && (
-        <nav className="flex gap-1 px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
-          {tabs.map(t => {
-            const info = t === 'tech' ? { label: '科技树', icon: '🔬' } : MODULE_LABEL[t];
-            return (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                  tab === t ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                }`}
-              >
-                {info.icon} {info.label}
-              </button>
-            );
-          })}
-        </nav>
-      )}
+      {/* ④ 模块 Tab —— 置于顶部，紧邻资源条 */}
+      <nav className="flex shrink-0 gap-1 border-b border-gray-700 bg-gray-800 px-4 py-2">
+        {tabs.map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`rounded px-4 py-1.5 text-sm transition-colors ${
+              tab === t ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            {TAB_INFO[t].icon} {TAB_INFO[t].label}
+          </button>
+        ))}
+      </nav>
 
-      {/* 主内容区 */}
+      {/* ⑤ 内容区 */}
       <main className="flex-1 overflow-y-auto p-4">
-        {tab === 'tech' && <TechTree />}
-        {tab === 'production' && (
-          <div className="space-y-6 max-w-4xl">
-            <ResourcePanel />
+        {tab === 'work' && (
+          <div className="mx-auto max-w-4xl">
             <JobPanel />
           </div>
         )}
+
         {tab === 'buildings' && (
-          <div className="max-w-4xl">
+          <div className="mx-auto max-w-4xl">
             <BuildingPanel />
           </div>
         )}
-        {tab === 'queue' && <QueuePanel />}
-        {tab === 'advance' && <AdvancePanel />}
+
+        {tab === 'civilization' && (
+          <div className="space-y-5">
+            {/* 时代跃迁：达成条件后才出现 */}
+            {showAdvance && (
+              <div className="mx-auto max-w-4xl">
+                <AdvancePanel />
+              </div>
+            )}
+
+            {/* 研究队列：研究 2 项后出现 */}
+            {showQueue && (
+              <div className="mx-auto max-w-4xl">
+                <QueuePanel />
+              </div>
+            )}
+
+            {/* 科技树 —— 文明页的主体 */}
+            <TechTree />
+          </div>
+        )}
       </main>
 
-      {/* 消息日志 */}
+      {/* ⑥ 消息日志 */}
       <MessageLog />
     </div>
   );
