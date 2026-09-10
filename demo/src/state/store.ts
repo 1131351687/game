@@ -4,9 +4,12 @@
 import { create } from 'zustand';
 import { JOBS, type JobId } from '../data/jobs';
 import { BUILDINGS, type BuildingId } from '../data/buildings';
+import type { EraId } from '../data/era';
+import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
 import { INITIAL_STATE, QUEUE, LOOP } from '../data/constants';
 import * as engine from '../game/engine';
+import { saveGame } from '../core/clock/scheduler';
 
 // ─────────────────────────────────────────────
 // 类型
@@ -35,6 +38,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
 export interface GameState {
   running: boolean;
   version: number;
+  /** 当前所处时代 */
+  era: EraId;
 
   // 资源
   food: number;
@@ -95,13 +100,16 @@ export interface GameState {
   takeSnapshot: () => Partial<GameState>;
   loadSnapshot: (data: Partial<GameState>) => void;
   resetGame: () => void;
+  /** 跃迁到下一个时代。返回是否成功 */
+  advanceEra: () => boolean;
 }
 
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 
 const initialState = () => ({
   running: false,
   version: SAVE_VERSION,
+  era: 'E1' as EraId,
   food: INITIAL_STATE.food,
   wood: INITIAL_STATE.wood,
   stone: INITIAL_STATE.stone,
@@ -122,8 +130,9 @@ const initialState = () => ({
 });
 
 /** 从完整 state 中提取引擎需要的只读切片 */
-function engineView(s: GameState): engine.E1State {
+function engineView(s: GameState): engine.EraState {
   return {
+    era: s.era,
     food: s.food,
     wood: s.wood,
     stone: s.stone,
@@ -301,6 +310,7 @@ export const useStore = create<GameState>((set, get) => ({
     const s = get();
     return {
       version: SAVE_VERSION,
+      era: s.era,
       food: s.food,
       wood: s.wood,
       stone: s.stone,
@@ -321,10 +331,65 @@ export const useStore = create<GameState>((set, get) => ({
   },
 
   loadSnapshot: (data) => {
-    set({ ...data, messages: [], running: false });
+    // 存档迁移：v1 及更早的存档没有 era 字段，按远古时代补上
+    const migrated: Partial<GameState> = {
+      ...data,
+      era: (data.era as EraId | undefined) ?? 'E1',
+      version: SAVE_VERSION,
+    };
+    set({ ...migrated, messages: [], running: false });
   },
 
   resetGame: () => set({ ...initialState(), running: true }),
+
+  advanceEra: () => {
+    const s = get();
+    const view = engineView(s);
+
+    // 1. 先检查条件，不满足则原样返回 false，不做任何改动
+    const check = engine.checkAdvance(view);
+    if (!check.ok) return false;
+
+    const currentMeta = ERAS[s.era];
+    const nextIndex = currentMeta.index + 1;
+
+    // 2. 若已是最后一个时代，无法继续跃迁
+    const nextEraId = (Object.keys(ERAS) as EraId[]).find(id => ERAS[id].index === nextIndex);
+    if (!nextEraId) return false;
+
+    const nextMeta = ERAS[nextEraId];
+
+    // 3. 继承项：科技（按时代距离自动衰减）、经验、统计、设置
+    //    保留原因：玩家的研究成果代表文明积累，不应因时代更迭而清零
+    //    科技的效果会在 aggregateEffects 中按 decay = max(0.2, 0.6^d) 自动衰减
+    // 4. 重置项：资源 / 岗位 / 建筑 / 队列 / 人口
+    //    清零资源的原因：E2 的新资源体系（谷物/牲畜/织物）取代了 E1 的木材石头
+    //    作为主资源；新时代表面上有全新资源，旧资源清零避免数值叠加混乱
+    //    清零建筑/岗位：新时代的建筑与岗位体系重新开局，与"文明重走"主题一致
+    set({
+      era: nextEraId,
+      food: 0,
+      wood: 0,
+      stone: 0,
+      jobs: Object.fromEntries(JOBS.map(j => [j.id, 0])) as Record<string, number>,
+      buildings: Object.fromEntries(BUILDINGS.map(b => [b.id, 0])) as Record<string, number>,
+      queue: [] as string[],
+      population: 2,
+      populationProgress: 0,
+      // researchProgress 也归零——新队列开头无正在进行的研究
+      researchProgress: 0,
+      // 以下字段显式保留（与 set patch 合并后等价于不改动）：
+      // techs / experience / stats / settings / fire / autoMaintainFire
+    });
+
+    // 5. 发送时代跃迁消息（重要，置顶显示）
+    get().addMessage(`进入${nextMeta.name}`, 'event', true);
+
+    // 6. 立即存档，确保跃迁状态持久化
+    saveGame();
+
+    return true;
+  },
 }));
 
 // ─────────────────────────────────────────────

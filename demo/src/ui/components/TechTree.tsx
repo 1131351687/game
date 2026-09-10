@@ -13,12 +13,12 @@ import { useStore, toEngineState } from '../../state/store';
 import { canResearch, isTechAvailable, countResearched } from '../../game/engine';
 import { isTechRevealed } from '../../game/reveal';
 import {
-  TECHS,
   TECH_MAP,
   BRANCH_INFO,
+  BRANCH_ORDER,
   type TechDef,
-  type TechBranch,
   type TechEffects,
+  techsOfEra,
 } from '../../data/techs';
 import { JOBS } from '../../data/jobs';
 import { BUILDINGS } from '../../data/buildings';
@@ -28,6 +28,9 @@ import { Icon } from './Icon';
 
 // ─────────────────────────────────────────────
 // 世界坐标常量（像素）
+//
+// 这些常量目前依赖全量 TECHS 硬算，但时代改造后不同时代的科技数量和 y 范围不同。
+// 因此布局常量已在组件内部用 useMemo 按当前时代动态计算，模块顶层只保留间距参数。
 // ─────────────────────────────────────────────
 const NODE_W = 172;
 const NODE_H = 66;
@@ -38,18 +41,10 @@ const ROW_H = 104;
 /** 世界左上角留白 */
 const PAD_X = 330;
 const PAD_Y = 40;
-/** 布局中最靠上的 y（顶部门槛科技） */
-const MAX_Y = Math.max(...TECHS.map(t => t.position.y));
-/** 分支标题条的位置（在 y=0 那排节点下方） */
-const FOOTER_Y = PAD_Y + (MAX_Y + 1) * ROW_H;
 
-const WORLD_W = PAD_X * 2;
-const WORLD_H = FOOTER_Y + 34;
-
-/** 世界坐标：逻辑 x(-2/0/2) → 像素 */
-const worldX = (x: number): number => PAD_X + (x / 2) * COL_W;
-/** 世界坐标：逻辑 y(0 在底部) → 像素（屏幕 y 向下，故取反） */
-const worldY = (y: number): number => PAD_Y + (MAX_Y - y) * ROW_H;
+// 注意：世界坐标转换函数 worldX / worldY 以及 MAX_Y / WORLD_W / WORLD_H
+// 都依赖「当前时代的科技节点范围」，因此已移入组件内部动态计算
+// （见组件里的 max_y / worldW / worldH 定义）。
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 
@@ -140,6 +135,19 @@ export function TechTree() {
   const s = useStore();
   const view = useMemo(() => toEngineState(s), [s]);
 
+  // 当前时代 —— 用于按时代过滤科技并动态计算布局常量
+  const era = view.era;
+  // 当前时代的科技列表（过滤后，E1 与全量一致，E2 同理）
+  const eraTechs = useMemo(() => techsOfEra(era), [era]);
+  // 动态布局常量：MAX_Y / FOOTER_Y / WORLD_W / WORLD_H 随时代变化
+  const max_y = useMemo(() => (eraTechs.length ? Math.max(...eraTechs.map(t => t.position.y)) : 0), [eraTechs]);
+  const footerY = PAD_Y + (max_y + 1) * ROW_H;
+  const worldW = PAD_X * 2;
+  const worldH = footerY + 34;
+  // 世界坐标转换函数（依赖动态 max_y）
+  const worldX = (x: number): number => PAD_X + (x / 2) * COL_W;
+  const worldY = (y: number): number => PAD_Y + (max_y - y) * ROW_H;
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
 
@@ -157,13 +165,14 @@ export function TechTree() {
   // 初始视图：整体缩放到容器内，并把树的底部对齐容器底部。
   // 返回 false 表示容器尺寸还不是有效值（例如刚挂载时高度为 0），
   // 此时必须跳过 —— 否则缩放系数会被算成异常值，需要稍后重试。
-  const fitView = useCallback((): boolean => {
+  // 用当前时代的世界尺寸做 fitView
+  const fitView = useCallback((w: number, h: number): boolean => {
     const el = containerRef.current;
     if (!el) return false;
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return false;
-    const k = clamp(Math.min((rect.width - 32) / WORLD_W, (rect.height - 32) / WORLD_H), 0.35, 1.2);
-    setTf({ k, x: (rect.width - WORLD_W * k) / 2, y: rect.height - WORLD_H * k - 12 });
+    const k = clamp(Math.min((rect.width - 32) / w, (rect.height - 32) / h), 0.35, 1.2);
+    setTf({ k, x: (rect.width - w * k) / 2, y: rect.height - h * k - 12 });
     return true;
   }, []);
 
@@ -177,7 +186,7 @@ export function TechTree() {
     if (!el) return;
     const tryFit = (): void => {
       if (fittedRef.current) return;
-      if (fitView()) fittedRef.current = true;
+      if (fitView(worldW, worldH)) fittedRef.current = true;
     };
     tryFit();
     const raf = requestAnimationFrame(tryFit);
@@ -239,8 +248,9 @@ export function TechTree() {
 
   // ── 节点与连线（规则全部来自引擎，界面不重复实现）──
   // 渐进揭示：只渲染 isTechRevealed 为真的节点，让科技树随研究逐步生长
+  // 注意：eraTechs 已按当前时代过滤，节点不再混入其他时代的科技
   const nodes = useMemo<TechNode[]>(() => {
-    return TECHS.filter(def => isTechRevealed(def.id, view)).map(def => {
+    return eraTechs.filter(def => isTechRevealed(def.id, view)).map(def => {
       const researched = view.techs[def.id] === true;
       const check = canResearch(def.id, view);
       const available = isTechAvailable(def.id, view);
@@ -264,13 +274,13 @@ export function TechTree() {
         color: BRANCH_INFO[def.branch].color,
       };
     });
-  }, [view, s.queue]);
+  }, [view, s.queue, eraTechs]);
 
   const nodeById = useMemo(() => new Map(nodes.map(n => [n.def.id, n])), [nodes]);
 
   const edges = useMemo<TechEdge[]>(() => {
     const list: TechEdge[] = [];
-    for (const def of TECHS) {
+    for (const def of eraTechs) {
       // 只画两端都已揭示的连线
       if (!isTechRevealed(def.id, view)) continue;
       for (const req of def.requires) {
@@ -281,12 +291,13 @@ export function TechTree() {
       }
     }
     return list;
-  }, [view]);
+  }, [view, eraTechs]);
 
   // 详情面板：优先显示悬停节点，其次是点击选中的节点
   const activeId = hoverId ?? selectedId;
   const active = activeId ? nodeById.get(activeId) : undefined;
   const researchedCount = countResearched(view);
+  const eraTotal = eraTechs.length;
   const queueFull = s.queue.length >= QUEUE.MAX_LENGTH;
 
   const handleResearch = (id: string): void => {
@@ -334,7 +345,7 @@ export function TechTree() {
         </span>
         <span className="text-gray-300">
           已研究：<span className="text-emerald-400 font-semibold">{researchedCount}</span>
-          <span className="text-gray-500"> / {TECHS.length}</span>
+          <span className="text-gray-500"> / {eraTotal}</span>
         </span>
         <span className="text-gray-400">
           研究队列：<span className="text-sky-300">{s.queue.length}</span>
@@ -366,7 +377,7 @@ export function TechTree() {
             type="button"
             onClick={() => {
               // 手动重置：无论之前是否成功过，都强制重算一次
-              if (fitView()) fittedRef.current = true;
+              if (fitView(worldW, worldH)) fittedRef.current = true;
             }}
             className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200"
           >
@@ -390,13 +401,13 @@ export function TechTree() {
         <div
           className="absolute left-0 top-0 origin-top-left"
           style={{
-            width: WORLD_W,
-            height: WORLD_H,
+            width: worldW,
+            height: worldH,
             transform: `translate(${tf.x}px, ${tf.y}px) scale(${tf.k})`,
           }}
         >
           {/* 连线（SVG 与节点共用同一套世界坐标） */}
-          <svg className="absolute left-0 top-0 pointer-events-none" width={WORLD_W} height={WORLD_H}>
+          <svg className="absolute left-0 top-0 pointer-events-none" width={worldW} height={worldH}>
             {edges.map(edge => {
               const a = nodeById.get(edge.from);
               const b = nodeById.get(edge.to);
@@ -423,16 +434,24 @@ export function TechTree() {
             })}
           </svg>
 
-          {/* 分支标题（放在树底部三列下方） */}
-          {(['fire', 'tool', 'society'] as TechBranch[]).map((branch, i) => {
+          {/* 分支标题（放在树底部三列下方）
+              动态推导：从当前时代的科技中找出实际用到的分支，按 BRANCH_ORDER 排序后渲染。
+              E1 结果为 fire/tool/society 三项，与原来完全一致；
+              E2 新增分支时会自动出现在对应 x 位置，无需硬编码。 */}
+          {BRANCH_ORDER.filter(branch => eraTechs.some(t => t.branch === branch)).map(branch => {
             const info = BRANCH_INFO[branch];
+            // 用 BRANCH_ORDER 的索引映射到 x 位置（E1 的三个分支正好对应 -2/0/2）
+            // 注：core 和 gate 不在横向三列中，但会出现在 BRANCH_ORDER 里；
+            //   它们的 x 坐标是 0，因此不会错位显示。
+            const xPositions: Record<string, number> = { fire: -2, tool: 0, society: 2 };
+            const x = xPositions[branch] ?? 0;
             return (
               <div
                 key={branch}
                 className="absolute text-center"
                 style={{
-                  left: worldX([-2, 0, 2][i]) - COL_W / 2 + 8,
-                  top: FOOTER_Y,
+                  left: worldX(x) - COL_W / 2 + 8,
+                  top: footerY,
                   width: COL_W - 16,
                 }}
               >

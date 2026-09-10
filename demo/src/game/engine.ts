@@ -1,11 +1,12 @@
-// E1 远古时代 · 游戏引擎
+// 游戏引擎（多时代）
 // 只做纯计算；状态变更由 store 负责
-// 数值来源：design/game/02-tech-eras.md 第 11 节
+// 数值来源：design/game/02-tech-eras.md 第 11 节 + 各时代设计文档
 
 import { TECHS, TECH_MAP, type TechEffects } from '../data/techs';
 import { JOBS, JOB_MAP, type JobId } from '../data/jobs';
 import { BUILDING_MAP, type BuildingId } from '../data/buildings';
 import type { ResourceId } from '../data/resources';
+import { ERAS, eraDistance, eraDecay, type EraId } from '../data/era';
 import {
   FIRE,
   FIRE_TIER_INFO,
@@ -20,7 +21,9 @@ import {
 // ─────────────────────────────────────────────
 // 状态形状（引擎只读）
 // ─────────────────────────────────────────────
-export interface E1State {
+export interface EraState {
+  /** 当前所处时代 */
+  era: EraId;
   food: number;
   wood: number;
   stone: number;
@@ -35,6 +38,9 @@ export interface E1State {
   techs: Record<string, boolean>;
   autoMaintainFire: boolean;
 }
+
+/** @deprecated 旧名单时代命名，仅为向后兼容保留。新代码请用 EraState */
+export type E1State = EraState;
 
 // ─────────────────────────────────────────────
 // 科技效果聚合
@@ -84,22 +90,40 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     if (!state.techs[tech.id]) continue;
     const e: TechEffects = tech.effects;
 
+    // ── 时代衰减 ──
+    //
+    // 设计规则：旧时代的核心科技「不废弃，只降权」
+    //   主引擎期 ×1.00 → 地基期 ×0.60 → ×0.36 → ×0.22 → 下限 ×0.20
+    //
+    // 关键区分（这是设计文档里"旧核心提供质的加成，不只是量"的落地）：
+    //   · 数值型效果（乘数/加成）→ 按 decay 衰减
+    //   · 布尔/解锁型效果（enableFire / unlockJobs / setToolTier）→ 不衰减
+    //     因为「已掌握的东西不会忘记」
+    const k = eraDecay(eraDistance(tech.era, state.era));
+    /** 乘数衰减：把 m 朝基线 1 拉近。m=1.25、k=0.6 → 1.15 */
+    const mul = (m: number): number => 1 + (m - 1) * k;
+    /** 加数衰减：把 v 朝基线 0 拉近 */
+    const add = (v: number): number => v * k;
+
+    // — 解锁/布尔型：不衰减 —
     if (e.enableFire) acc.fireEnabled = true;
     if (e.activeFireRestore) acc.activeFireRestore = true;
-    if (e.fireDecayMultiplier !== undefined) acc.fireDecayMultiplier *= e.fireDecayMultiplier;
-    if (e.fireMaxBonus) acc.fireMaxBonus += e.fireMaxBonus;
     if (e.removeWeakFoodPenalty) acc.removeWeakFoodPenalty = true;
-    if (e.foodMultiplier) acc.foodMultiplier *= e.foodMultiplier;
-    if (e.stoneMultiplier) acc.stoneMultiplier *= e.stoneMultiplier;
-    if (e.expMultiplier) acc.expMultiplier *= e.expMultiplier;
-    if (e.gathererMultiplier) acc.gathererMultiplier *= e.gathererMultiplier;
     if (e.setToolTier !== undefined) acc.toolTier = Math.max(acc.toolTier, e.setToolTier);
-    if (e.buildingCostMultiplier) acc.buildingCostMultiplier *= e.buildingCostMultiplier;
-    if (e.stabilityBonus) acc.stabilityBonus += e.stabilityBonus;
     if (e.huntPartyThreshold) acc.huntPartyThreshold = e.huntPartyThreshold;
-    if (e.huntPartyBonus) acc.huntPartyBonus = e.huntPartyBonus;
-    if (e.foodStorageMultiplier) acc.foodStorageMultiplier *= e.foodStorageMultiplier;
     if (e.enableAdvance) acc.enableAdvance = true;
+
+    // — 数值型：按时代衰减 —
+    if (e.fireDecayMultiplier !== undefined) acc.fireDecayMultiplier *= mul(e.fireDecayMultiplier);
+    if (e.fireMaxBonus) acc.fireMaxBonus += add(e.fireMaxBonus);
+    if (e.foodMultiplier) acc.foodMultiplier *= mul(e.foodMultiplier);
+    if (e.stoneMultiplier) acc.stoneMultiplier *= mul(e.stoneMultiplier);
+    if (e.expMultiplier) acc.expMultiplier *= mul(e.expMultiplier);
+    if (e.gathererMultiplier) acc.gathererMultiplier *= mul(e.gathererMultiplier);
+    if (e.buildingCostMultiplier) acc.buildingCostMultiplier *= mul(e.buildingCostMultiplier);
+    if (e.stabilityBonus) acc.stabilityBonus += add(e.stabilityBonus);
+    if (e.huntPartyBonus) acc.huntPartyBonus = add(e.huntPartyBonus);
+    if (e.foodStorageMultiplier) acc.foodStorageMultiplier *= mul(e.foodStorageMultiplier);
   }
 
   return acc;
@@ -136,6 +160,13 @@ export function tickFire(
 
   if (!aggregateEffects(state).fireEnabled) {
     return { fire: 0, wood, maintained: false };
+  }
+
+  // E2 起：火种维护取消（定居后有固定炉灶），火值冻结不再衰减
+  // —— 设计文档：进入新时代时旧核心「不废弃，只降权」
+  //    维护压力解除，但它的加成仍按时代衰减继续生效（见 getFireFoodBonus）
+  if (state.era !== 'E1') {
+    return { fire, wood, maintained: false };
   }
 
   if (state.autoMaintainFire && fire < FIRE.AUTO_MAINTAIN_THRESHOLD && wood >= 1) {
@@ -178,10 +209,16 @@ export function getFireTierInfo(state: E1State): {
 export function getFireFoodBonus(state: E1State): number {
   const tier = getFireTier(state.fire);
   const eff = aggregateEffects(state);
-  if (tier === 'weak' && eff.removeWeakFoodPenalty) {
-    return FIRE_TIER_INFO.stable.foodBonus;
-  }
-  return FIRE_TIER_INFO[tier].foodBonus;
+
+  const raw =
+    tier === 'weak' && eff.removeWeakFoodPenalty
+      ? FIRE_TIER_INFO.stable.foodBonus
+      : FIRE_TIER_INFO[tier].foodBonus;
+
+  // 火种属 E1 的核心科技：进入后续时代后加成按时代距离衰减
+  // （E1 内 d=0 系数 1.0，不影响现有手感）
+  const k = eraDecay(eraDistance('E1', state.era));
+  return raw * k;
 }
 
 // ─────────────────────────────────────────────
@@ -405,18 +442,34 @@ export interface AdvanceCheck {
 }
 
 export function checkAdvance(state: E1State): AdvanceCheck {
-  const eff = aggregateEffects(state);
+  // 条件从时代配置表读取，不再硬编码 ——
+  // 否则加入 E2 之后永远只检查 E1 的条件，到了 E2 就无法再跃迁到 E3
+  const meta = ERAS[state.era];
+  const { gateTech, advanceConditions: cond } = meta;
+  const gateName = TECH_MAP[gateTech]?.name ?? gateTech;
   const houses = state.buildings.house ?? 0;
 
   const items = [
     {
-      label: '研究「植物栽培」',
-      done: eff.enableAdvance,
-      detail: state.techs['plant_cultivation'] ? '已完成' : '尚未研究',
+      label: `研究「${gateName}」`,
+      done: !!state.techs[gateTech],
+      detail: state.techs[gateTech] ? '已完成' : '尚未研究',
     },
-    { label: '食物储备 ≥ 300', done: state.food >= 300, detail: `${Math.floor(state.food)} / 300` },
-    { label: '建成 3 座住所', done: houses >= 3, detail: `${houses} / 3` },
-    { label: '人口 ≥ 15', done: state.population >= 15, detail: `${Math.floor(state.population)} / 15` },
+    {
+      label: `食物储备 ≥ ${cond.minFood}`,
+      done: state.food >= cond.minFood,
+      detail: `${Math.floor(state.food)} / ${cond.minFood}`,
+    },
+    {
+      label: `建成 ${cond.minHouses} 座住所`,
+      done: houses >= cond.minHouses,
+      detail: `${houses} / ${cond.minHouses}`,
+    },
+    {
+      label: `人口 ≥ ${cond.minPopulation}`,
+      done: state.population >= cond.minPopulation,
+      detail: `${Math.floor(state.population)} / ${cond.minPopulation}`,
+    },
   ];
 
   return { ok: items.every(i => i.done), items };

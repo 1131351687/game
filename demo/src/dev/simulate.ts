@@ -13,6 +13,7 @@ import { POPULATION } from '../data/constants';
 
 function makeState(): E1State {
   return {
+    era: 'E1',
     food: 20,
     wood: 10,
     stone: 0,

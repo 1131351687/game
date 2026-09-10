@@ -1,7 +1,6 @@
 // 时代跃迁面板（E1 远古时代 → E2 定居时代）
 // 条件列表直接来自引擎 checkAdvance，界面只负责呈现，不重复写规则。
 
-import { useState } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import { checkAdvance } from '../../game/engine';
 import { Icon } from './Icon';
@@ -10,11 +9,15 @@ export function AdvancePanel() {
   const s = useStore();
   const view = toEngineState(s);
 
-  // 本 demo 中 E1 到此为止：点击跃迁后只弹一条说明
-  const [notified, setNotified] = useState(false);
-
   const check = checkAdvance(view);
   const remaining = check.items.filter(i => !i.done).length;
+
+  const handleAdvance = () => {
+    if (!s.advanceEra()) {
+      // 理论上按钮禁用时不应到达这里，兜底提示
+      s.addMessage('跃迁条件尚未满足，无法进入下一个时代', 'warn');
+    }
+  };
 
   return (
     // 单块卡片：不再自带 max-w/mx-auto 外层容器（外层 App 已给 mx-auto max-w-4xl）。
@@ -55,7 +58,7 @@ export function AdvancePanel() {
       <button
         type="button"
         disabled={!check.ok}
-        onClick={() => setNotified(true)}
+        onClick={handleAdvance}
         className={`w-full rounded py-2.5 font-semibold transition-all ${
           check.ok
             ? // 全部条件达成：加大加粗 + 亮翠绿 + 外发光 + 描边，做成页面最醒目的按钮
@@ -65,28 +68,6 @@ export function AdvancePanel() {
       >
         {check.ok ? (<><Icon emoji="🌾" className="text-base mr-1" />迈向定居时代</>) : `迈向定居时代（还差 ${remaining} 项）`}
       </button>
-
-      {/* 跃迁提示：本 demo 到此结束 */}
-      {notified && (
-        <div className="flex items-start gap-2 rounded border border-emerald-600/60 bg-emerald-900/40 px-2 py-1.5 text-xs text-emerald-200">
-          <Icon emoji="🎉" className="text-base leading-none" />
-          <div className="flex-1">
-            <p className="font-medium">E1 · 远古时代 到此结束</p>
-            <p className="mt-0.5 text-emerald-300/80">
-              你已经跨过门槛：火种、工具与群体协作把人类带到了定居的门前。
-              定居时代（E2）尚未在本 demo 中实现。
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setNotified(false)}
-            title="关闭提示"
-            className="shrink-0 rounded px-1 leading-none text-emerald-400/70 hover:bg-emerald-800 hover:text-emerald-100"
-          >
-            ✕
-          </button>
-        </div>
-      )}
     </div>
   );
 }

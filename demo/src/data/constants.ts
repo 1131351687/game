@@ -123,7 +123,12 @@ export const BUILDING_EFFECTS = {
 // 研究队列
 // ─────────────────────────────────────────────
 export const QUEUE = {
-  /** 队列长度上限 */
+  /**
+   * 队列长度上限（E1 远古时代）
+   *
+   * ⚠️ 各时代队列长度见 ERAS[era].queueLength。
+   * 此常量保留向后兼容，引擎层已迁移至 ERAS。
+   */
   MAX_LENGTH: 5,
   /** 离线研究效率 */
   OFFLINE_EFFICIENCY: 0.5,
@@ -134,6 +139,12 @@ export const QUEUE = {
 // ─────────────────────────────────────────────
 // 时代跃迁条件（E1 → E2）
 // ─────────────────────────────────────────────
+/**
+ * 时代跃迁条件（E1 → E2）
+ *
+ * ⚠️ 此常量已被 ERAS.E1.advanceConditions 取代，未来会移除。
+ * 请通过 ERAS[era].advanceConditions 获取对应时代的跃迁条件。
+ */
 export const ADVANCE_CONDITIONS = {
   /** 需研究的门槛科技 */
   GATE_TECH: 'plant_cultivation',

@@ -4,6 +4,7 @@
 // 布局坐标：x 负值=火之技艺分支，0=中间，正值=群体与定居；y 由下往上生长
 // position 供科技树界面直接使用，无需运行时计算布局
 
+import type { EraId } from './era';
 import type { JobId } from './jobs';
 import type { BuildingId } from './buildings';
 
@@ -53,12 +54,20 @@ export interface TechEffects {
 }
 
 export interface TechDef {
+  /** 科技唯一 id */
   id: string;
+  /** 显示名称 */
   name: string;
+  /** UI 图标（emoji） */
   icon: string;
+  /** 所属分支 */
   branch: TechBranch;
+  /** 研究所需经验值 */
   cost: number;
+  /** 科技类型 */
   type: TechType;
+  /** 所属时代（标记数据归属，不改变运行时行为） */
+  era: EraId;
   /** 前置科技 id（全部满足，AND 逻辑） */
   requires: string[];
   /** 任选其一满足的前置（OR 逻辑，用于三分支汇聚） */
@@ -77,6 +86,7 @@ export const TECHS: TechDef[] = [
     name: '掌握火',
     icon: '🔥',
     branch: 'core',
+    era: 'E1',
     cost: 10,
     type: 'unlock',
     requires: [],
@@ -91,6 +101,7 @@ export const TECHS: TechDef[] = [
     name: '取火术',
     icon: '✨',
     branch: 'fire',
+    era: 'E1',
     cost: 30,
     type: 'qualitative',
     requires: ['fire_mastery'],
@@ -103,6 +114,7 @@ export const TECHS: TechDef[] = [
     name: '熟食烹饪',
     icon: '🍲',
     branch: 'fire',
+    era: 'E1',
     cost: 45,
     type: 'numeric',
     requires: ['fire_starting'],
@@ -115,6 +127,7 @@ export const TECHS: TechDef[] = [
     name: '火塘营造',
     icon: '🏕️',
     branch: 'fire',
+    era: 'E1',
     cost: 75,
     type: 'unlock',
     requires: ['cooking'],
@@ -127,6 +140,7 @@ export const TECHS: TechDef[] = [
     name: '热石煮食',
     icon: '🪨',
     branch: 'fire',
+    era: 'E1',
     cost: 110,
     type: 'qualitative',
     requires: ['hearth_construction'],
@@ -139,6 +153,7 @@ export const TECHS: TechDef[] = [
     name: '火把',
     icon: '🕯️',
     branch: 'fire',
+    era: 'E1',
     cost: 130,
     type: 'numeric',
     requires: ['hot_rock_cooking'],
@@ -151,6 +166,7 @@ export const TECHS: TechDef[] = [
     name: '火种保存术',
     icon: '🫙',
     branch: 'fire',
+    era: 'E1',
     cost: 170,
     type: 'qualitative',
     requires: ['torch'],
@@ -165,6 +181,7 @@ export const TECHS: TechDef[] = [
     name: '石器打制',
     icon: '🔨',
     branch: 'tool',
+    era: 'E1',
     cost: 35,
     type: 'unlock',
     requires: ['fire_mastery'],
@@ -177,6 +194,7 @@ export const TECHS: TechDef[] = [
     name: '削尖木矛',
     icon: '🗡️',
     branch: 'tool',
+    era: 'E1',
     cost: 60,
     type: 'unlock',
     requires: ['stone_knapping'],
@@ -189,6 +207,7 @@ export const TECHS: TechDef[] = [
     name: '燧石选材',
     icon: '💎',
     branch: 'tool',
+    era: 'E1',
     cost: 95,
     type: 'numeric',
     requires: ['wooden_spear'],
@@ -201,6 +220,7 @@ export const TECHS: TechDef[] = [
     name: '装柄技术',
     icon: '🪵',
     branch: 'tool',
+    era: 'E1',
     cost: 120,
     type: 'unlock',
     requires: ['flint_selection'],
@@ -213,6 +233,7 @@ export const TECHS: TechDef[] = [
     name: '投矛器',
     icon: '🎯',
     branch: 'tool',
+    era: 'E1',
     cost: 185,
     type: 'unlock',
     requires: ['hafting'],
@@ -225,6 +246,7 @@ export const TECHS: TechDef[] = [
     name: '弓箭',
     icon: '🏹',
     branch: 'tool',
+    era: 'E1',
     cost: 265,
     type: 'unlock',
     requires: ['atlatl'],
@@ -239,6 +261,7 @@ export const TECHS: TechDef[] = [
     name: '住所营造',
     icon: '🏠',
     branch: 'society',
+    era: 'E1',
     cost: 45,
     type: 'unlock',
     requires: ['fire_mastery'],
@@ -251,6 +274,7 @@ export const TECHS: TechDef[] = [
     name: '群体协作',
     icon: '🤝',
     branch: 'society',
+    era: 'E1',
     cost: 90,
     type: 'qualitative',
     requires: ['shelter_building'],
@@ -263,6 +287,7 @@ export const TECHS: TechDef[] = [
     name: '绳索编织',
     icon: '🪢',
     branch: 'society',
+    era: 'E1',
     cost: 145,
     type: 'numeric',
     requires: ['group_cooperation'],
@@ -275,6 +300,7 @@ export const TECHS: TechDef[] = [
     name: '赭石颜料',
     icon: '🎨',
     branch: 'society',
+    era: 'E1',
     cost: 160,
     type: 'qualitative',
     requires: ['rope_weaving'],
@@ -287,6 +313,7 @@ export const TECHS: TechDef[] = [
     name: '集体围猎',
     icon: '🐎',
     branch: 'society',
+    era: 'E1',
     cost: 205,
     type: 'qualitative',
     requires: ['ochre_pigment'],
@@ -299,6 +326,7 @@ export const TECHS: TechDef[] = [
     name: '烟熏储存',
     icon: '🍖',
     branch: 'society',
+    era: 'E1',
     cost: 230,
     type: 'qualitative',
     requires: ['collective_hunt'],
@@ -313,6 +341,7 @@ export const TECHS: TechDef[] = [
     name: '植物栽培',
     icon: '🌾',
     branch: 'gate',
+    era: 'E1',
     cost: 300,
     type: 'gate',
     requires: [],
@@ -336,6 +365,14 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   society: TECHS.filter(t => t.branch === 'society'),
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
+
+/**
+ * 返回指定时代的全部科技
+ * @param era 时代 id
+ */
+export function techsOfEra(era: EraId): TechDef[] {
+  return TECHS.filter(t => t.era === era);
+}
 
 /** 科技类别在「文明」模块中的元数据 */
 export interface BranchMeta {

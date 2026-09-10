@@ -17,6 +17,7 @@ import { SettingsMenu } from './ui/components/SettingsMenu';
 import { HintBar } from './ui/components/HintBar';
 import { MessageLog } from './ui/components/MessageLog';
 import { isModuleUnlocked } from './game/reveal';
+import { ERAS } from './data/era';
 
 type TabId = 'work' | 'civilization' | 'buildings';
 
@@ -45,6 +46,10 @@ export default function App() {
       {/* ① 顶部：资源条 + 右上角设置按钮 */}
       <div className="relative shrink-0">
         <TopBar />
+        {/* 时代指示器 —— 小号灰字，简约风格 */}
+        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+          {ERAS[s.era].name}
+        </div>
         {/* 设置按钮悬浮在资源条右上角，不占用资源条的布局空间 */}
         <div className="absolute right-2 top-1/2 -translate-y-1/2">
           <SettingsMenu />

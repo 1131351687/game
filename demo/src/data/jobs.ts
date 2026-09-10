@@ -1,13 +1,16 @@
 // E1 远古时代 · 岗位定义（4 项）
 // 人口是劳动力池，岗位从池中分配人口；不消耗资源，只占用人口。
 
+import type { EraId } from './era';
 import type { ResourceId } from './resources';
 
 export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter';
 
 export interface JobDef {
   id: JobId;
+  /** 岗位名称 */
   name: string;
+  /** UI 图标（emoji） */
   icon: string;
   /** 产出资源 */
   output: ResourceId;
@@ -22,6 +25,9 @@ export interface JobDef {
   };
   /** 是否受工具世代倍率影响 */
   scaledByTool: boolean;
+  /** 所属时代（标记数据归属，不改变运行时行为） */
+  era: EraId;
+  /** 一句话说明 */
   desc: string;
 }
 
@@ -34,6 +40,7 @@ export const JOBS: JobDef[] = [
     outputRate: 0.5,
     requires: {},
     scaledByTool: false,
+    era: 'E1',
     desc: '采集野生植物与果实。门槛最低，但效率有限。',
   },
   {
@@ -46,6 +53,7 @@ export const JOBS: JobDef[] = [
     outputRate: 0.6,
     requires: {},
     scaledByTool: false,
+    era: 'E1',
     desc: '收集木柴。火种会持续衰减，伐木者不足则火将熄灭。',
   },
   {
@@ -56,6 +64,7 @@ export const JOBS: JobDef[] = [
     outputRate: 0.3,
     requires: { tech: 'stone_knapping' },
     scaledByTool: false,
+    era: 'E1',
     desc: '打制石器与建造材料。',
   },
   {
@@ -66,6 +75,7 @@ export const JOBS: JobDef[] = [
     outputRate: 1.2,
     requires: { tech: 'wooden_spear', toolTier: 1 },
     scaledByTool: true,
+    era: 'E1',
     desc: '效率是采集者的 2.4 倍，但需先掌握工具世代。',
   },
 ];
@@ -73,3 +83,11 @@ export const JOBS: JobDef[] = [
 export const JOB_MAP: Record<JobId, JobDef> = Object.fromEntries(
   JOBS.map(j => [j.id, j])
 ) as Record<JobId, JobDef>;
+
+/**
+ * 返回指定时代的全部岗位
+ * @param era 时代 id
+ */
+export function jobsOfEra(era: EraId): JobDef[] {
+  return JOBS.filter(j => j.era === era);
+}
