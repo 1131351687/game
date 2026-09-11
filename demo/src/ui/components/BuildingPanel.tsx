@@ -19,7 +19,7 @@ import type { BuildingDef } from '../../data/buildings';
 import { RESOURCE_MAP, type ResourceId } from '../../data/resources';
 import { TECH_MAP } from '../../data/techs';
 import { canAffordBuilding, getBuildingCost, isBuildingUnlocked } from '../../game/engine';
-import { getRevealedBuildings } from '../../game/reveal';
+import { getRevealedBuildings, isBuildingBuildable } from '../../game/reveal';
 import { formatNumber } from '../../core/format';
 import { Icon } from './Icon';
 
@@ -90,6 +90,9 @@ export function BuildingPanel() {
           revealed.map(b => {
             const unlocked = isBuildingUnlocked(b.id, view);
             const owned = state.buildings[b.id] ?? 0;
+            // 旧时代建筑：已建成的继续生效（K / 火源 / 加成照算），但不再开放新建。
+            // 若不拦，E2 里 30 木材的「住所」会架空 40 木+20 石的「村落民居」（同为 K+4）。
+            const buildable = isBuildingBuildable(b.id, view);
             const cost = getBuildingCost(b.id, view);
             const affordable = canAffordBuilding(b.id, view);
 
@@ -102,7 +105,7 @@ export function BuildingPanel() {
               <div
                 key={b.id}
                 className={`rounded-md px-4 py-3.5 transition-colors ${
-                  unlocked ? 'hover:bg-gray-800/50' : 'bg-gray-800/20'
+                  unlocked && buildable ? 'hover:bg-gray-800/50' : 'bg-gray-800/20'
                 }`}
               >
                 {!unlocked ? (
@@ -120,8 +123,31 @@ export function BuildingPanel() {
                       </span>
                     </div>
                   </div>
+                ) : !buildable ? (
+                  // ── 旧时代建筑：保留战果，但不提供新建入口 ──
+                  <div className="flex items-start gap-3">
+                    <Icon emoji={b.icon} className="text-2xl leading-none opacity-60" />
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-base font-semibold text-gray-300">{b.name}</span>
+                        <span className="rounded-md bg-gray-800/60 px-1.5 py-0.5 text-xs tabular-nums text-gray-400">
+                          已建 {owned} 座
+                        </span>
+                        <span className="rounded-md bg-gray-800/60 px-1.5 py-0.5 text-xs text-gray-500">
+                          旧时代建筑
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-gray-500">
+                        {b.desc}
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        跃迁不重置它：仍在提供效果与人口上限。新时代不再开放新建 ——
+                        请建本时代的同类建筑。
+                      </p>
+                    </div>
+                  </div>
                 ) : (
-                  // ── 已解锁：左信息 / 右成本+按钮（独立页横向空间充足）──
+                  // ── 已解锁且本代可建：左信息 / 右成本+按钮（独立页横向空间充足）──
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
                     {/* 左：图标 + 名称 + 徽章 + 效果说明 + 已建数量 */}
                     <div className="flex min-w-0 flex-1 items-start gap-3">
