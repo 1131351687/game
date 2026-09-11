@@ -15,8 +15,6 @@
 //   · 视图切换做成 segmented control（一个内凹容器 + 两个按钮，选中项 bg-gray-700），不用亮蓝
 //   · 所有 emoji 经 <Icon> 渲染（纯文字模式），间距用 gap 建立，不依赖图标宽度
 
-import { useState } from 'react';
-
 import { useStore, toEngineState } from '../../state/store';
 import { calcExperienceOutput } from '../../game/engine';
 import { isModuleUnlocked } from '../../game/reveal';
@@ -24,17 +22,13 @@ import { techsOfEra } from '../../data/techs';
 import { formatNumber, formatRate } from '../../core/format';
 
 import { Icon } from './Icon';
-import { TechCategories } from './TechCategories';
-import { TechTree } from './TechTree';
+import { TechGrid } from './TechGrid';
 import { QueuePanel } from './QueuePanel';
 import { AdvancePanel } from './AdvancePanel';
 
 export function CivilizationPanel() {
   const s = useStore();
   const view = toEngineState(s);
-
-  // 视图切换属于纯展示状态，不进 store（刷新/存档不需要记住）
-  const [mode, setMode] = useState<'categories' | 'tree'>('categories');
 
   // 已学 / 总数都按**当前时代**统计。
   // 若沿用全局 TECHS.length，加入 E2 的 30 项科技后，
@@ -50,12 +44,6 @@ export function CivilizationPanel() {
   const showQueue = isModuleUnlocked('queue', view);
 
   const progress = total > 0 ? Math.min(1, researched / total) : 0;
-
-  // segmented control 的两个按钮共用的基底样式（唯一差别是选中态）
-  const segmentClass = (active: boolean): string =>
-    `rounded px-3 py-1 text-xs font-medium transition-colors ${
-      active ? 'bg-gray-700 text-gray-100' : 'text-gray-500 hover:text-gray-300'
-    }`;
 
   return (
     <div className="space-y-4">
@@ -85,30 +73,6 @@ export function CivilizationPanel() {
               {formatRate(expOutput)}/秒
             </span>
           </div>
-
-          {/* 右：视图切换（segmented control：一个容器内两个按钮） */}
-          <div
-            className="inline-flex items-center gap-0.5 rounded-md bg-gray-800/70 p-0.5"
-            role="group"
-            aria-label="视图切换"
-          >
-            <button
-              type="button"
-              onClick={() => setMode('categories')}
-              aria-pressed={mode === 'categories'}
-              className={segmentClass(mode === 'categories')}
-            >
-              分类
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('tree')}
-              aria-pressed={mode === 'tree'}
-              className={segmentClass(mode === 'tree')}
-            >
-              树状图
-            </button>
-          </div>
         </div>
 
         {/* 细进度条：把"已学 / 总数"视觉化（中性灰，不用亮色） */}
@@ -129,9 +93,9 @@ export function CivilizationPanel() {
         </div>
       )}
 
-      {/* ── 视图区：不限宽，树状图需要横向空间 ── */}
+      {/* ── 视图区：紧凑方块网格（替代原来的分类 / 树状图长文案） ── */}
       <div className="pb-40">
-        {mode === 'categories' ? <TechCategories /> : <TechTree />}
+        <TechGrid />
       </div>
     </div>
   );

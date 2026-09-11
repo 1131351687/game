@@ -73,9 +73,10 @@ function perPersonRate(job: JobDef, view: E1State, count: number): number {
   return calcJobOutput(job.id, { ...view, jobs: { ...view.jobs, [job.id]: 1 } });
 }
 
-/** 小号无边框按钮：默认灰淡，hover 才显色；禁用时进一步压暗 */
+/** 列表内 +/- 按钮：放宽到 40px 高（h-10）适配触屏；保留 text-sm + 紧凑 px-2，
+ *  避免一行 5 个按钮在窄屏换行爆版（实测 375px 屏也能单行容纳）。 */
 const BTN =
-  'rounded-md px-2 py-0.5 text-xs tabular-nums text-gray-500 transition-colors hover:bg-gray-800/70 hover:text-gray-200 disabled:cursor-not-allowed disabled:text-gray-700 disabled:hover:bg-transparent';
+  'inline-flex h-10 items-center justify-center rounded-md px-2 text-sm tabular-nums text-gray-500 transition-colors hover:bg-gray-800/70 hover:text-gray-200 disabled:cursor-not-allowed disabled:text-gray-700 disabled:hover:bg-transparent';
 
 /** 小号区块标题：小号化 + 灰淡化 */
 const SECTION_TITLE = 'text-xs uppercase tracking-wide text-gray-500';
@@ -102,7 +103,7 @@ export function JobPanel() {
           type="button"
           onClick={clearJobs}
           disabled={assigned <= 0}
-          className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
+          className={`inline-flex h-10 items-center justify-center rounded-md px-3 text-sm transition-colors ${
             assigned <= 0
               ? 'cursor-not-allowed text-gray-700'
               : 'text-gray-500 hover:bg-gray-800/70 hover:text-gray-200'

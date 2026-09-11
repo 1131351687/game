@@ -5,6 +5,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'settled_construction',
     name: '定居营造',
+    short: '营造',
     icon: '🏘️',
     branch: 'settlement',
     era: 'E2',
@@ -19,6 +20,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'mud_brick',
     name: '土坯砖烧制',
+    short: '土坯',
     icon: '🧱',
     branch: 'settlement',
     era: 'E2',
@@ -33,6 +35,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'pottery',
     name: '制陶',
+    short: '制陶',
     icon: '🏺',
     branch: 'settlement',
     era: 'E2',
@@ -47,6 +50,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'granary_building',
     name: '粮仓营造',
+    short: '粮仓',
     icon: '🏛️',
     branch: 'settlement',
     era: 'E2',
@@ -61,6 +65,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'granary_tiering',
     name: '粮仓分层',
+    short: '分层',
     icon: '📦',
     branch: 'settlement',
     era: 'E2',
@@ -75,6 +80,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'jar_storage',
     name: '陶罐储藏',
+    short: '陶罐',
     icon: '🫙',
     branch: 'settlement',
     era: 'E2',
@@ -89,6 +95,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'roof_proofing',
     name: '屋顶防潮',
+    short: '防潮',
     icon: '🏠',
     branch: 'settlement',
     era: 'E2',
@@ -103,6 +110,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'granary_ventilation',
     name: '谷仓通风系统',
+    short: '通风',
     icon: '🌬️',
     branch: 'settlement',
     era: 'E2',
@@ -117,6 +125,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'settlement_roads',
     name: '聚落道路网',
+    short: '道路',
     icon: '🛣️',
     branch: 'settlement',
     era: 'E2',
@@ -131,6 +140,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'writing',
     name: '文字',
+    short: '文字',
     icon: '✍️',
     branch: 'gate',
     era: 'E2',

@@ -159,6 +159,8 @@ export interface TechDef {
   effects: TechEffects;
   /** 界面布局坐标 */
   position: { x: number; y: number };
+  /** 方块网格里显示的极短标签（1–2 字，关图标模式时使用）。同一时代内不重复，跨时代允许重复 */
+  short: string;
   /** 一句话说明（含"为什么"） */
   desc: string;
 }
@@ -169,6 +171,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'fire_mastery',
     name: '掌握火',
+    short: '火',
     icon: '🔥',
     branch: 'core',
     era: 'E1',
@@ -184,6 +187,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'fire_starting',
     name: '取火术',
+    short: '取火',
     icon: '✨',
     branch: 'fire',
     era: 'E1',
@@ -197,6 +201,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'cooking',
     name: '熟食烹饪',
+    short: '烹饪',
     icon: '🍲',
     branch: 'fire',
     era: 'E1',
@@ -210,6 +215,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'hearth_construction',
     name: '火塘营造',
+    short: '火塘',
     icon: '🏕️',
     branch: 'fire',
     era: 'E1',
@@ -223,6 +229,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'hot_rock_cooking',
     name: '热石煮食',
+    short: '煮食',
     icon: '🪨',
     branch: 'fire',
     era: 'E1',
@@ -236,6 +243,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'torch',
     name: '火把',
+    short: '火把',
     icon: '🕯️',
     branch: 'fire',
     era: 'E1',
@@ -249,6 +257,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'fire_preservation',
     name: '火种保存术',
+    short: '火种',
     icon: '🫙',
     branch: 'fire',
     era: 'E1',
@@ -264,6 +273,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'stone_knapping',
     name: '石器打制',
+    short: '打石',
     icon: '🔨',
     branch: 'tool',
     era: 'E1',
@@ -277,6 +287,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'wooden_spear',
     name: '削尖木矛',
+    short: '木矛',
     icon: '🗡️',
     branch: 'tool',
     era: 'E1',
@@ -290,6 +301,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'flint_selection',
     name: '燧石选材',
+    short: '燧石',
     icon: '💎',
     branch: 'tool',
     era: 'E1',
@@ -303,6 +315,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'hafting',
     name: '装柄技术',
+    short: '装柄',
     icon: '🪵',
     branch: 'tool',
     era: 'E1',
@@ -316,6 +329,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'atlatl',
     name: '投矛器',
+    short: '投矛',
     icon: '🎯',
     branch: 'tool',
     era: 'E1',
@@ -329,6 +343,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'bow_and_arrow',
     name: '弓箭',
+    short: '弓箭',
     icon: '🏹',
     branch: 'tool',
     era: 'E1',
@@ -344,6 +359,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'shelter_building',
     name: '住所营造',
+    short: '住所',
     icon: '🏠',
     branch: 'society',
     era: 'E1',
@@ -357,6 +373,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'group_cooperation',
     name: '群体协作',
+    short: '协作',
     icon: '🤝',
     branch: 'society',
     era: 'E1',
@@ -370,6 +387,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'rope_weaving',
     name: '绳索编织',
+    short: '绳索',
     icon: '🪢',
     branch: 'society',
     era: 'E1',
@@ -383,6 +401,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'ochre_pigment',
     name: '赭石颜料',
+    short: '赭石',
     icon: '🎨',
     branch: 'society',
     era: 'E1',
@@ -396,6 +415,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'collective_hunt',
     name: '集体围猎',
+    short: '围猎',
     icon: '🐎',
     branch: 'society',
     era: 'E1',
@@ -409,6 +429,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'smoking_storage',
     name: '烟熏储存',
+    short: '烟熏',
     icon: '🍖',
     branch: 'society',
     era: 'E1',
@@ -424,6 +445,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'plant_cultivation',
     name: '植物栽培',
+    short: '栽培',
     icon: '🌾',
     branch: 'gate',
     era: 'E1',
@@ -444,6 +466,7 @@ const E2_TECHS_CORE: TechDef[] = [
   {
     id: 'agriculture',
     name: '农业',
+    short: '农业',
     icon: '🌾',
     branch: 'core',
     era: 'E2',

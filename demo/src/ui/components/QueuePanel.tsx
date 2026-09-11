@@ -192,7 +192,9 @@ export function QueuePanel() {
                   draggable={false}
                   onClick={() => s.dequeue(row.index)}
                   title="移出队列"
-                  className="shrink-0 rounded px-0.5 leading-none text-gray-600 transition-colors hover:bg-gray-700 hover:text-red-300"
+                  // 队列槽仅 ~60px 宽，删除键若给满 40px 宽会挤掉科技名；
+                  // 故保持紧凑宽度（natural ~24px），仅把高度放到 40px（h-10）保证竖向触屏目标。
+                  className="inline-flex h-10 items-center justify-center shrink-0 rounded-md px-2 leading-none text-gray-600 transition-colors hover:bg-gray-700 hover:text-red-300"
                 >
                   ✕
                 </button>

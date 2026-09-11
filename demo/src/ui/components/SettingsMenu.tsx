@@ -167,7 +167,7 @@ export function SettingsMenu() {
         title="设置"
         aria-label="设置"
         aria-expanded={open}
-        className="flex h-7 w-7 items-center justify-center rounded text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+        className="flex h-10 w-10 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
       >
         <svg
           viewBox="0 0 24 24"
@@ -204,28 +204,60 @@ export function SettingsMenu() {
             </p>
           </div>
 
-          {/* ② 存档 */}
+          {/* ② 主题（日间 / 夜间） */}
+          <div className="mt-2 border-t border-gray-700 pt-3">
+            <div className="text-sm text-gray-300">主题</div>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => s.updateSettings({ theme: 'light' })}
+                className={`flex h-10 flex-1 items-center justify-center rounded-md text-sm transition-colors ${
+                  s.settings.theme === 'light'
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                }`}
+              >
+                日间
+              </button>
+              <button
+                type="button"
+                onClick={() => s.updateSettings({ theme: 'dark' })}
+                className={`flex h-10 flex-1 items-center justify-center rounded-md text-sm transition-colors ${
+                  s.settings.theme === 'dark'
+                    ? 'bg-blue-700 text-white'
+                    : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                }`}
+              >
+                夜间
+              </button>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              日间适合明亮环境；夜间为默认深色护眼模式。设置会随存档保存。
+            </p>
+          </div>
+
+          {/* ③ 存档 */}
           <div className="mt-3 border-t border-gray-700 pt-3">
             <SectionTitle>存档</SectionTitle>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={handleExport}
-                className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-600"
+                className="h-10 flex-1 rounded-md bg-gray-700 px-2 text-xs text-gray-200 transition-colors hover:bg-gray-600"
               >
                 导出
               </button>
               <button
                 type="button"
                 onClick={handleCopy}
-                className="rounded bg-gray-700 px-2 py-1 text-xs text-gray-200 transition-colors hover:bg-gray-600"
+                className="h-10 flex-1 rounded-md bg-gray-700 px-2 text-xs text-gray-200 transition-colors hover:bg-gray-600"
               >
                 复制
               </button>
               <button
                 type="button"
                 onClick={handleImport}
-                className="rounded bg-blue-700 px-2 py-1 text-xs text-white transition-colors hover:bg-blue-600"
+                className="h-10 flex-1 rounded-md bg-blue-700 px-2 text-xs text-white transition-colors hover:bg-blue-600"
               >
                 导入
               </button>
@@ -255,14 +287,14 @@ export function SettingsMenu() {
             </p>
           </div>
 
-          {/* ③ 重置存档（红色警示 + 二次确认） */}
+          {/* ④ 重置存档（红色警示 + 二次确认） */}
           <div className="mt-3 border-t border-gray-700 pt-3">
             <SectionTitle>重置存档</SectionTitle>
             {!confirmingReset ? (
               <button
                 type="button"
                 onClick={handleReset}
-                className="rounded bg-red-800 px-2 py-1 text-xs text-white transition-colors hover:bg-red-700"
+                className="h-10 rounded-md bg-red-800 px-3 text-xs text-white transition-colors hover:bg-red-700"
               >
                 重置
               </button>
@@ -272,14 +304,14 @@ export function SettingsMenu() {
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="rounded bg-red-800 px-2 py-1 text-xs text-white transition-colors hover:bg-red-700"
+                  className="h-10 rounded-md bg-red-800 px-3 text-xs text-white transition-colors hover:bg-red-700"
                 >
                   确认重置
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmingReset(false)}
-                  className="rounded px-2 py-1 text-xs text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+                  className="h-10 rounded-md px-3 text-xs text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
                 >
                   取消
                 </button>

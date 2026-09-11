@@ -75,7 +75,7 @@ export function AdvancePanel() {
         type="button"
         disabled={!check.ok || !nextMeta}
         onClick={handleAdvance}
-        className={`w-full rounded py-2.5 font-semibold transition-all ${
+        className={`w-full rounded-md py-2.5 font-semibold transition-all ${
           check.ok && nextMeta
             ? // 全部条件达成：加大加粗 + 亮翠绿 + 外发光 + 描边，做成页面最醒目的按钮
               'bg-emerald-500 text-base text-white ring-2 ring-emerald-300/70 shadow-[0_0_24px_-2px_rgba(16,185,129,0.95)] hover:bg-emerald-400 hover:ring-emerald-200'

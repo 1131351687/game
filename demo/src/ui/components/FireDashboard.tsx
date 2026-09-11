@@ -37,9 +37,10 @@ const TIER_BAR: Record<FireTier, string> = {
 /** 低于此值进入危险区：进度条与数字变红闪烁 */
 const DANGER_THRESHOLD = 20;
 
-/** 投料按钮：默认无边框的轻量文字按钮，仅 hover 时透出暖色 */
+/** 投料按钮：默认无边框的轻量文字按钮，仅 hover 时透出暖色。
+ *  放宽到 40px 高（h-10）适配触屏；本行 overflow-x-auto，宽度不受限不会爆版。 */
 const FUEL_BTN =
-  'rounded-md px-2 py-1 font-mono text-xs font-semibold tabular-nums transition-colors';
+  'inline-flex h-10 items-center justify-center rounded-md px-3 text-sm font-mono font-semibold tabular-nums transition-colors';
 
 export function FireDashboard() {
   const state = useStore();

@@ -30,11 +30,40 @@ export interface GameSettings {
    * 关闭后进入「纯文字模式」——所有 emoji 都不渲染，界面更素净。
    */
   showIcons: boolean;
+  /**
+   * 主题：'dark' = 夜间（默认，深色护眼），'light' = 日间。
+   * 切换仅设置 document.documentElement 的 data-theme，组件无需改动。
+   */
+  theme: 'dark' | 'light';
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
-  showIcons: true,
+  // 用户明确要求：默认关闭图案（纯文字模式）。
+  showIcons: false,
+  // 默认夜间，与 styles.css 的 :root 默认态对齐。
+  theme: 'dark',
 };
+
+/**
+ * 把主题应用到 <html> 上。
+ *
+ * styles.css 的契约：`:root` 即夜间（默认），`[data-theme='light']` 才切换到日间。
+ * 因此夜间不需要任何属性，日间才显式标注。这样「未设置」与「夜间」语义一致，
+ * 避免残留 'dark' 字符串造成的歧义。
+ *
+ * ⚠️ SSR / Node 防护：项目里有一个在 Node 中跑 renderToString 的回归测试脚本，
+ * 那里没有 document；若不判断直接访问 document.documentElement 会直接崩溃。
+ * 所以在 typeof document === 'undefined' 时直接 return。
+ */
+export function applyTheme(theme: GameSettings['theme']): void {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (theme === 'light') {
+    root.dataset.theme = 'light';
+  } else {
+    root.removeAttribute('data-theme');
+  }
+}
 
 export interface GameState {
   running: boolean;
@@ -118,7 +147,7 @@ export interface GameState {
   advanceEra: () => boolean;
 }
 
-const SAVE_VERSION = 3;
+const SAVE_VERSION = 4;
 
 const initialState = () => ({
   running: false,
@@ -331,7 +360,13 @@ export const useStore = create<GameState>((set, get) => ({
 
   toggleIcons: () => set(s => ({ settings: { ...s.settings, showIcons: !s.settings.showIcons } })),
 
-  updateSettings: (patch) => set(s => ({ settings: { ...s.settings, ...patch } })),
+  updateSettings: (patch) => {
+    set(s => ({ settings: { ...s.settings, ...patch } }));
+    // 写入主题后立即应用到 <html>，保证界面实时切换，无需刷新。
+    if ('theme' in patch && patch.theme) {
+      applyTheme(patch.theme);
+    }
+  },
 
   // ── 存档 ──
   takeSnapshot: () => {
@@ -366,6 +401,24 @@ export const useStore = create<GameState>((set, get) => ({
     // 存档迁移：
     //   v1 及更早 —— 没有 era 字段，按远古时代补上
     //   v2 及更早 —— 没有 E2 的谷物/牲畜/织物，也没有季节计时，一律补 0
+    const oldVersion = data.version ?? 0;
+
+    // settings 是嵌套对象，且 loadSnapshot 走的是 set({ ...migrated }) 浅合并——
+    // 旧存档的 settings 会整体覆盖默认值，并不会逐字段补全。
+    // 所以这里必须显式处理 settings，不能指望「{...默认, ...存档}」式的字段兜底。
+    let settings: GameSettings;
+    if (oldVersion < 4) {
+      // 有意的显示偏好迁移（不是 bug）：
+      //   · 旧存档没有 theme 字段 → 必须补一个合法默认值，否则 applyTheme(undefined)
+      //     会拿到非法值、且刷新后主题与存档错位。
+      //   · 旧存档的 showIcons 强制重置为 false：v4 起「默认关闭图案」，若保留旧存的
+      //     true，玩家在设置里看到开关是关的、界面却还有图标，会以为改动没生效。
+      settings = { showIcons: false, theme: 'dark' };
+    } else {
+      // v4+：以玩家存档为准，但仍用默认值兜底缺失字段（防脏数据）。
+      settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
+    }
+
     const migrated: Partial<GameState> = {
       ...data,
       era: (data.era as EraId | undefined) ?? 'E1',
@@ -374,6 +427,7 @@ export const useStore = create<GameState>((set, get) => ({
       fabric: data.fabric ?? 0,
       eraElapsedSec: data.eraElapsedSec ?? 0,
       version: SAVE_VERSION,
+      settings,
     };
     set({ ...migrated, messages: [], running: false });
   },

@@ -69,7 +69,7 @@ export function MessageLog() {
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="shrink-0 rounded px-1.5 py-0.5 text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
+          className="inline-flex h-10 items-center justify-center shrink-0 rounded-md px-3 text-sm text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
           title="展开消息日志"
         >
           ▲ 消息
@@ -104,7 +104,7 @@ export function MessageLog() {
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="rounded px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
+            className="inline-flex h-10 items-center justify-center rounded-md px-3 text-sm text-gray-500 transition-colors hover:bg-gray-800 hover:text-gray-300"
             title="收起消息日志"
           >
             ▼ 收起

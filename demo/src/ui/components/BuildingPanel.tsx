@@ -178,7 +178,7 @@ export function BuildingPanel() {
                         onClick={() => {
                           build(b.id);
                         }}
-                        className={`w-full rounded-md px-4 py-2 text-sm font-semibold transition-colors lg:w-auto ${
+                        className={`w-full rounded-md px-4 py-3 text-sm font-semibold transition-colors lg:w-auto ${
                           affordable
                             ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 active:bg-emerald-500/30'
                             : 'cursor-not-allowed text-gray-700'

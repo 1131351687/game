@@ -5,6 +5,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'field_drainage',
     name: '田间排水',
+    short: '排水',
     icon: '🚰',
     branch: 'farming',
     era: 'E2',
@@ -18,6 +19,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'crop_domestication',
     name: '作物驯化',
+    short: '驯化',
     icon: '🌾',
     branch: 'farming',
     era: 'E2',
@@ -31,6 +33,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'ridge_farming',
     name: '垄作法',
+    short: '垄作',
     icon: '🌱',
     branch: 'farming',
     era: 'E2',
@@ -44,6 +47,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'stone_sickle',
     name: '石镰与磨盘',
+    short: '石镰',
     icon: '🔪',
     branch: 'farming',
     era: 'E2',
@@ -57,6 +61,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'summer_fallow_rotation',
     name: '夏季休耕轮作',
+    short: '休耕',
     icon: '☀️',
     branch: 'farming',
     era: 'E2',
@@ -70,6 +75,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'selective_breeding',
     name: '选种育种',
+    short: '育种',
     icon: '🧬',
     branch: 'farming',
     era: 'E2',
@@ -83,6 +89,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'chaff_compost',
     name: '谷壳堆肥',
+    short: '堆肥',
     icon: '🪱',
     branch: 'farming',
     era: 'E2',
@@ -96,6 +103,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'irrigation',
     name: '灌溉',
+    short: '灌溉',
     icon: '💧',
     branch: 'farming',
     era: 'E2',
@@ -109,6 +117,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'crop_diverse_rotation',
     name: '作物多样轮作',
+    short: '杂作',
     icon: '🌻',
     branch: 'farming',
     era: 'E2',
@@ -122,6 +131,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'crop_rotation',
     name: '轮作',
+    short: '轮作',
     icon: '🔄',
     branch: 'farming',
     era: 'E2',

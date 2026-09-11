@@ -40,7 +40,7 @@ export function ResetButton() {
       <button
         type="button"
         onClick={() => setConfirming(false)}
-        className="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+        className="inline-flex h-10 items-center justify-center rounded-md px-3 text-sm text-gray-400 hover:bg-gray-800 hover:text-gray-200"
       >
         取消
       </button>

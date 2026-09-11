@@ -4,13 +4,17 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { startClock, stopClock, loadGame, saveGame, applyOfflineProgress } from './core/clock/scheduler';
-import { useStore } from './state/store';
+import { useStore, applyTheme } from './state/store';
 import { TECH_MAP } from './data/techs';
 import { formatTime } from './core/format';
 import './styles.css';
 
 const hasSave = loadGame();
 const store = useStore.getState();
+
+// 读档完成后立即按存档主题渲染一次，保证刷新页面后主题与存档一致。
+// （存盘点也可能在 Node 回归测试里被加载，applyTheme 内部已做 SSR 防护。）
+applyTheme(store.settings.theme);
 
 if (hasSave) {
   // 离线收益：按 50% 效率推进，上限 8 小时

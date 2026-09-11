@@ -5,6 +5,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'animal_domestication',
     name: '动物驯养',
+    short: '驯养',
     icon: '🐎',
     branch: 'herding',
     era: 'E2',
@@ -18,6 +19,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'dairy_processing',
     name: '乳制品加工',
+    short: '乳业',
     icon: '🥛',
     branch: 'herding',
     era: 'E2',
@@ -31,6 +33,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'seasonal_grazing',
     name: '季节性放牧',
+    short: '放牧',
     icon: '☀️',
     branch: 'herding',
     era: 'E2',
@@ -44,6 +47,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'pen_reinforcement',
     name: '畜栏加固',
+    short: '畜栏',
     icon: '🚧',
     branch: 'herding',
     era: 'E2',
@@ -57,6 +61,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'textile',
     name: '纺织',
+    short: '纺织',
     icon: '🧵',
     branch: 'herding',
     era: 'E2',
@@ -70,6 +75,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'fine_wool',
     name: '羊毛细纺织',
+    short: '羊毛',
     icon: '🐑',
     branch: 'herding',
     era: 'E2',
@@ -83,6 +89,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'veterinary_knowledge',
     name: '兽医知识',
+    short: '兽医',
     icon: '🩺',
     branch: 'herding',
     era: 'E2',
@@ -96,6 +103,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'draft_animals_manure',
     name: '畜力与厩肥',
+    short: '畜力',
     icon: '🐂',
     branch: 'herding',
     era: 'E2',
@@ -109,6 +117,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'plow_farming',
     name: '犁耕',
+    short: '犁耕',
     icon: '🌾',
     branch: 'herding',
     era: 'E2',

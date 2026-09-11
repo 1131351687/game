@@ -30,13 +30,11 @@ import {
   BRANCH_INFO,
   type TechBranch,
   type TechDef,
-  type TechEffects,
 } from '../../data/techs';
-import { JOB_MAP } from '../../data/jobs';
-import { BUILDING_MAP } from '../../data/buildings';
-import { TOOL_TIERS } from '../../data/constants';
 import { formatNumber } from '../../core/format';
 import { Icon } from './Icon';
+// 效果/类型中文文案改由共享模块统一提供，避免与 TechGrid 各写一套
+import { describeEffects, TECH_TYPE_LABEL } from './techEffectsText';
 
 // ─────────────────────────────────────────────
 // 单条科技的四种状态
@@ -118,77 +116,6 @@ const STATUS_MARK: Record<Exclude<TechState, 'locked'>, string> = {
   short: '○',
 };
 
-/** 科技类型 → 中文（浮层里显示，比 raw 的 type 字段好读） */
-const TYPE_LABEL: Record<TechDef['type'], string> = {
-  unlock: '解锁',
-  qualitative: '质变',
-  numeric: '数值',
-  gate: '门槛',
-};
-
-// ─────────────────────────────────────────────
-// 效果列表 → 中文文案
-//
-// 每个 renderer 负责一个 effect key：没有该 key 就返回 null 被过滤掉。
-// 这样新增 effect 只需加一行，且天然保持定义顺序、类型安全（无 any）。
-// ─────────────────────────────────────────────
-const EFFECT_RENDERERS: ReadonlyArray<(e: TechEffects) => string | null> = [
-  e => (e.enableFire ? '开启火种系统' : null),
-  e => (e.activeFireRestore ? '可主动补充火种' : null),
-  e =>
-    e.fireDecayMultiplier !== undefined
-      ? `火种衰减 ×${formatNumber(e.fireDecayMultiplier, 2)}`
-      : null,
-  e => (e.fireMaxBonus !== undefined ? `火种上限 +${formatNumber(e.fireMaxBonus)}` : null),
-  e => (e.removeWeakFoodPenalty ? '火种微弱时不再有食物惩罚' : null),
-  e => (e.foodMultiplier !== undefined ? `食物产出 ×${formatNumber(e.foodMultiplier, 2)}` : null),
-  e => (e.stoneMultiplier !== undefined ? `石头产出 ×${formatNumber(e.stoneMultiplier, 2)}` : null),
-  e => (e.expMultiplier !== undefined ? `经验产出 ×${formatNumber(e.expMultiplier, 2)}` : null),
-  e =>
-    e.gathererMultiplier !== undefined
-      ? `采集者效率 ×${formatNumber(e.gathererMultiplier, 2)}`
-      : null,
-  e => {
-    if (e.setToolTier === undefined) return null;
-    const tier = TOOL_TIERS.find(t => t.level === e.setToolTier);
-    return `工具世代 →「${tier?.name ?? `等级 ${e.setToolTier}`}」`;
-  },
-  e =>
-    e.buildingCostMultiplier !== undefined
-      ? `建筑成本 ×${formatNumber(e.buildingCostMultiplier, 2)}`
-      : null,
-  e => (e.stabilityBonus !== undefined ? `社会稳定 +${formatNumber(e.stabilityBonus)}` : null),
-  // 集体围猎的两个字段一起读才成句，这里合成一条
-  e => {
-    if (e.huntPartyThreshold === undefined && e.huntPartyBonus === undefined) return null;
-    const threshold = e.huntPartyThreshold ?? 0;
-    const bonus = Math.round((e.huntPartyBonus ?? 0) * 100);
-    return `猎人数达 ${threshold} 人时全员效率 +${bonus}%`;
-  },
-  e =>
-    e.foodStorageMultiplier !== undefined
-      ? `食物存储上限 ×${formatNumber(e.foodStorageMultiplier, 2)}`
-      : null,
-  e =>
-    e.unlockJobs && e.unlockJobs.length > 0
-      ? `解锁岗位：${e.unlockJobs.map(id => JOB_MAP[id]?.name ?? id).join('、')}`
-      : null,
-  e =>
-    e.unlockBuildings && e.unlockBuildings.length > 0
-      ? `解锁建筑：${e.unlockBuildings.map(id => BUILDING_MAP[id]?.name ?? id).join('、')}`
-      : null,
-  e => (e.enableAdvance ? '开启时代跃迁' : null),
-];
-
-/** 把一个科技的 effects 渲染成若干条中文说明（无效果时返回空数组） */
-function describeEffects(effects: TechEffects): string[] {
-  const out: string[] = [];
-  for (const render of EFFECT_RENDERERS) {
-    const line = render(effects);
-    if (line !== null) out.push(line);
-  }
-  return out;
-}
 
 // ─────────────────────────────────────────────
 // 主组件
@@ -494,7 +421,7 @@ function TechTooltip({ row }: { row: TechRow }) {
         <span>{def.name}</span>
       </span>
       <span className="block mt-0.5 text-[11px] text-gray-500">
-        {info.name} · {TYPE_LABEL[def.type]}
+        {info.name} · {TECH_TYPE_LABEL[def.type]}
       </span>
 
       {/* 完整描述 */}

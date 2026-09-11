@@ -1,0 +1,367 @@
+// 文明页 · 科技区（可研究方块 + 已学分类）
+//
+// ─────────────────────────────────────────────
+// 交互模型（2026-09-11 按用户要求重定）
+// ─────────────────────────────────────────────
+//   1. 主区**只列「当前可研究」的科技**（前置已满足、尚未学）。
+//      已学的**不进主区**——它们移到下方"已学科技"分类区。这样主区永远清爽：
+//      开局 1 个方块（掌握火），中期也就几个，不会变成一大片网格。
+//   2. **点击方块 = 立即研究**。买不起时不开研究，改为弹出详情浮层（说明差多少经验）。
+//   3. **悬停（桌面）/ 长按 ≥450ms（触屏）= 只看详情**，浮层里有完整说明、
+//      可读化效果列表、成本 / 存量 / 状态。
+//   4. 触屏没有 hover，所以长按是移动端唯一的"查看"入口；短按仍然是"研究"。
+//
+// 方块里只放一个极短标签：关图案时是 1–2 字短名（short，如「火」），开图案时是 emoji。
+//
+// 浮层用 position: fixed + getBoundingClientRect：要跟着方块走，又不能被滚动容器裁切；
+// 再按方块在视口里的位置算坐标并做边界收拢，避免在手机屏幕边缘溢出。
+
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useStore, toEngineState } from '../../state/store';
+import { isTechRevealed } from '../../game/reveal';
+import { techsOfEra, BRANCH_INFO, type TechDef } from '../../data/techs';
+import { describeEffects, TECH_TYPE_LABEL } from './techEffectsText';
+import { Icon, useShowIcons } from './Icon';
+import { formatNumber } from '../../core/format';
+
+/** 浮层在屏幕上的固定坐标（已做过视口边界收拢） */
+interface OverlayPos {
+  top: number;
+  left: number;
+}
+
+/** ready = 经验够，点了就研究；short = 前置满足但经验不够，点了只看详情 */
+type Status = 'researched' | 'ready' | 'short';
+
+// 触屏长按触发浮层的阈值（毫秒）。太短会和点击混淆，太长用户没耐心。
+const LONG_PRESS_MS = 450;
+// 鼠标移开后留给用户把指针移进浮层点按钮的缓冲（毫秒）。
+const HOVER_CLOSE_DELAY = 150;
+// 浮层预估尺寸，仅用于边界收拢；实际高度随内容自适应并允许内部滚动。
+const OVERLAY_W = 300;
+const OVERLAY_H = 300;
+
+/** 根据方块在视口里的矩形，算出浮层坐标并收拢到视口内，避免边缘溢出 */
+function computePos(rect: DOMRect): OverlayPos {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  // 先水平居中于方块，再夹紧到 [8, vw - W - 8]
+  let left = rect.left + rect.width / 2 - OVERLAY_W / 2;
+  left = Math.max(8, Math.min(left, vw - OVERLAY_W - 8));
+
+  // 默认放在方块下方；放不下就改放上方；上方也放不下就贴底并允许内部滚动
+  let top = rect.bottom + 8;
+  if (top + OVERLAY_H > vh) top = rect.top - OVERLAY_H - 8;
+  if (top < 8) top = Math.max(8, vh - OVERLAY_H - 8);
+
+  return { top, left };
+}
+
+/** 方块状态 → 浮层里的状态文案与配色 */
+const STATUS_META: Record<Status, { text: string; cls: string }> = {
+  researched: { text: '已学', cls: 'text-gray-500' },
+  ready: { text: '可研究 · 点击即研究', cls: 'text-emerald-400' },
+  short: { text: '经验不足', cls: 'text-amber-400/90' },
+};
+
+export function TechGrid() {
+  const s = useStore();
+  const view = toEngineState(s);
+  const showIcons = useShowIcons();
+  const research = s.research;
+  const addMessage = s.addMessage;
+
+  const [overlay, setOverlay] = useState<{ def: TechDef; status: Status; pos: OverlayPos } | null>(null);
+  /** 「已学科技」分类区默认收起——它只是存档展示，不该抢占主区注意力 */
+  const [showLearned, setShowLearned] = useState(false);
+  const closeTimer = useRef<number | null>(null);
+  const pressTimer = useRef<number | null>(null);
+
+  // 组件卸载时清掉可能还在跑的定时器，避免对已卸载节点 setState
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current !== null) clearTimeout(closeTimer.current);
+      if (pressTimer.current !== null) clearTimeout(pressTimer.current);
+    };
+  }, []);
+
+  // ── 主区：只收「前置已满足且尚未学」的科技 ──
+  // 已学的**刻意排除**：它们进下方的分类区，主区保持"待办清单"的语义。
+  const available: { def: TechDef; status: Status }[] = [];
+  for (const def of techsOfEra(s.era)) {
+    if (s.techs[def.id]) continue; // 已学 → 归分类区
+    if (!isTechRevealed(def.id, view)) continue; // 前置未满足 → 还不到登场的时候
+    available.push({ def, status: view.experience >= def.cost ? 'ready' : 'short' });
+  }
+
+  // ── 分类区：已学科技按分支归组，按 BRANCH_INFO.order 排序 ──
+  const learnedGroups = useMemo(() => {
+    const groups = new Map<string, TechDef[]>();
+    for (const def of techsOfEra(s.era)) {
+      if (!s.techs[def.id]) continue;
+      const list = groups.get(def.branch) ?? [];
+      list.push(def);
+      groups.set(def.branch, list);
+    }
+    return [...groups.entries()].sort(
+      (a, b) => (BRANCH_INFO[a[0] as TechDef['branch']].order ?? 99) - (BRANCH_INFO[b[0] as TechDef['branch']].order ?? 99)
+    );
+  }, [s.era, s.techs]);
+
+  const learnedCount = learnedGroups.reduce((n, [, list]) => n + list.length, 0);
+
+  // ── 浮层开关（带延迟，让鼠标能从方块移到浮层上） ──
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => setOverlay(null), HOVER_CLOSE_DELAY);
+  };
+  const closeNow = () => {
+    cancelClose();
+    if (pressTimer.current !== null) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+    setOverlay(null);
+  };
+  const activate = (def: TechDef, status: Status, el: HTMLElement) => {
+    cancelClose();
+    setOverlay({ def, status, pos: computePos(el.getBoundingClientRect()) });
+  };
+
+  // 触屏：手指按下开始计时，≥450ms 仍未抬起/移动才算长按 → 弹出浮层
+  const onTouchStart = (def: TechDef, status: Status, el: HTMLElement) => {
+    cancelClose();
+    if (pressTimer.current !== null) clearTimeout(pressTimer.current);
+    pressTimer.current = window.setTimeout(() => activate(def, status, el), LONG_PRESS_MS);
+  };
+  // 手指抬起或滑动 → 取消长按计时（避免与滚动/点击混淆）
+  const cancelPress = () => {
+    if (pressTimer.current !== null) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  /**
+   * 点击方块：**能研究就立刻研究**；买不起则改为弹详情，告诉玩家还差多少。
+   *
+   * 为什么买不起时不静默失败：玩家点了没反应会以为界面坏了。
+   * 弹浮层既能解释原因，又复用已有 UI，不必再加 toast。
+   */
+  const onTileClick = (def: TechDef, status: Status, el: HTMLElement) => {
+    if (status !== 'ready') {
+      activate(def, status, el);
+      return;
+    }
+    const ok = research(def.id);
+    if (!ok) {
+      // canResearch 兜底失败（理论上刚才还是 ready），给出明确反馈而不是无声
+      addMessage(`「${def.name}」暂时无法研究`, 'warn');
+      activate(def, status, el);
+      return;
+    }
+    closeNow();
+  };
+
+  // ── 方块视觉 ──
+  const tileClass = (status: Status): string => {
+    const base =
+      'relative flex aspect-square min-h-[40px] min-w-[40px] items-center justify-center rounded-md text-center select-none transition-colors';
+    switch (status) {
+      case 'researched':
+        return `${base} bg-gray-800/40 opacity-55 ring-1 ring-gray-700`;
+      case 'ready':
+        return `${base} cursor-pointer bg-emerald-500/10 text-gray-100 ring-2 ring-emerald-500/70 hover:bg-emerald-500/20`;
+      case 'short':
+        return `${base} cursor-pointer bg-gray-800/70 text-gray-200 ring-1 ring-gray-600`;
+    }
+  };
+
+  const tileLabel = (def: TechDef) =>
+    showIcons ? (
+      <Icon emoji={def.icon} className="text-2xl leading-none" />
+    ) : (
+      <span className="px-1 text-sm font-semibold leading-tight text-gray-100">{def.short}</span>
+    );
+
+  return (
+    <div>
+      {/* ── 提示语：把两个手势一次说清 ── */}
+      <p className="mb-2 text-xs text-gray-600">
+        点击方块立即研究 · 悬停（手机长按）查看详情
+      </p>
+
+      {/* ── 主区：可研究的科技 ── */}
+      {available.length > 0 ? (
+        <div className="grid grid-cols-5 gap-2 sm:grid-cols-7 md:grid-cols-9 lg:grid-cols-11">
+          {available.map(({ def, status }) => (
+            <button
+              key={def.id}
+              type="button"
+              className={tileClass(status)}
+              aria-label={`${def.name}（${STATUS_META[status].text}）`}
+              // 桌面：悬停只看详情，移开延迟关
+              onMouseEnter={(e) => activate(def, status, e.currentTarget)}
+              onMouseLeave={scheduleClose}
+              // 触屏：长按只看详情（不研究）；短按走 onClick = 研究
+              onTouchStart={(e) => onTouchStart(def, status, e.currentTarget)}
+              onTouchEnd={cancelPress}
+              onTouchMove={cancelPress}
+              onClick={(e) => onTileClick(def, status, e.currentTarget)}
+            >
+              {tileLabel(def)}
+            </button>
+          ))}
+        </div>
+      ) : (
+        /* 空态：没有可研究的科技时给出原因，而不是留一片空白 */
+        <p className="rounded-md bg-gray-800/40 px-3 py-2 text-xs text-gray-500">
+          暂时没有可研究的科技 —— 攒够经验，或先完成前置科技。
+        </p>
+      )}
+
+      {/* ── 分类区：已学科技（默认收起，不抢主区注意力） ── */}
+      {learnedCount > 0 && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => setShowLearned(v => !v)}
+            aria-expanded={showLearned}
+            className="flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
+          >
+            <span className="text-[10px]">{showLearned ? '▼' : '▶'}</span>
+            <span>已学科技</span>
+            <span className="tabular-nums text-gray-600">
+              {learnedCount} / {techsOfEra(s.era).length}
+            </span>
+          </button>
+
+          {showLearned && (
+            <div className="mt-2 space-y-3">
+              {learnedGroups.map(([branch, list]) => {
+                const info = BRANCH_INFO[branch as TechDef['branch']];
+                return (
+                  <div key={branch}>
+                    {/* 分支标题：用分支色做一条细标记，与科技树的配色语言一致 */}
+                    <div className="flex items-center gap-2 px-1">
+                      <span
+                        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{ background: info.color }}
+                        aria-hidden
+                      />
+                      <span className="text-[11px] font-medium text-gray-400">{info.name}</span>
+                      <span className="text-[11px] tabular-nums text-gray-600">{list.length}</span>
+                    </div>
+                    {/* 已学方块更小（h-9）并整体降透明度——它们是"存档"，不是"待办" */}
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {list.map(def => (
+                        <button
+                          key={def.id}
+                          type="button"
+                          className="flex h-9 min-w-[36px] items-center justify-center rounded-md bg-gray-800/40 px-1.5 text-xs text-gray-400 ring-1 ring-gray-700 transition-colors hover:text-gray-200"
+                          aria-label={def.name}
+                          onMouseEnter={(e) => activate(def, 'researched', e.currentTarget)}
+                          onMouseLeave={scheduleClose}
+                          onTouchStart={(e) => onTouchStart(def, 'researched', e.currentTarget)}
+                          onTouchEnd={cancelPress}
+                          onTouchMove={cancelPress}
+                        >
+                          {showIcons ? (
+                            <Icon emoji={def.icon} className="text-base leading-none" />
+                          ) : (
+                            <span className="truncate">{def.short}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 浮层：点击/触摸其外区域即关闭（z-40 位于浮层之下、方块之上） */}
+      {overlay && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={closeNow} onTouchStart={closeNow} aria-hidden />
+          <div
+            className="fixed z-50 max-h-[70vh] w-[300px] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-3 text-left shadow-xl"
+            style={{ top: overlay.pos.top, left: overlay.pos.left }}
+            onMouseEnter={cancelClose}
+            onMouseLeave={scheduleClose}
+            role="dialog"
+            aria-label={overlay.def.name}
+          >
+            {/* 头部：图标 + 全名 + 分支·类型 */}
+            <div className="flex items-start gap-2">
+              <Icon emoji={overlay.def.icon} className="mt-0.5 text-2xl leading-none" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-gray-100">{overlay.def.name}</div>
+                <div className="text-[11px] text-gray-500">
+                  {BRANCH_INFO[overlay.def.branch].name} · {TECH_TYPE_LABEL[overlay.def.type]}
+                </div>
+              </div>
+            </div>
+
+            {/* 描述 */}
+            <p className="mt-2 text-xs leading-relaxed text-gray-300">{overlay.def.desc}</p>
+
+            {/* 效果（复用共享的中文渲染，单一来源） */}
+            {(() => {
+              const lines = describeEffects(overlay.def.effects);
+              if (lines.length === 0) return null;
+              return (
+                <ul className="mt-2 list-inside list-disc space-y-0.5 text-xs text-gray-400">
+                  {lines.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              );
+            })()}
+
+            {/* 成本 / 当前经验 */}
+            <div className="mt-2 flex items-center justify-between text-xs tabular-nums text-gray-500">
+              <span>
+                成本 <span className="text-gray-200">{formatNumber(overlay.def.cost, 0)}</span> 经验
+              </span>
+              <span>
+                存量 <span className="text-gray-200">{formatNumber(view.experience, 0)}</span>
+              </span>
+            </div>
+
+            {/* 状态 + 研究按钮（触屏主要靠这个按钮提交，因为长按只负责看） */}
+            <div className="mt-2 flex items-center justify-between">
+              <span className={`text-xs font-medium ${STATUS_META[overlay.status].cls}`}>
+                {STATUS_META[overlay.status].text}
+              </span>
+              {overlay.status === 'ready' && (
+                <button
+                  type="button"
+                  className="min-h-[40px] rounded-md bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
+                  onClick={() => {
+                    research(overlay.def.id);
+                    closeNow();
+                  }}
+                >
+                  研究
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// App.tsx 目前以具名导入引用本组件，这里保留默认导出以兼容两种写法
+export default TechGrid;

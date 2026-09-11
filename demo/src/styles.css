@@ -2,15 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────
+ * 主题：日间 / 夜间
+ * ─────────────────────────────────────────────
+ *
+ * 组件里的 className 全部是**深色优先**写的（bg-gray-900 = 页面底、
+ * text-gray-100 = 主文字）。这里通过重定位 gray 色阶的 CSS 变量来切换主题，
+ * 组件侧不需要任何改动。
+ *
+ * 变量值写成 `R G B` 三元组（不带 rgb()），因为 tailwind.config.js 里用的是
+ * `rgb(var(--gray-N) / <alpha-value>)` —— 这样才能让 `bg-gray-800/40`
+ * 这类透明度写法正常工作。
+ *
+ * 日间的取值不是"简单反相"，而是**按 token 的主要用途**定的：
+ *   gray-1xx/3xx/4xx/5xx/6xx 主要当文字色 → 数字越小越深（暗底上的亮字 → 亮底上的深字）
+ *   gray-7xx/8xx/9xx       主要当表面色 → 反过来，8xx 最亮（卡片=白），9xx 次之（页面=浅灰）
+ * 这样"卡片比页面亮"的层次关系在两个主题里都成立。
+ */
+
 :root {
   color-scheme: dark;
+
+  /* 夜间 = Tailwind 原生 gray 色阶（与改造前逐像素一致） */
+  --gray-50: 249 250 251;
+  --gray-100: 243 244 246;
+  --gray-200: 229 231 235;
+  --gray-300: 209 213 219;
+  --gray-400: 156 163 175;
+  --gray-500: 107 114 128;
+  --gray-600: 75 85 99;
+  --gray-700: 55 65 81;
+  --gray-800: 31 41 55;
+  --gray-900: 17 24 39;
+  --gray-950: 3 7 18;
+
+  /* 页面与正文底色（body 用） */
+  --page-bg: rgb(15 23 42);
+  --body-fg: rgb(241 245 249);
+  --scroll-track: rgb(30 41 59);
+  --scroll-thumb: rgb(71 85 105);
+  --scroll-thumb-hover: rgb(100 116 139);
+  --theme-border: rgb(31 41 55);
+  --theme-ring: rgb(31 41 55);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* 文字侧：数字越小越深 */
+  --gray-50: 241 245 249;
+  --gray-100: 15 23 42; /* 主文字（暗底上最亮 → 亮底上最深） */
+  --gray-200: 30 41 59;
+  --gray-300: 51 65 85;
+  --gray-400: 71 85 105;
+  --gray-500: 100 116 139; /* 次要文字 */
+  --gray-600: 148 163 184; /* 更弱的文字 */
+  --gray-700: 203 213 225; /* 极弱文字 / 悬停底色 */
+  /* 表面侧：8xx 反相成"卡片=白"，9xx 是"页面=浅灰" */
+  --gray-800: 255 255 255;
+  --gray-900: 241 245 249;
+  --gray-950: 248 250 252;
+
+  --page-bg: rgb(241 245 249);
+  --body-fg: rgb(15 23 42);
+  --scroll-track: rgb(226 232 240);
+  --scroll-thumb: rgb(203 213 225);
+  --scroll-thumb-hover: rgb(148 163 184);
+  --theme-border: rgb(226 232 240);
+  --theme-ring: rgb(203 213 225);
 }
 
 body {
   margin: 0;
   font-family: 'Lato', 'Helvetica Neue', Arial, sans-serif;
-  background: #0f172a;
-  color: #f1f5f9;
+  background: var(--page-bg);
+  color: var(--body-fg);
   overflow: hidden;
   user-select: none;
 }
@@ -30,14 +96,72 @@ input {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: var(--scroll-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #475569;
+  background: var(--scroll-thumb);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
+  background: var(--scroll-thumb-hover);
+}
+
+/* ─────────────────────────────────────────────
+ * 浅色主题的少量定点覆盖
+ * ─────────────────────────────────────────────
+ *
+ * 1) gray-800 同时是"卡片底色"和"边框色"。
+ *    浅色下卡片要是白（--gray-800），但边框若也是白就等于没有边框，
+ *    因此所有 border-gray-* / ring-gray-* 单独给浅灰。
+ * 2) 强调色（emerald/amber/red…）在深色主题里统一用 300/400 档亮色，
+ *    放到白底上对比度不足，浅色下整体压深 2–3 档。
+ *    只需处理**文字**：强调色背景（bg-red-800 / bg-emerald-500 / bg-sky-700）
+ *    在项目里一律配 text-white，保持原样即可。
+ */
+
+[data-theme='light'] .border-gray-800,
+[data-theme='light'] .border-gray-700,
+[data-theme='light'] .border-gray-600 {
+  border-color: var(--theme-border);
+}
+
+[data-theme='light'] .ring-gray-800,
+[data-theme='light'] .ring-gray-600 {
+  --tw-ring-color: var(--theme-ring);
+}
+
+/* 季节条里选中态文字压在彩色小块上，浅色下必须保持深色 */
+[data-theme='light'] .text-gray-900 {
+  color: rgb(15 23 42);
+}
+
+[data-theme='light'] [class*='text-emerald-'],
+[data-theme='light'] [class*='text-green-'] {
+  color: rgb(4 120 87);
+}
+[data-theme='light'] [class*='text-lime-'] {
+  color: rgb(77 124 15);
+}
+[data-theme='light'] [class*='text-amber-'],
+[data-theme='light'] [class*='text-yellow-'] {
+  color: rgb(180 83 9);
+}
+[data-theme='light'] [class*='text-orange-'] {
+  color: rgb(194 65 12);
+}
+[data-theme='light'] [class*='text-red-'],
+[data-theme='light'] [class*='text-rose-'] {
+  color: rgb(185 28 28);
+}
+[data-theme='light'] [class*='text-sky-'],
+[data-theme='light'] [class*='text-blue-'],
+[data-theme='light'] [class*='text-cyan-'] {
+  color: rgb(3 105 161);
+}
+[data-theme='light'] [class*='text-purple-'],
+[data-theme='light'] [class*='text-violet-'],
+[data-theme='light'] [class*='text-indigo-'] {
+  color: rgb(109 40 217);
 }
