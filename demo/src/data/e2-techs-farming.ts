@@ -85,7 +85,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
     requires: ['stone_sickle'],
     effects: { grainMultiplier: 1.2 },
     position: { x: -2, y: 13 },
-    desc: '谷物总产出×1.2',
+    desc: '食物总产出×1.2',
   },
   {
     id: 'chaff_compost',
@@ -127,7 +127,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
     requires: ['irrigation'],
     effects: { grainMultiplier: 1.15, feedCostMultiplier: 0.85 },
     position: { x: -2, y: 16 },
-    desc: '谷物×1.15、饲料成本×0.85',
+    desc: '食物×1.15、饲料成本×0.85',
   },
   {
     id: 'crop_rotation',

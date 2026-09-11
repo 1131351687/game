@@ -18,7 +18,7 @@ export interface EraMeta {
   gateTech: string;
   /** 跃迁到「下一代」的条件 */
   advanceConditions: {
-    /** 主粮最低储备（E1 读 food，E2 起读 grain）；不设则不检查 */
+    /** 主粮（食物）最低储备；采集与农耕已合并为同一资源，不设则不检查 */
     minFood?: number;
     /** 住所 / 村落民居最低座数；不设则不检查 */
     minHouses?: number;
@@ -73,7 +73,7 @@ export const ERAS: Record<EraId, EraMeta> = {
     gateTech: 'writing', // 文字，通往 E3
     advanceConditions: {
       // ── 按 E2 文档 §11.8 定稿（2026-09-11，此前为占位值 800/5/30）──
-      /** 谷物 ≥ 1500 */
+      /** 食物 ≥ 1500 */
       minFood: 1500,
       /** 文档未要求村落民居 —— 住房由「人口 ≥75」间接约束（K 必须够大才养得起） */
       minPopulation: 75,

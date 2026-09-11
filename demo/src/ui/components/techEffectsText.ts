@@ -70,7 +70,7 @@ const EFFECT_RENDERERS: ReadonlyArray<(e: TechEffects) => string | null> = [
   e => (e.summerAgriMul !== undefined ? `夏季农业倍率 +${formatNumber(e.summerAgriMul, 2)}` : null),
   e => (e.autumnAgriMul !== undefined ? `秋季农业倍率 +${formatNumber(e.autumnAgriMul, 2)}` : null),
   e => (e.winterAgriMul !== undefined ? `冬季农业倍率 +${formatNumber(e.winterAgriMul, 2)}` : null),
-  e => (e.grainMultiplier !== undefined ? `谷物总产出 ×${formatNumber(e.grainMultiplier, 2)}` : null),
+  e => (e.grainMultiplier !== undefined ? `食物总产出 ×${formatNumber(e.grainMultiplier, 2)}` : null),
   e =>
     e.jobMultiplier && Object.keys(e.jobMultiplier).length > 0
       ? `岗位效率：${Object.entries(e.jobMultiplier)

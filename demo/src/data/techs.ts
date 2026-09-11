@@ -94,7 +94,7 @@ export interface TechEffects {
   autumnAgriMul?: number;
   /** 冬季农业倍率加成（基础值 0.05） */
   winterAgriMul?: number;
-  /** 谷物总产出乘数 */
+  /** 食物总产出乘数（原为谷物，2026-09-12 合并） */
   grainMultiplier?: number;
   /** 按岗位的效率乘数（跨时代通用，例：{ farmer: 1.25 }） */
   jobMultiplier?: Partial<Record<JobId, number>>;
@@ -476,7 +476,7 @@ const E2_TECHS_CORE: TechDef[] = [
     cost: 150,
     type: 'unlock',
     // AND 前置：农业不是凭空开始的——
-    //   先得有「石镰与磨盘」收割野生谷物（采集时代的收割技术），
+    //   先得有「石镰与磨盘」收割野生谷物（采集时代的收割技术，收获即食物），
     //   再得有「选种育种」知道留哪些种子（种子知识）。
     // 二者都来自采集时代，农业是把它们攒到一起的那个跃迁。
     requires: ['stone_sickle', 'selective_breeding'],

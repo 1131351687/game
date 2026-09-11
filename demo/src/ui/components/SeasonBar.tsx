@@ -48,8 +48,9 @@ export function SeasonBar() {
   // ── 越冬预报 ──
   const toWinter = getSecondsToWinter(s.eraElapsedSec);
   const winterNeed = getWinterConsumption(s.population);
-  const grain = s.grain;
-  const gap = winterNeed - grain;
+  // 主粮已统一为「食物」（谷物已合并进来），越冬看的就是食物储备
+  const food = s.food;
+  const gap = winterNeed - food;
   const isAutumn = season === 'autumn';
 
   // 缺口配色：秋季仍不足 → 红 + 脉冲（最紧急）；其余季节不足 → 琥珀；充足 → 灰
@@ -61,9 +62,9 @@ export function SeasonBar() {
         ? 'animate-pulse text-danger'
         : 'text-warn';
 
-  // ── 谷仓容量 ──
-  const grainCap = getResourceStorage('grain', view);
-  const capRatio = Number.isFinite(grainCap) && grainCap > 0 ? Math.min(1, grain / grainCap) : 0;
+  // ── 储粮容量（E2 起含粮仓体系）──
+  const foodCap = getResourceStorage('food', view);
+  const capRatio = Number.isFinite(foodCap) && foodCap > 0 ? Math.min(1, food / foodCap) : 0;
   const nearFull = capRatio >= 0.9;
 
   return (
@@ -123,9 +124,9 @@ export function SeasonBar() {
         农业 ×{def.agriMultiplier}
       </span>
 
-      {/* ── 谷仓容量（接近满仓时变黄，提示"该建粮仓了"）── */}
+      {/* ── 储粮容量（接近满仓时变黄，提示"该建粮仓了"）── */}
       <span className="shrink-0 whitespace-nowrap text-xs">
-        <span className="text-gray-600">谷仓 </span>
+        <span className="text-gray-600">储粮 </span>
         <span
           className={`font-mono tabular-nums ${nearFull ? 'text-warn' : 'text-gray-400'}`}
           title={
@@ -134,7 +135,7 @@ export function SeasonBar() {
               : '秋收集中在秋季，容量不足就会眼看着烂掉'
           }
         >
-          {formatNumber(grain, 0)} / {formatNumber(grainCap, 0)}
+          {formatNumber(food, 0)} / {formatNumber(foodCap, 0)}
         </span>
         {nearFull && <span className="text-warn"> ⚠ 将溢出</span>}
       </span>
@@ -144,7 +145,7 @@ export function SeasonBar() {
         {isAutumn ? (
           gap > 0 ? (
             <>
-              入冬前还差 <span className="font-mono tabular-nums font-semibold">{formatNumber(gap, 0)}</span> 谷物
+              入冬前还差 <span className="font-mono tabular-nums font-semibold">{formatNumber(gap, 0)}</span> 食物
             </>
           ) : (
             <>
@@ -166,7 +167,7 @@ export function SeasonBar() {
               <>
                 <span className="text-gray-600"> ｜ 储备 </span>
                 <span className="font-mono tabular-nums">
-                  {grain >= winterNeed * SAFE_MARGIN ? '宽裕' : '够用'}
+                  {food >= winterNeed * SAFE_MARGIN ? '宽裕' : '够用'}
                 </span>
               </>
             )}

@@ -8,7 +8,7 @@ import { TECHS, TECH_MAP } from '../data/techs';
 import { JOBS, JOB_MAP, type JobId } from '../data/jobs';
 import { BUILDINGS, BUILDING_MAP, type BuildingId } from '../data/buildings';
 import type { ResourceId } from '../data/resources';
-import { eraDistance } from '../data/era';
+import { ERAS, eraDistance } from '../data/era';
 import { aggregateEffects, countResearched, isBuildingUnlocked, type E1State } from './engine';
 
 // ─────────────────────────────────────────────
@@ -20,9 +20,9 @@ export type UiModule = 'fire' | 'production' | 'buildings' | 'queue' | 'advance'
  * 模块解锁条件：
  *   fire       掌握火之后（火种仪表盘才出现）
  *   production 掌握火之后（有伐木者可派了；开局只有采集者，不需独立 Tab）
- *   buildings  任一建筑解锁后
+ *   buildings  任一"本代可建建筑"解锁，**或手里已握有旧时代建筑**
  *   queue      研究 2 项科技后（第 1 项还没必要排队）
- *   advance    门槛科技可见后
+ *   advance    **本代核心（门槛）科技研究完成后**才出现
  */
 export function isModuleUnlocked(m: UiModule, s: E1State): boolean {
   const eff = aggregateEffects(s);
@@ -31,11 +31,25 @@ export function isModuleUnlocked(m: UiModule, s: E1State): boolean {
     case 'production':
       return eff.fireEnabled;
     case 'buildings':
-      return eraBuildings(s).some(b => isBuildingUnlocked(b.id, s));
+      // 跃迁**不重置旧内容** → 进入新时代时玩家手里还握着旧时代的建筑
+      // （住所/火塘/作坊……）。若这里只数"本代建筑"，
+      // 会在 E2 开局（E2 建筑一项都还没解锁时）把整个建筑栏位判为不可用，
+      // 玩家的建筑就此"消失"——正是用户反馈的 bug。
+      // 因此：有本代可建建筑，或有任何一座已建成的建筑，栏位就该在。
+      return BUILDINGS.some(
+        b =>
+          (b.era === s.era || (s.buildings[b.id] ?? 0) > 0) && isBuildingUnlocked(b.id, s)
+      );
     case 'queue':
       return countResearched(s) >= 2;
     case 'advance':
-      return isTechRevealed('plant_cultivation', s);
+      // 「时代跃迁」栏位只在**本代核心（门槛）科技研究完成**后才出现。
+      //
+      // 为什么不是"可见即出现"：门槛科技一进新时代就在科技网格里，
+      // 于是跃迁面板从开局就杵在那儿、还顶着一排永远勾不满的条件
+      // （用户反馈："解锁了一次之后都出现，不适合"）。
+      // 完成门槛科技才是"该考虑跃迁了"的信号，此时出现才有信息量。
+      return !!s.techs[ERAS[s.era].gateTech];
   }
 }
 
@@ -102,10 +116,9 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
       return !!s.techs['stone_knapping'];
 
     // ── E2 定居时代 ──
-    case 'grain':
     case 'livestock':
-      // 谷物是定居时代的核心仪表盘数值（跃迁时即带 300 谷物入场），
-      // 牲畜同理 —— 两者一进入本时代就需要被看到，否则玩家不知道有这笔遗产。
+      // 牲畜一进入定居时代就需要被看到，否则玩家不知道有这笔遗产。
+      // （食物不再需要时代判定：采集与农耕已合并为同一资源，从开局就显示）
       // 用「当前时代 ≥ 资源所属时代」判定，而不是硬编码 === 'E2'，
       // 这样 E3 及以后继承这些资源时不必再改这里。
       return eraDistance('E2', s.era) >= 0;
@@ -157,14 +170,31 @@ export function getRevealedJobs(s: E1State) {
  * 且 E2 建筑仍消耗木材与石头，所以 JobPanel 不做时代过滤。
  */
 export function eraBuildings(s: E1State) {
-  return BUILDINGS.filter(b => b.era === s.era);
+  // 本代建筑 + **已建成的旧时代建筑**。
+  // 后者必须保留在列表里：跃迁不重置旧内容，它们仍在贡献承载力与加成，
+  // 玩家得能看见"我的火塘还在"，而不是凭空消失。
+  return BUILDINGS.filter(b => b.era === s.era || (s.buildings[b.id] ?? 0) > 0);
 }
 
 export function isBuildingRevealed(id: BuildingId, s: E1State): boolean {
   const def = BUILDING_MAP[id];
-  if (def.era !== s.era) return false;
+  const owned = (s.buildings[id] ?? 0) > 0;
+  // 旧时代建筑：只有**已建成**的才显示（保留成果），不提供新建入口
+  if (def.era !== s.era && !owned) return false;
   if (!def.requires.tech) return true;
   return !!s.techs[def.requires.tech];
+}
+
+/**
+ * 该建筑在当前时代**是否还能新建**。
+ *
+ * 已建成的旧时代建筑继续生效（K、火源、工具加成照算），但**不再开放新建**——
+ * 否则 E2 里 30 木材的「住所」会直接架空 40 木材 + 20 石头的「村落民居」
+ * （两者同样提供 K+4），新内容会立刻变成死内容。
+ * 这不是"重置旧内容"，而是"时代分界线只决定新增什么"的自然结果。
+ */
+export function isBuildingBuildable(id: BuildingId, s: E1State): boolean {
+  return BUILDING_MAP[id].era === s.era && isBuildingUnlocked(id, s);
 }
 
 export function getRevealedBuildings(s: E1State) {

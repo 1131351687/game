@@ -52,9 +52,10 @@ export interface EraState {
   // E2 定居时代
   // ─────────────────────────────────────────────
 
-  /** 谷物：定居时代的主粮，受粮仓容量限制 */
-  grain: number;
-  /** 活体牲畜：既是储备也是畜力，**不占粮仓容量** */
+  // 注：谷物（grain）曾是与食物并列的主粮资源，2026-09-12 用户拍板
+  // 「暂时不区分采集所得与农耕收获」，两资源已**合并为单一「食物」**。
+  // 粮仓体系（容量 / 陶窑加成 / 通风）保留，作用对象改为食物上限。
+  /** 活体牲畜：既是储备也是畜力，**不占储存容量** */
   livestock: number;
   /** 织物 */
   fabric: number;
@@ -437,7 +438,8 @@ export function getFoodFactor(state: E1State): number {
   // 而是"入冬前攒了多少"。所以食物因子直接由人均储粮推导
   // （设计文档 §5：≥60→1.0，≥32→0.8，≥12→0.4，<12→0，=0→−0.5）。
   if (aggregateEffects(state).seasonsEnabled) {
-    const perPerson = state.population > 0 ? state.grain / state.population : state.grain;
+    // 定居时代：人均**存量**决定食物因子（原按谷物，现按合并后的食物）
+    const perPerson = state.population > 0 ? state.food / state.population : state.food;
     return getFoodFactorFromStorage(perPerson);
   }
 
@@ -558,7 +560,9 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
   if (resourceId === 'stone') total *= eff.stoneMultiplier;
 
   // ── E2 ──
-  if (resourceId === 'grain') total *= eff.grainMultiplier;
+  // 「食物总产出 ×N」类科技（原 grainMultiplier，谷物合并前的作用对象）
+  // 现在作用于合并后的食物产出——采集/狩猎/农耕一视同仁。
+  if (resourceId === 'food') total *= eff.grainMultiplier;
   if (resourceId === 'livestock') total *= eff.livestockFoodMul;
 
   // 科技给的按资源乘数（跨时代通用）
@@ -710,10 +714,13 @@ export function checkAdvance(state: E1State): AdvanceCheck {
   //    这里只修正"读哪个字段"，不动数值，配平定稿后仍需校准。
   //    E3 及以后若引入新的主粮 / 住所体系，需要在这里继续扩展映射。
   const settled = state.era !== 'E1';
-  const staple = settled ? state.grain : state.food;
-  const housing = settled ? (state.buildings.village_house ?? 0) : (state.buildings.house ?? 0);
-  const stapleLabel = settled ? '谷物储备' : '食物储备';
-  const housingLabel = settled ? '村落民居' : '住所';
+  // 主粮：采集与农耕所得已合并为「食物」，两个时代都读同一个字段
+  const staple = state.food;
+  // 住所：住所（E1）与村落民居（E2）都提供承载力，跃迁后**两者并存**，
+  // 所以门槛也要合计——否则玩家建了满村新民居，门槛却只数其中一种。
+  const housing = (state.buildings.house ?? 0) + (state.buildings.village_house ?? 0);
+  const stapleLabel = '食物储备';
+  const housingLabel = settled ? '住所/村落民居' : '住所';
 
   const items: AdvanceCheck['items'] = [
     {
@@ -782,30 +789,34 @@ export function checkAdvance(state: E1State): AdvanceCheck {
 export function getResourceStorage(resourceId: ResourceId, state: E1State): number {
   const eff = aggregateEffects(state);
   switch (resourceId) {
-    case 'food':
+    case 'food': {
       // 首轮实测 500 太早撞上限（10 分钟就满），浪费产出
-      return 1000 * eff.foodStorageMultiplier;
-    case 'wood':
-      // 基础建材容量 = 基础上限 500 + Σ粮仓 ×300（「存储建筑双扩容」，见 storage-plan.md §4）
-      // 粮仓是 E2 建筑，E1 拿不到（受时代 + 科技双重门禁），因此本条对 E1 无影响。
-      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_WOOD_BONUS;
-    case 'stone':
-      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_STONE_BONUS;
-    case 'grain': {
-      // 谷物容量 = (400 + Σ粮仓×单仓容量) × (1 + 陶窑加成×min(陶窑数,3) + 陶罐储藏加成)
-      // 「谷仓通风系统」再按溢出阈值放宽容量的 20%。
+      const base = 1000 * eff.foodStorageMultiplier;
+      // 定居时代：粮仓体系并入食物上限（谷物合并后的结果）
+      //
+      // 原公式（独立谷物资源时）：(400 + Σ粮仓×单仓容量) × (1 + 陶窑加成 + 陶罐储藏) × (1 + 通风)
+      // 现在这两种粮是一种，所以容量**相加**：
+      //   E1 的储存技术（烟熏 ×2）继续生效，粮仓/陶窑/陶罐再加一层。
+      // E1 没有季节循环（seasonsEnabled=false）→ 直接返回 base，逐字节不变。
+      if (!eff.seasonsEnabled) return base;
       const granaries = state.buildings.granary ?? 0;
       const kilns = state.buildings.kiln ?? 0;
       const jarStorageBonus = eff.granaryCapacityMul - 1;
-      const base = getGranaryCapacity(
+      const granaryCap = getGranaryCapacity(
         granaries,
         kilns,
         jarStorageBonus,
         eff.granaryPerUnit > 0 ? eff.granaryPerUnit : undefined,
         eff.kilnBonus > 0 ? eff.kilnBonus : undefined
       );
-      return base * (1 + eff.granaryOverflowBonus);
+      return base + granaryCap * (1 + eff.granaryOverflowBonus);
     }
+    case 'wood':
+      // 基础建材容量 = 基础上限 500 + Σ粮仓 ×300（「存储建筑双扩容」，见 storage-plan.md §4）
+      // 粮仓是 E2 建筑，E1 拿不到（受时代 + 科技双重门禁），因此本条对 E1 无影响。
+      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_WOOD_BONUS;
+    case 'stone':
+      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_STONE_BONUS;
     // 牲畜是活体储备，不占粮仓容量；织物同理
     default:
       return Number.POSITIVE_INFINITY;
@@ -860,8 +871,7 @@ export interface TickResult {
   population: number;
   populationProgress: number;
   fire: number;
-  // ── E2 定居时代 ──
-  grain: number;
+  // ── E2 定居时代 ──（食物已与谷物合并，不再单列）
   livestock: number;
   fabric: number;
   eraElapsedSec: number;
@@ -922,23 +932,32 @@ export function tick(state: E1State, dt: number): TickResult {
     if (population <= 0) progress = 0;
   }
 
-  const consumption = population * POPULATION.FOOD_CONSUMPTION_PER_PERSON * dt;
+  // ── 3.5) 吃粮：单一「食物」池 ──
+  //
+  // 2026-09-12 用户拍板：**暂时不区分**采集所得与农耕收获，统一为「食物」
+  // （原独立的「谷物」资源已合并进来，见 data/resources.ts）。
+  //
+  // 于是这里是唯一的吃粮路径：
+  //   食物 = 现值 + 产出（采集/狩猎/农耕同源） − 人口消耗 − 牲畜饲料
+  // 定居时代人口更集中，人均消耗取 E2.FOOD_PER_PERSON_SEC（0.25/秒），
+  // E1 仍是 0.2/秒 —— E1 逐字节不变。
+  const popPerSec = eff.seasonsEnabled
+    ? E2.FOOD_PER_PERSON_SEC
+    : POPULATION.FOOD_CONSUMPTION_PER_PERSON;
 
-  let food = state.food + foodGain - consumption;
-  food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
+  let food = state.food + foodGain - population * popPerSec * dt;
 
   // ─────────────────────────────────────────────
-  // 4) E2 定居时代：谷物 / 牲畜 / 织物
+  // 4) E2 定居时代：牲畜 / 织物
   // ─────────────────────────────────────────────
   //
-  // 谷物是定居时代的主粮，且有**硬容量**（粮仓）——这是「秋天必须攒够」
-  // 这个核心玩法的落地点：产出集中在秋季，但仓库装不下就只能眼看着烂掉。
-  let grain = state.grain ?? 0;
+  // 食物有**硬容量**（E1 由储存技术决定，E2 再加粮仓体系）——
+  // 这是「秋天必须攒够」这个核心玩法的落地点：产出集中在秋季，
+  // 但仓库装不下就只能眼看着烂掉。
   let livestock = state.livestock ?? 0;
   let fabric = state.fabric ?? 0;
 
   if (eff.seasonsEnabled) {
-    const grainGain = calcResourceOutput('grain', state) * dt;
     const livestockGain = calcResourceOutput('livestock', state) * dt;
     const fabricGain = calcResourceOutput('fabric', state) * dt;
 
@@ -947,25 +966,21 @@ export function tick(state: E1State, dt: number): TickResult {
     const penCap = pens * (E2.PEN_CAPACITY + eff.penCapacityAdd);
     livestock = Math.min(livestock + livestockGain, penCap);
 
-    // 人吃谷物；牲畜吃饲料（「畜力与厩肥」可降饲料成本）
-    const grainConsumption =
-      population * E2.GRAIN_PER_PERSON_SEC * dt +
-      livestock * E2.FEED_PER_LIVESTOCK_SEC * eff.feedCostMultiplier * dt;
+    // 牲畜吃饲料（「畜力与厩肥」可降饲料成本）
+    food -= livestock * E2.FEED_PER_LIVESTOCK_SEC * eff.feedCostMultiplier * dt;
 
-    grain = grain + grainGain - grainConsumption;
-
-    // 谷物见底 → 牲畜闹饥荒。
+    // 食物见底 → 牲畜闹饥荒。
     // 默认（无兽医知识）存活率为 0，即"饥荒牲畜死亡率 100%"；
     // 「兽医知识」把它提到 50%。注意这里只损失牲畜，不损失人口与科技。
-    if (grain < 0) {
-      grain = 0;
+    if (food < 0) {
       const loss = 1 - eff.livestockFamineSurvival;
       if (loss > 0) livestock = Math.max(0, livestock * (1 - loss));
     }
 
-    grain = Math.min(grain, getResourceStorage('grain', state));
     fabric = Math.max(0, fabric + fabricGain);
   }
+
+  food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
 
   return {
     food,
@@ -975,7 +990,6 @@ export function tick(state: E1State, dt: number): TickResult {
     population,
     populationProgress: progress,
     fire,
-    grain,
     livestock,
     fabric,
     eraElapsedSec,

@@ -82,7 +82,8 @@ export const JOBS: JobDef[] = [
     id: 'farmer',
     name: '农夫',
     icon: '🌾',
-    output: 'grain',
+    // 农耕收获与采集所得统一为「食物」（2026-09-12 合并，见 data/resources.ts）
+    output: 'food',
     outputRate: 0.8,
     requires: { tech: 'agriculture' },
     scaledByTool: false,

@@ -33,7 +33,7 @@ const RATE_COL = 'min-w-[3rem] text-right';
 /**
  * E2 定居时代的资源排列顺序。
  *
- * 谷物是本时代的核心仪表盘数值（同 E1 的火种），必须排在最前；
+ * 食物是本时代的核心仪表盘数值（同 E1 的火种），必须排在最前；
  * 接下来是另外两项本时代资源（牲畜 / 织物）。
  * 木材 / 石头仍显示 —— E2 的建筑（村落民居、田地、粮仓…）照样消耗它们。
  * 经验沿用 E1。
@@ -44,7 +44,7 @@ const RATE_COL = 'min-w-[3rem] text-right';
  * 只把它降级到末位，不做静默删除。
  */
 const E2_RESOURCE_ORDER: ResourceId[] = [
-  'grain',
+
   'livestock',
   'fabric',
   'wood',
@@ -71,7 +71,7 @@ export function TopBar() {
         const amount =
           id === 'experience'
             ? s.experience
-            : (s[id as 'food' | 'wood' | 'stone' | 'grain' | 'livestock' | 'fabric'] as number);
+            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric'] as number);
 
         return (
           // gap 负责间距：图标被隐藏（Icon → null）时不会留下空洞

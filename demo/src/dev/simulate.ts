@@ -26,7 +26,7 @@ import { TECHS, techsOfEra } from '../data/techs';
 import { JOBS } from '../data/jobs';
 import { POPULATION, E2 } from '../data/constants';
 import { SEASONS, getSeasonFromElapsed, getWinterConsumption } from '../game/season';
-import { computeEraTransition, TRANSITION } from '../game/transition';
+import { computeEraTransition } from '../game/transition';
 
 /** E1 链式推演的时长：beeline 门槛在 932s，多跑到 1200s 模拟"玩家达成门槛后又攒了一会儿" */
 const E1_CHAIN_SEC = 1200;
@@ -41,7 +41,6 @@ function makeState(): E1State {
     stone: 0,
     experience: 0,
     // E2 字段在 E1 恒为 0 —— 季节循环未开启时引擎不会读取它们
-    grain: 0,
     livestock: 0,
     fabric: 0,
     eraElapsedSec: 0,
@@ -61,7 +60,7 @@ function advance(s: E1State, dt: number): void {
   s.wood = r.wood;
   s.stone = r.stone;
   s.experience = r.experience;
-  s.grain = r.grain;
+  s.food = r.food;
   s.livestock = r.livestock;
   s.fabric = r.fabric;
   s.eraElapsedSec = r.eraElapsedSec;
@@ -263,7 +262,7 @@ function autoplay(
 /**
  * E2 起始状态 —— **真实走一遍 E1 跃迁**，不再手工镜像。
  *
- * 旧实现把 E2 起始状态硬编码（population: 15 / grain: 300 / wood: 0），
+ * 旧实现把 E2 起始状态硬编码（population: 15 / 主粮: 300 / wood: 0），
  * 等于把"跃迁产物"抄了一份；一旦 store.advanceEra 改了规则，
  * 模拟器就会和真实游戏漂移（这正是本次要修的 bug 之一）。
  *
@@ -283,9 +282,10 @@ function makeE2State(): E1State {
         `经验 ${e1.experience.toFixed(0)}`
     );
     console.log(
-      `  E2 起始：人口 ${Math.floor(t.population)} | 谷物 ${t.grain}（食物 ×${TRANSITION.FOOD_TO_GRAIN} 折算）| ` +
-        `木 ${t.wood.toFixed(0)}（继承）| 石 ${t.stone.toFixed(0)}（继承）| ` +
-        `村落民居 ${t.buildings.village_house}（K 连续）| 经验 ${t.experience.toFixed(0)}（继承）`
+      `  E2 起始：人口 ${Math.floor(t.population)}（原样）| 食物 ${t.food.toFixed(0)}（原样，不折算）| ` +
+        `木 ${t.wood.toFixed(0)} / 石 ${t.stone.toFixed(0)}（原样）| ` +
+        `建筑 住所 ${t.buildings.house} + 火塘 ${t.buildings.hearth}（全部保留）| ` +
+        `岗位 伐木 ${t.jobs.woodcutter}（保留）| 经验 ${t.experience.toFixed(0)}（保留）`
     );
     console.log('');
   }
@@ -316,7 +316,7 @@ function autoplayE2(): void {
   let writingAt = -1;
   /** 首次满足**全部**跃迁条件的秒数；-1 表示推演结束仍未满足 */
   let advanceAt = -1;
-  let minGrain = s.grain;
+  let minFood = s.food;
   let famineSec = 0;
   let overflowMarks = 0;
   let t = 0;
@@ -337,7 +337,7 @@ function autoplayE2(): void {
   };
 
   const autoBuildE2 = (): void => {
-    const cap = getResourceStorage('grain', s);
+    const cap = getResourceStorage('food', s);
     const fields = s.buildings.field ?? 0;
     const villages = s.buildings.village_house ?? 0;
     const granaries = s.buildings.granary ?? 0;
@@ -358,16 +358,16 @@ function autoplayE2(): void {
       tryBuild('field')
     )
       return;
-    // 2) 粮仓：容量逼近溢出就立刻补（溢出的谷物等于白产）
-    if (granaries < 4 && s.grain > cap * 0.8 && tryBuild('granary')) return;
+    // 2) 粮仓：容量逼近溢出就立刻补（溢出的食物等于白产）
+    if (granaries < 4 && s.food > cap * 0.8 && tryBuild('granary')) return;
     // 3) 村落民居：人口顶到承载力时补
     if (villages < 12 && K < pop + 4 && tryBuild('village_house')) return;
     // 4) 畜栏：活体储备 = 冬季保险
     if (pens < 3 && tryBuild('animal_pen')) return;
-    // 5) 陶窑：抬谷物上限（最多 3 座生效）
+    // 5) 陶窑：抬食物上限（最多 3 座生效）
     if (kilns < 3 && tryBuild('kiln')) return;
     // 6) 兜底：余粮充足就继续开田
-    if (fields < 12 && s.grain > 500) tryBuild('field');
+    if (fields < 12 && s.food > 500) tryBuild('field');
   };
 
   // ── 分配人力 ──
@@ -424,12 +424,12 @@ function autoplayE2(): void {
     // 3) 织物：纺织后派 1 名织工，攒够即撤
     if (s.techs['textile'] && s.fabric < 300) take('weaver', 1);
 
-    // 4) 农耕：谷物是本时代的胜负手
+    // 4) 农耕：食物是本时代的胜负手
     //
     // ⚠️ 关键：**农夫数不能超过田地工位数**。
     //    超出的人不会产出（田地效率 = min(工位, 农夫/工位)），
     //    只会白白空转——这是本模拟器此前最严重的一处失真：
-    //    人口 20、田地 1 块时把 17 个闲人全塞进田里，谷物实际产出为 0，
+    //    人口 20、田地 1 块时把 17 个闲人全塞进田里，食物实际产出为 0，
     //    人口在 180 秒内饿死归零（详见本次交接记录）。
     //    正确做法：只派满工位，余下的人去砍柴打石（才是下一块田的料）。
     if (season === 'winter') {
@@ -474,21 +474,21 @@ function autoplayE2(): void {
     autoResearchE2(t);
     autoAssignE2();
     autoBuildE2();
-    minGrain = Math.min(minGrain, s.grain);
-    if (s.grain <= 0.01) famineSec += STEP;
+    minFood = Math.min(minFood, s.food);
+    if (s.food <= 0.01) famineSec += STEP;
     // 首次满足全部跃迁条件的时刻 —— 这才是 E2 真正的"通关时间"
-    // （「文字」只是其中一项，还有 ≥8 个冬季 / 谷物 / 人口 / 粮仓 / 田地）
+    // （「文字」只是其中一项，还有 ≥8 个冬季 / 食物 / 人口 / 粮仓 / 田地）
     if (advanceAt < 0 && checkAdvance(s).ok) advanceAt = Math.round(t);
   };
 
   const row = (): string => {
-    const cap = getResourceStorage('grain', s);
+    const cap = getResourceStorage('food', s);
     const season = SEASONS[getSeasonFromElapsed(s.eraElapsedSec)];
     const year = Math.floor(s.eraElapsedSec / 240) + 1;
     return (
       `  ${String(Math.round(t)).padStart(5)}s | ${season.name} | 第${String(year).padStart(2)}年 | ` +
       `人口 ${String(Math.floor(s.population)).padStart(3)}/${String(getCapacity(s)).padStart(3)} | ` +
-      `谷物 ${s.grain.toFixed(0).padStart(5)}/${cap.toFixed(0).padStart(5)} | ` +
+      `食物 ${s.food.toFixed(0).padStart(5)}/${cap.toFixed(0).padStart(5)} | ` +
       `牲畜 ${s.livestock.toFixed(0).padStart(3)} | 织物 ${s.fabric.toFixed(0).padStart(4)} | ` +
       `经验 ${s.experience.toFixed(0).padStart(5)} | E2 科技 ${String(countE2()).padStart(2)}/${e2Techs.length}`
     );
@@ -496,8 +496,9 @@ function autoplayE2(): void {
 
   console.log('=== E2 定居时代自动试玩 ===\n');
   console.log(
-    `（起始：人口 ${Math.floor(s.population)} / K=${getCapacity(s)} / 谷物 ${s.grain.toFixed(0)} / ` +
-      `${s.buildings.village_house} 座村落民居 / 经验 ${s.experience.toFixed(0)} / E1 科技全掌握）\n`
+    `（起始：人口 ${Math.floor(s.population)}（原样继承） / K=${getCapacity(s)} / 食物 ${s.food.toFixed(0)}（原样继承） / ` +
+      `住所 ${s.buildings.house} 座 + 火塘 ${s.buildings.hearth} 座（跃迁保留） / ` +
+      `经验 ${s.experience.toFixed(0)} / E1 科技全掌握）\n`
   );
 
   const log: string[] = [];
@@ -511,8 +512,8 @@ function autoplayE2(): void {
     const mark = Math.round(t);
     if (mark % 60 === 0 && !logged.has(mark)) {
       logged.add(mark);
-      const cap = getResourceStorage('grain', s);
-      if (s.grain >= cap * 0.999) overflowMarks += 1;
+      const cap = getResourceStorage('food', s);
+      if (s.food >= cap * 0.999) overflowMarks += 1;
       log.push(row());
     }
   }
@@ -547,11 +548,11 @@ function autoplayE2(): void {
     console.log(`❌ ${Math.round(t)}s 内未达成门槛「文字」（已到推演上限）`);
   }
   console.log('');
-  console.log(`最低谷物值：${minGrain.toFixed(0)}`);
-  console.log(`是否饿过（谷物见底）：${famineSec > 0 ? `是，累计 ${famineSec.toFixed(0)}s` : '否'}`);
-  console.log(`谷物触顶溢出次数（按 60s 采样）：${overflowMarks}`);
-  console.log(`末态：人口 ${Math.floor(s.population)} / K ${getCapacity(s)} | 谷物 ${s.grain.toFixed(0)} / ${getResourceStorage('grain', s).toFixed(0)} | 牲畜 ${s.livestock.toFixed(0)} | 织物 ${s.fabric.toFixed(0)}`);
-  console.log(`末态越冬需求：${getWinterConsumption(s.population).toFixed(0)} 谷物（人口 × 15）—— 当前储备 ${s.grain >= getWinterConsumption(s.population) ? '高于' : '低于'}该需求`);
+  console.log(`最低食物值：${minFood.toFixed(0)}`);
+  console.log(`是否饿过（食物见底）：${famineSec > 0 ? `是，累计 ${famineSec.toFixed(0)}s` : '否'}`);
+  console.log(`食物触顶溢出次数（按 60s 采样）：${overflowMarks}`);
+  console.log(`末态：人口 ${Math.floor(s.population)} / K ${getCapacity(s)} | 食物 ${s.food.toFixed(0)} / ${getResourceStorage('food', s).toFixed(0)} | 牲畜 ${s.livestock.toFixed(0)} | 织物 ${s.fabric.toFixed(0)}`);
+  console.log(`末态越冬需求：${getWinterConsumption(s.population).toFixed(0)} 食物（人口 × 15）—— 当前储备 ${s.food >= getWinterConsumption(s.population) ? '高于' : '低于'}该需求`);
   console.log('');
   console.log('★ 时代跃迁检查（checkAdvance）：');
   for (const item of adv.items) {
@@ -566,7 +567,7 @@ function autoplayE2(): void {
     console.log(`⛔ ${Math.round(t)}s 内未满足全部跃迁条件`);
   }
   console.log('');
-  console.log(`备注：末态谷物净产出 ${(s.grain > 0 ? '为正' : '为 0')}；人口上限 K 由村落民居与已耕作田地共同提供。`);
+  console.log(`备注：末态食物净产出 ${(s.food > 0 ? '为正' : '为 0')}；人口上限 K 由村落民居与已耕作田地共同提供。`);
 }
 
 const args = process.argv.slice(1);

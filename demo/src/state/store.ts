@@ -78,9 +78,10 @@ export interface GameState {
   experience: number;
 
   // ── E2 定居时代资源 ──
-  /** 谷物：定居时代的主粮，受粮仓容量**硬限制** */
-  grain: number;
-  /** 活体牲畜：不占粮仓容量的活体储备，也是畜力来源 */
+  // 注：「谷物」曾是与食物并列的主粮，2026-09-12 用户拍板
+  // 「暂时不区分采集所得与农耕收获」，已**合并为单一「食物」**。
+  // 旧存档里的 grain 在 loadSnapshot 中折算进 food（见 v5 迁移）。
+  /** 活体牲畜：不占储存容量的活体储备，也是畜力来源 */
   livestock: number;
   /** 织物 */
   fabric: number;
@@ -147,7 +148,7 @@ export interface GameState {
   advanceEra: () => boolean;
 }
 
-const SAVE_VERSION = 4;
+const SAVE_VERSION = 5;
 
 const initialState = () => ({
   running: false,
@@ -157,7 +158,6 @@ const initialState = () => ({
   wood: INITIAL_STATE.wood,
   stone: INITIAL_STATE.stone,
   experience: INITIAL_STATE.experience,
-  grain: 0,
   livestock: 0,
   fabric: 0,
   eraElapsedSec: 0,
@@ -184,7 +184,6 @@ function engineView(s: GameState): engine.EraState {
     wood: s.wood,
     stone: s.stone,
     experience: s.experience,
-    grain: s.grain,
     livestock: s.livestock,
     fabric: s.fabric,
     eraElapsedSec: s.eraElapsedSec,
@@ -254,7 +253,7 @@ export const useStore = create<GameState>((set, get) => ({
     // 按成本表逐项扣除。写成资源名驱动而不是 if (res === 'wood')/('stone')/('food')，
     // 否则 E2/E3 一旦出现谷物等新成本的建筑，就会变成"不花资源白拿"。
     for (const [res, amount] of Object.entries(cost)) {
-      const key = res as 'food' | 'wood' | 'stone' | 'grain' | 'livestock' | 'fabric';
+      const key = res as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric';
       const owned = s[key];
       if (typeof owned === 'number') next[key] = owned - (amount as number);
     }
@@ -311,7 +310,6 @@ export const useStore = create<GameState>((set, get) => ({
       wood: r.wood,
       stone: r.stone,
       experience: r.experience,
-      grain: r.grain,
       livestock: r.livestock,
       fabric: r.fabric,
       eraElapsedSec: r.eraElapsedSec,
@@ -378,7 +376,6 @@ export const useStore = create<GameState>((set, get) => ({
       wood: s.wood,
       stone: s.stone,
       experience: s.experience,
-      grain: s.grain,
       livestock: s.livestock,
       fabric: s.fabric,
       eraElapsedSec: s.eraElapsedSec,
@@ -400,7 +397,9 @@ export const useStore = create<GameState>((set, get) => ({
   loadSnapshot: (data) => {
     // 存档迁移：
     //   v1 及更早 —— 没有 era 字段，按远古时代补上
-    //   v2 及更早 —— 没有 E2 的谷物/牲畜/织物，也没有季节计时，一律补 0
+    //   v2 及更早 —— 没有 E2 的牲畜/织物，也没有季节计时，一律补 0
+    //   v4 及更早 —— 有独立的「谷物」资源；v5 起谷物并入食物，
+    //                迁移时把存档里的 grain **折算进 food**，不让玩家的存粮凭空消失
     const oldVersion = data.version ?? 0;
 
     // settings 是嵌套对象，且 loadSnapshot 走的是 set({ ...migrated }) 浅合并——
@@ -419,10 +418,15 @@ export const useStore = create<GameState>((set, get) => ({
       settings = { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) };
     }
 
+    // 谷物 → 食物 折算（v<5）：这是「资源合并」，不是资源删除，
+    // 所以直接相加（1:1）——谷物本就是食物的一种（见 data/resources.ts）。
+    //    旧存档的结构里可能有 grain 字段（类型系统已不认它），故按 unknown 取
+    const legacyGrain = oldVersion < 5 ? ((data as Record<string, unknown>).grain as number ?? 0) : 0;
+
     const migrated: Partial<GameState> = {
       ...data,
       era: (data.era as EraId | undefined) ?? 'E1',
-      grain: data.grain ?? 0,
+      food: (data.food ?? 0) + legacyGrain,
       livestock: data.livestock ?? 0,
       fabric: data.fabric ?? 0,
       eraElapsedSec: data.eraElapsedSec ?? 0,
@@ -453,42 +457,56 @@ export const useStore = create<GameState>((set, get) => ({
 
     // 3. 交接规则统一由 game/transition.ts 的纯函数计算
     //
-    //    **跃迁 = 继承 + 降权 + 新增，绝不是清零。**（铁律 3）
+    //    **时代分界线只决定"新增什么内容"，不改动其它任何状态。**
     //
-    //    旧实现在这里把木材/石头归零、人口硬编码 15，与设计文档
-    //    E2-sedentary.md §11.1 直接冲突（文档写明"木材/石头 保留 E1 结余/继承"，
-    //    人口 15 是"E1 跃迁条件要求 ≥15"的**下限**而非固定值）。
-    //    结果是玩家在 E1 攒的 1000 食物 / 20 人 / 300 木材跃迁后全部蒸发，
-    //    「层层递进」的体感被抹平。
+    //    跃迁后玩家带着原样的资源、人口、建筑、岗位分配与研究队列进入新时代；
+    //    唯一被初始化的是新时代季节循环的计时起点（新机制从 0 起算）。
     //
-    //    现在的规则（详见 transition.ts）：
-    //      · 人口   → 继承真实值，不低于 15（文档下限）
-    //      · 木材/石头 → **继承结余**
-    //      · 食物   → 按 50% 折算为谷物（采集食物易腐，入仓打对折）
-    //      · 建筑   → 按等值升级映射继承（住所 K+4 → 村落民居 K+4，保持 K 连续）
-    //      · 岗位   → 清零（新时代的岗位体系不同，这是"新动词"的体现）
-    //      · 科技/经验 → 保留（文明积累不清零，效果按 eraDecay 自动衰减）
-    const t = computeEraTransition(engineView(s), nextEraId);
+    //    历史教训：更早的实现把木石归零、人口硬编码 15；
+    //    上一版仍把食物折算成谷物、建筑清零后只映射住宅、岗位清零——
+    //    玩家会发现火塘与作坊不见了、分配好的伐木工全部下岗，
+    //    「层层递进」的体感被抹平。本版彻底改为"只新增"。
+    //    详见 transition.ts 顶部注释。
+    //    入参用完整 state 而不是 engineView：engineView 是"引擎只读切片"
+    //    （只含引擎计算需要的字段），而跃迁要带着**队列**过河，
+    //    所以这里显式构造交接切片。
+    const t = computeEraTransition(
+      {
+        era: s.era,
+        eraElapsedSec: s.eraElapsedSec,
+        population: s.population,
+        populationProgress: s.populationProgress,
+        food: s.food,
+        wood: s.wood,
+        stone: s.stone,
+        livestock: s.livestock,
+        fabric: s.fabric,
+        experience: s.experience,
+        buildings: s.buildings,
+        jobs: s.jobs,
+        queue: s.queue,
+        techs: s.techs,
+      },
+      nextEraId
+    );
 
     set({
       era: t.era,
+      eraElapsedSec: t.eraElapsedSec,
+      // 下列字段都是 transition 的原样透传（显式列出 = "到底带着什么过河"）
       food: t.food,
       wood: t.wood,
       stone: t.stone,
-      grain: t.grain,
       livestock: t.livestock,
       fabric: t.fabric,
       experience: t.experience,
-      eraElapsedSec: t.eraElapsedSec,
       jobs: t.jobs,
       buildings: t.buildings,
-      queue: [] as string[],
+      queue: t.queue,
       population: t.population,
       populationProgress: t.populationProgress,
-      // researchProgress 也归零——新队列开头无正在进行的研究
-      researchProgress: 0,
-      // 以下字段显式保留（与 set patch 合并后等价于不改动）：
-      // techs / stats / settings / fire / autoMaintainFire
+      // 以下字段不经 transition，直接保持原值：
+      // techs / researchProgress / stats / settings / fire / autoMaintainFire
     });
 
     // 5. 发送时代跃迁消息（重要，置顶显示）

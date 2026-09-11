@@ -2,7 +2,7 @@
 
 import type { EraId } from './era';
 
-export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'grain' | 'livestock' | 'fabric';
+export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric';
 
 export interface ResourceDef {
   id: ResourceId;
@@ -25,7 +25,10 @@ export const RESOURCES: ResourceDef[] = [
     icon: '🍖',
     category: 'material',
     era: 'E1',
-    desc: '采集与狩猎所得，支撑人口增长。',
+    // 2026-09-12 用户拍板：**暂时不区分**采集/狩猎所得与农耕收获，
+    // 统一称为「食物」（原「谷物」资源已合并进来）。
+    // 若将来要恢复粮仓专精与储藏品质的差异化，从这里重新拆分。
+    desc: '全部可食用的储备：采集、狩猎与农耕所得，支撑人口增长。受储存上限约束，溢出即浪费。',
   },
   {
     id: 'wood',
@@ -60,20 +63,12 @@ export const RESOURCES: ResourceDef[] = [
     desc: '既是全部岗位的劳动力，也是经验的来源。上限由住所决定。',
   },
   {
-    id: 'grain',
-    name: '谷物',
-    icon: '🌾',
-    category: 'material',
-    era: 'E2',
-    desc: '定居时代的核心资源。人口每日消耗、开垦田地、喂养牲畜均需谷物；受粮仓上限约束，溢出即浪费。',
-  },
-  {
     id: 'livestock',
     name: '牲畜',
     icon: '🐐',
     category: 'material',
     era: 'E2',
-    desc: '活体储备：宰杀可获 30–38 谷物（不占粮仓上限）；每头每日消耗 0.02 谷物作为饲料。',
+    desc: '活体储备：宰杀可获 30–38 食物（不占储存上限）；每头每日消耗 0.02 食物作为饲料。',
   },
   {
     id: 'fabric',
@@ -90,7 +85,7 @@ export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
 ) as Record<ResourceId, ResourceDef>;
 
 /** 可在 UI 资源栏显示的实体资源（排除人口，人口单独显示） */
-export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'grain', 'livestock', 'fabric'];
+export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'livestock', 'fabric'];
 
 /**
  * 返回指定时代的全部资源
