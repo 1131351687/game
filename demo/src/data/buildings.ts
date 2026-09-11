@@ -91,7 +91,7 @@ export const BUILDINGS: BuildingDef[] = [
     requires: { tech: 'granary_building' },
     limit: 'output',
     era: 'E2',
-    desc: '储存谷物，每座提升谷物上限 800；配合陶窑可进一步提升。',
+    desc: '储存谷物，每座提升谷物上限 800，并提升木材/石头上限 300；配合陶窑可进一步提升。',
   },
   {
     id: 'animal_pen',

@@ -447,7 +447,7 @@ const E2_TECHS_CORE: TechDef[] = [
     icon: '🌾',
     branch: 'core',
     era: 'E2',
-    cost: 120,
+    cost: 150,
     type: 'unlock',
     requires: [],
     effects: {

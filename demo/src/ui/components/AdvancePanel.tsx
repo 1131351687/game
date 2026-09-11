@@ -1,9 +1,19 @@
-// 时代跃迁面板（E1 远古时代 → E2 定居时代）
+// 时代跃迁面板（当前时代 → 下一个时代）
 // 条件列表直接来自引擎 checkAdvance，界面只负责呈现，不重复写规则。
+//
+// ⚠️ 面板文案必须**按时代动态取**，不能写死。
+//    此前标题与按钮硬编码成「定居时代」，导致玩家在 E2 里看到的是
+//    「迈向定居时代」—— 定居（E2）是**当前**时代，按钮指的却是它自己。
 
 import { useStore, toEngineState } from '../../state/store';
 import { checkAdvance } from '../../game/engine';
+import { ERAS, type EraId } from '../../data/era';
 import { Icon } from './Icon';
+
+/** 尚未实装的下一代表名（目前只有 E1 / E2 落地） */
+const UNIMPLEMENTED_NEXT: Partial<Record<EraId, string>> = {
+  E2: '城邦时代', // E3，设计文档已撰写但未实装
+};
 
 export function AdvancePanel() {
   const s = useStore();
@@ -11,6 +21,12 @@ export function AdvancePanel() {
 
   const check = checkAdvance(view);
   const remaining = check.items.filter(i => !i.done).length;
+
+  // 下一个时代：按 index 顺序找。找不到说明尚未实装。
+  const current = ERAS[s.era];
+  const nextId = (Object.keys(ERAS) as EraId[]).find(id => ERAS[id].index === current.index + 1);
+  const nextMeta = nextId ? ERAS[nextId] : null;
+  const target = nextMeta?.name ?? UNIMPLEMENTED_NEXT[s.era] ?? '下一个时代';
 
   const handleAdvance = () => {
     if (!s.advanceEra()) {
@@ -29,13 +45,13 @@ export function AdvancePanel() {
       }`}
     >
       <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold text-gray-100">时代跃迁 · 定居时代</h3>
+        <h3 className="text-sm font-semibold text-gray-100">{`时代跃迁 · ${target}`}</h3>
         <span className={`text-xs ${check.ok ? 'text-green-400' : 'text-gray-400'}`}>
           {check.ok ? '条件已满足' : `还差 ${remaining} 项`}
         </span>
       </div>
 
-      {/* 4 项跃迁条件：达成 ✓ 绿色，未达成 ○ 灰色 */}
+      {/* 跃迁条件：达成 ✓ 绿色，未达成 ○ 灰色（条数与内容全部来自引擎） */}
       <ul className="space-y-1">
         {check.items.map(item => (
           <li
@@ -57,16 +73,25 @@ export function AdvancePanel() {
 
       <button
         type="button"
-        disabled={!check.ok}
+        disabled={!check.ok || !nextMeta}
         onClick={handleAdvance}
         className={`w-full rounded py-2.5 font-semibold transition-all ${
-          check.ok
+          check.ok && nextMeta
             ? // 全部条件达成：加大加粗 + 亮翠绿 + 外发光 + 描边，做成页面最醒目的按钮
               'bg-emerald-500 text-base text-white ring-2 ring-emerald-300/70 shadow-[0_0_24px_-2px_rgba(16,185,129,0.95)] hover:bg-emerald-400 hover:ring-emerald-200'
             : 'cursor-not-allowed bg-gray-700 text-sm text-gray-500'
         }`}
       >
-        {check.ok ? (<><Icon emoji="🌾" className="text-base mr-1" />迈向定居时代</>) : `迈向定居时代（还差 ${remaining} 项）`}
+        {!nextMeta ? (
+          `${target} · 尚未实装`
+        ) : check.ok ? (
+          <>
+            <Icon emoji="🌾" className="text-base mr-1" />
+            {`迈向${target}`}
+          </>
+        ) : (
+          `迈向${target}（还差 ${remaining} 项）`
+        )}
       </button>
     </div>
   );

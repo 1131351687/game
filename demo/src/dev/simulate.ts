@@ -304,6 +304,8 @@ function autoplayE2(): void {
 
   const researched: string[] = [];
   let writingAt = -1;
+  /** 首次满足**全部**跃迁条件的秒数；-1 表示推演结束仍未满足 */
+  let advanceAt = -1;
   let minGrain = s.grain;
   let famineSec = 0;
   let overflowMarks = 0;
@@ -464,6 +466,9 @@ function autoplayE2(): void {
     autoBuildE2();
     minGrain = Math.min(minGrain, s.grain);
     if (s.grain <= 0.01) famineSec += STEP;
+    // 首次满足全部跃迁条件的时刻 —— 这才是 E2 真正的"通关时间"
+    // （「文字」只是其中一项，还有 ≥8 个冬季 / 谷物 / 人口 / 粮仓 / 田地）
+    if (advanceAt < 0 && checkAdvance(s).ok) advanceAt = Math.round(t);
   };
 
   const row = (): string => {
@@ -543,6 +548,13 @@ function autoplayE2(): void {
     console.log(`   ${item.done ? '✅' : '⬜'} ${item.label} —— ${item.detail}`);
   }
   console.log(`   ${adv.ok ? '→ 可以跃迁到 E3' : '→ 尚未满足'}`);
+  if (advanceAt >= 0) {
+    console.log(
+      `🎓 E2 通关时间（五项条件全部满足）：${advanceAt}s = ${(advanceAt / 60).toFixed(1)} 分钟`
+    );
+  } else {
+    console.log(`⛔ ${Math.round(t)}s 内未满足全部跃迁条件`);
+  }
   console.log('');
   console.log(`备注：末态谷物净产出 ${(s.grain > 0 ? '为正' : '为 0')}；人口上限 K 由村落民居与已耕作田地共同提供。`);
 }

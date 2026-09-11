@@ -18,9 +18,29 @@ export interface EraMeta {
   gateTech: string;
   /** 跃迁到「下一代」的条件 */
   advanceConditions: {
-    minFood: number;
-    minHouses: number;
-    minPopulation: number;
+    /** 主粮最低储备（E1 读 food，E2 起读 grain）；不设则不检查 */
+    minFood?: number;
+    /** 住所 / 村落民居最低座数；不设则不检查 */
+    minHouses?: number;
+    /** 最低人口；不设则不检查 */
+    minPopulation?: number;
+    /**
+     * 需要**完整度过**的年数（= 冬季数）。
+     *
+     * 这是 E2 独有的条件类型：E2 的核心机制是「周期」（夏秋生产、冬春消耗），
+     * 用资源量衡量周期型玩法是不完整的 —— 玩家可能靠一次暴收就攒够粮，
+     * 但他没有证明自己能**重复**这个周期。
+     * 因此 E2 的毕业考试是「连续 8 年没饿死」，而不是「你有多少粮」。
+     * 见 design/game/eras/E2-sedentary.md §11.8。
+     */
+    minYears?: number;
+    /**
+     * 其他建筑门槛：建筑 id → 最低座数。
+     *
+     * 通用字段，避免为每个时代新增一个专用数值。
+     * E2 用它表达文档 §11.8 的「粮仓 ≥3 座、田地 ≥8 块」。
+     */
+    minBuildings?: Record<string, number>;
   };
   /** 该时代的研究队列长度 */
   queueLength: number;
@@ -31,7 +51,7 @@ export interface EraMeta {
  *
  * 填值依据：
  * - E1 的条件必须与 src/data/constants.ts 的 ADVANCE_CONDITIONS 完全一致
- * - E2 的数值为占位值，待 E2 设计定稿后校准
+ * - E2 的条件按 design/game/eras/E2-sedentary.md §11.8 定稿
  */
 export const ERAS: Record<EraId, EraMeta> = {
   E1: {
@@ -52,10 +72,15 @@ export const ERAS: Record<EraId, EraMeta> = {
     index: 1,
     gateTech: 'writing', // 文字，通往 E3
     advanceConditions: {
-      // ⚠️ 以下数值为占位值，待 E2 设计定稿后校准
-      minFood: 800,
-      minHouses: 5,
-      minPopulation: 30,
+      // ── 按 E2 文档 §11.8 定稿（2026-09-11，此前为占位值 800/5/30）──
+      /** 谷物 ≥ 1500 */
+      minFood: 1500,
+      /** 文档未要求村落民居 —— 住房由「人口 ≥75」间接约束（K 必须够大才养得起） */
+      minPopulation: 75,
+      /** 完整度过 ≥ 8 个冬季（= 8 年 = 1920 秒 = 32 分钟）—— E2 独有的时间条件 */
+      minYears: 8,
+      /** 粮仓 ≥3 座、田地 ≥8 块（文档 §11.8） */
+      minBuildings: { granary: 3, field: 8 },
     },
     queueLength: 7,
   },

@@ -13,6 +13,7 @@ import {
   getSeasonOutputMultiplier,
   getGranaryCapacity,
   getSeasonFromElapsed,
+  YEAR_DURATION_SEC,
   type SeasonId,
 } from './season';
 import {
@@ -714,28 +715,63 @@ export function checkAdvance(state: E1State): AdvanceCheck {
   const stapleLabel = settled ? '谷物储备' : '食物储备';
   const housingLabel = settled ? '村落民居' : '住所';
 
-  const items = [
+  const items: AdvanceCheck['items'] = [
     {
       label: `研究「${gateName}」`,
       done: !!state.techs[gateTech],
       detail: state.techs[gateTech] ? '已完成' : '尚未研究',
     },
-    {
+  ];
+
+  // ── 时间条件（E2 独有）──
+  //
+  // 「完整度过 ≥N 个冬季」是 E2 的毕业考试：核心机制是周期，所以条件也必须
+  // 是周期性的 —— 否则玩家靠一次暴收就能攒够粮，却没有证明自己能重复这个周期。
+  // 见 design/game/eras/E2-sedentary.md §11.8。
+  if (cond.minYears !== undefined) {
+    const years = Math.floor(state.eraElapsedSec / YEAR_DURATION_SEC);
+    const need = cond.minYears * YEAR_DURATION_SEC;
+    items.push({
+      label: `完整度过 ≥ ${cond.minYears} 个冬季`,
+      done: state.eraElapsedSec >= need,
+      detail: `${years} / ${cond.minYears} 年（${Math.floor(state.eraElapsedSec / 60)} / ${need / 60} 分钟）`,
+    });
+  }
+
+  // ── 资源与人口 ──
+  if (cond.minFood !== undefined) {
+    items.push({
       label: `${stapleLabel} ≥ ${cond.minFood}`,
       done: staple >= cond.minFood,
       detail: `${Math.floor(staple)} / ${cond.minFood}`,
-    },
-    {
+    });
+  }
+
+  // ── 建筑门槛 ──
+  if (cond.minHouses !== undefined) {
+    items.push({
       label: `建成 ${cond.minHouses} 座${housingLabel}`,
       done: housing >= cond.minHouses,
       detail: `${housing} / ${cond.minHouses}`,
-    },
-    {
+    });
+  }
+  for (const [buildingId, count] of Object.entries(cond.minBuildings ?? {})) {
+    const owned = state.buildings[buildingId] ?? 0;
+    const name = (BUILDING_MAP as Record<string, { name: string } | undefined>)[buildingId]?.name ?? buildingId;
+    items.push({
+      label: `建成 ${count} 座${name}`,
+      done: owned >= count,
+      detail: `${owned} / ${count}`,
+    });
+  }
+
+  if (cond.minPopulation !== undefined) {
+    items.push({
       label: `人口 ≥ ${cond.minPopulation}`,
       done: state.population >= cond.minPopulation,
       detail: `${Math.floor(state.population)} / ${cond.minPopulation}`,
-    },
-  ];
+    });
+  }
 
   return { ok: items.every(i => i.done), items };
 }
@@ -750,9 +786,11 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
       // 首轮实测 500 太早撞上限（10 分钟就满），浪费产出
       return 1000 * eff.foodStorageMultiplier;
     case 'wood':
-      return 500;
+      // 基础建材容量 = 基础上限 500 + Σ粮仓 ×300（「存储建筑双扩容」，见 storage-plan.md §4）
+      // 粮仓是 E2 建筑，E1 拿不到（受时代 + 科技双重门禁），因此本条对 E1 无影响。
+      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_WOOD_BONUS;
     case 'stone':
-      return 500;
+      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_STONE_BONUS;
     case 'grain': {
       // 谷物容量 = (400 + Σ粮仓×单仓容量) × (1 + 陶窑加成×min(陶窑数,3) + 陶罐储藏加成)
       // 「谷仓通风系统」再按溢出阈值放宽容量的 20%。
