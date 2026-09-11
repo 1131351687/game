@@ -163,8 +163,18 @@ function autoplay(
     opts.strategy ??
     (args.includes('beeline') ? 'beeline' : args.includes('focus') ? 'focus' : 'greedy');
   const FIRE_BRANCH = ['fire_starting', 'cooking', 'hearth_construction', 'hot_rock_cooking', 'torch', 'fire_preservation'];
-  // 通关必需：核心 + 一条完整分支（火之技艺最便宜） + 住所（跃迁条件要 3 座、人口 ≥15） + 门槛
-  const REQUIRED = new Set(['fire_mastery', ...FIRE_BRANCH, 'shelter_building', 'plant_cultivation']);
+  // 通关必需：核心 + 一条完整分支（火之技艺最便宜） + 门槛科技的前置 + 门槛
+  // 「植物栽培」现为汇聚点：requires 石器打制 + 绳索编织（绳索还要住所→协作），
+  // 所以这两条支路也进了必点集。
+  const REQUIRED = new Set([
+    'fire_mastery',
+    ...FIRE_BRANCH,
+    'stone_knapping',
+    'shelter_building',
+    'group_cooperation',
+    'rope_weaving',
+    'plant_cultivation',
+  ]);
 
   const autoResearch = (now: number): void => {
     const cands = TECHS.filter(

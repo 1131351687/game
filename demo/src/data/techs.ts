@@ -229,7 +229,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'hot_rock_cooking',
     name: '热石煮食',
-    short: '煮食',
+    short: '石煮',
     icon: '🪨',
     branch: 'fire',
     era: 'E1',
@@ -243,7 +243,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'torch',
     name: '火把',
-    short: '火把',
+    short: '炬',
     icon: '🕯️',
     branch: 'fire',
     era: 'E1',
@@ -257,7 +257,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'fire_preservation',
     name: '火种保存术',
-    short: '火种',
+    short: '余烬',
     icon: '🫙',
     branch: 'fire',
     era: 'E1',
@@ -273,7 +273,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'stone_knapping',
     name: '石器打制',
-    short: '打石',
+    short: '打制',
     icon: '🔨',
     branch: 'tool',
     era: 'E1',
@@ -301,7 +301,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'flint_selection',
     name: '燧石选材',
-    short: '燧石',
+    short: '燧',
     icon: '💎',
     branch: 'tool',
     era: 'E1',
@@ -451,13 +451,16 @@ const E1_TECHS: TechDef[] = [
     era: 'E1',
     cost: 300,
     type: 'gate',
-    requires: [],
+    // AND 前置：栽培需要「石器」（翻土/收割的工具）与「绳索」（捆束/系留）——
+    // 光认识植物还不够，得有工具和把收成捆回家的手段。
+    // 这样「群体与定居」分支也被拉进关键路径，门槛真正成为三条分支的汇聚点。
+    requires: ['stone_knapping', 'rope_weaving'],
     // OR 逻辑：三条分支任一走通即可跃迁
     // （若用 AND，需 2505 经验才能到门槛，但 20 分钟只能获得 1870，会卡死）
     requiresAny: ['fire_preservation', 'bow_and_arrow', 'smoking_storage'],
     effects: { enableAdvance: true },
     position: { x: 0, y: 7 },
-    desc: '不再跟着食物走，而是让食物长在门口。解锁时代跃迁——迈向定居时代（需走通任一条分支）。',
+    desc: '不再跟着食物走，而是让食物长在门口。需要石器与绳索的知识，并走通任一条分支。',
   },
 ];
 
@@ -472,7 +475,11 @@ const E2_TECHS_CORE: TechDef[] = [
     era: 'E2',
     cost: 150,
     type: 'unlock',
-    requires: [],
+    // AND 前置：农业不是凭空开始的——
+    //   先得有「石镰与磨盘」收割野生谷物（采集时代的收割技术），
+    //   再得有「选种育种」知道留哪些种子（种子知识）。
+    // 二者都来自采集时代，农业是把它们攒到一起的那个跃迁。
+    requires: ['stone_sickle', 'selective_breeding'],
     effects: {
       enableSeasons: true,
       unlockJobs: ['farmer'],

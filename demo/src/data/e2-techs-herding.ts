@@ -19,7 +19,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'dairy_processing',
     name: '乳制品加工',
-    short: '乳业',
+    short: '乳制',
     icon: '🥛',
     branch: 'herding',
     era: 'E2',
@@ -47,7 +47,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'pen_reinforcement',
     name: '畜栏加固',
-    short: '畜栏',
+    short: '围栏',
     icon: '🚧',
     branch: 'herding',
     era: 'E2',
