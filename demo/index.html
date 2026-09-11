@@ -2,8 +2,24 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>文明演进 Civilis</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Civilis 文明演进 —— 从一簇篝火走向星海的放置类文明游戏">
+  <meta name="theme-color" content="#14110e">
+  <title>文明演进 · Civilis</title>
+
+  <!--
+    字体：展示字（碑刻感宋体）+ 正文（黑体）+ 数字（等宽）
+    · CJK 字体体积很大，但 Google Fonts 会按 unicode-range 切成上百个子集，
+      浏览器只下载页面真正用到的字形，通常 100–400KB，可接受。
+    · preconnect 提前建连；display=swap 保证字体未就绪时先用系统字，不阻塞首屏。
+    · 只引入真正用到的字重，避免为几个字多下几百 KB。
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap"
+  >
 </head>
 <body>
   <div id="root"></div>

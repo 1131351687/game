@@ -5,7 +5,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'animal_domestication',
     name: '动物驯养',
-    short: '驯养',
+    short: '牧', // 旧"驯养"与"驯化"只差一字（动物/作物驯化）；改"牧"指畜牧之始，拉开距离
     icon: '🐎',
     branch: 'herding',
     era: 'E2',
@@ -117,7 +117,7 @@ export const E2_TECHS_HERDING: TechDef[] = [
   {
     id: 'plow_farming',
     name: '犁耕',
-    short: '犁耕',
+    short: '犁', // 旧"犁耕"与"歇耕"同以"耕"收尾、只差一字；改单字"犁"指犁具，去耕字尾避撞
     icon: '🌾',
     branch: 'herding',
     era: 'E2',

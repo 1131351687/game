@@ -50,14 +50,14 @@ export function CivilizationPanel() {
       {/* ── 顶栏：左侧进度 / 中间经验 / 右侧视图切换（无边框，仅极淡底色） ── */}
       <header className="rounded-md bg-gray-800/40 px-4 py-2.5">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          {/* 左：已学科技数 */}
-          <div className="text-xs tabular-nums text-gray-500">
+          {/* 左：已学科技数（数字等宽对齐） */}
+          <div className="text-xs font-mono tabular-nums text-gray-500">
             已学 <span className="text-sm font-semibold text-gray-100">{researched}</span>
             <span className="text-gray-600"> / {total}</span>
           </div>
 
-          {/* 中：经验存量 + 每秒产出 */}
-          <div className="flex items-center gap-2 text-xs tabular-nums text-gray-500">
+          {/* 中：经验存量 + 每秒产出（数字等宽对齐） */}
+          <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-gray-500">
             <span className="inline-flex items-center gap-1">
               经验{' '}
               <span className="text-sm font-semibold text-gray-100">
@@ -75,10 +75,11 @@ export function CivilizationPanel() {
           </div>
         </div>
 
-        {/* 细进度条：把"已学 / 总数"视觉化（中性灰，不用亮色） */}
+        {/* 细进度条：把"已学 / 总数"视觉化。
+            这是"文明推进了多少"的度量，正是余烬橙该出现的地方（强调色，非中性灰）。 */}
         <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-gray-800">
           <div
-            className="h-full rounded-full bg-gray-400 transition-[width] duration-300"
+            className="h-full rounded-full bg-accent transition-[width] duration-300"
             style={{ width: `${progress * 100}%` }}
           />
         </div>

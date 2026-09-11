@@ -83,7 +83,8 @@ export function TopBar() {
               {formatNumber(amount)}
             </span>
             {Number.isFinite(cap) && (
-              <span className="text-xs text-gray-600">/ {formatNumber(cap)}</span>
+              // 容量分母同属数字，一并等宽对齐，避免位数变化抖动
+              <span className="font-mono tabular-nums text-xs text-gray-600">/ {formatNumber(cap)}</span>
             )}
             <span
               className={`${RATE_COL} font-mono text-xs tabular-nums ${
@@ -102,7 +103,8 @@ export function TopBar() {
         <span className="text-gray-500">人口</span>
         <span className={`${VALUE_COL} font-mono tabular-nums text-gray-100`}>
           {Math.floor(s.population)}
-          <span className="text-gray-600"> / {capacity}</span>
+          {/* 人口上限同属数字，等宽对齐 */}
+          <span className="font-mono tabular-nums text-gray-600"> / {capacity}</span>
         </span>
         <span
           className={`${RATE_COL} font-mono text-xs tabular-nums ${

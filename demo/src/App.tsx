@@ -42,13 +42,17 @@ export default function App() {
   const tabs: TabId[] = ['work', 'civilization'];
   if (showBuildings) tabs.splice(1, 0, 'buildings');
 
+  // 根容器去掉不透明底色：页面底色与"余烬光晕 + 颗粒"两层氛围
+  // 已挂在 body::before/::after 上，#root 用 z-index:2 盖在其上。
+  // 根容器若是不透明底会把氛围层整个盖死，所以只留文字色。
   return (
-    <div className="flex h-screen flex-col bg-gray-900 text-gray-200">
-      {/* ① 顶部：资源条 + 右上角设置按钮 */}
-      <div className="relative shrink-0">
+    <div className="flex h-screen flex-col text-gray-200">
+      {/* ① 顶部：资源条 + 右上角设置按钮（错峰入场第一拍） */}
+      <div className="panel-in relative shrink-0">
         <TopBar />
-        {/* 时代指示器 —— 小号灰字，简约风格 */}
-        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+        {/* 时代指示器 —— 全屏最有身份感的元素：宋体展示字 + 余烬橙强调。
+            这是本页"当前焦点"的载体，也是强调色唯一出现处之一。 */}
+        <div className="absolute left-2 top-1/2 -translate-y-1/2 font-display text-sm text-accent">
           {ERAS[s.era].name}
         </div>
         {/* 设置按钮悬浮在资源条右上角，不占用资源条的布局空间 */}
@@ -66,14 +70,18 @@ export default function App() {
       {/* ③ 卡点提示（无卡点时不渲染） */}
       <HintBar />
 
-      {/* ④ 模块 Tab —— 置于顶部，紧邻资源条 */}
-      <nav className="flex shrink-0 gap-1 border-b border-gray-700 bg-gray-800 px-4 py-2">
+      {/* ④ 模块 Tab —— 置于顶部，紧邻资源条（错峰入场第二拍） */}
+      <nav className="panel-in-2 flex shrink-0 gap-1 border-b border-gray-700 bg-gray-800 px-4 py-2">
         {tabs.map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-md px-4 py-2.5 text-sm transition-colors ${
-              tab === t ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            className={`rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
+              // 活动态：用一条余烬色细环标记"当前 Tab"，而非整块橙色
+              // （整块蓝/橙都是默认值残留，会破坏"强调色单屏只一处"的纪律）
+              tab === t
+                ? 'bg-gray-800 text-gray-100 ring-1 ring-accent'
+                : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
             }`}
           >
             {TAB_INFO[t].icon} {TAB_INFO[t].label}
@@ -81,8 +89,8 @@ export default function App() {
         ))}
       </nav>
 
-      {/* ⑤ 内容区 */}
-      <main className="flex-1 overflow-y-auto p-4">
+      {/* ⑤ 内容区（错峰入场第三拍；随 Tab 切换重新挂载会重播，作为反馈可接受） */}
+      <main className="panel-in-3 flex-1 overflow-y-auto p-4">
         {tab === 'work' && (
           <div className="mx-auto max-w-4xl">
             <JobPanel />

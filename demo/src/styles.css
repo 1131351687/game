@@ -2,83 +2,174 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─────────────────────────────────────────────
- * 主题：日间 / 夜间
- * ─────────────────────────────────────────────
+/* ═════════════════════════════════════════════
+ * 设计令牌 · 「地层档案」
+ * ═════════════════════════════════════════════
  *
- * 组件里的 className 全部是**深色优先**写的（bg-gray-900 = 页面底、
- * text-gray-100 = 主文字）。这里通过重定位 gray 色阶的 CSS 变量来切换主题，
- * 组件侧不需要任何改动。
+ * 方向：工业实用 × 考古现场记录。
+ *   · 暖调石色底（不是冷灰：冷灰一眼就是"默认 SaaS 面板"）
+ *   · 骨白文字（不是纯白：#fff 在近黑底上会"发光"，久看刺眼）
+ *   · 余烬橙强调色（火 = 文明的第一项技术，也是本作的 E1 核心）
+ *   · 等宽数字（考古记录里的测量值都该对齐）
  *
- * 变量值写成 `R G B` 三元组（不带 rgb()），因为 tailwind.config.js 里用的是
- * `rgb(var(--gray-N) / <alpha-value>)` —— 这样才能让 `bg-gray-800/40`
- * 这类透明度写法正常工作。
+ * 组件里的 className 全部是**深色优先**写的，所以换肤靠重定位 gray 色阶的
+ * CSS 变量实现，组件侧不需要改。
  *
- * 日间的取值不是"简单反相"，而是**按 token 的主要用途**定的：
- *   gray-1xx/3xx/4xx/5xx/6xx 主要当文字色 → 数字越小越深（暗底上的亮字 → 亮底上的深字）
- *   gray-7xx/8xx/9xx       主要当表面色 → 反过来，8xx 最亮（卡片=白），9xx 次之（页面=浅灰）
- * 这样"卡片比页面亮"的层次关系在两个主题里都成立。
+ * 变量值写成 `R G B` 三元组（不带 rgb()），因为 tailwind.config.js 用的是
+ * `rgb(var(--gray-N) / <alpha-value>)` —— 这样才能让 bg-gray-800/40 这类
+ * 透明度写法正常工作。
+ *
+ * 日间的取值按 token 的**主要用途**定，不是简单反相：
+ *   gray-1xx~6xx 主要当文字色 → 数字越小越深
+ *   gray-7xx~9xx 主要当表面色 → 8xx 反相成"卡片=暖白"、9xx 是"页面=暖浅灰"
+ * 这样"卡片比页面亮"的层次在两个主题里都成立。
  */
 
 :root {
   color-scheme: dark;
 
-  /* 夜间 = Tailwind 原生 gray 色阶（与改造前逐像素一致） */
-  --gray-50: 249 250 251;
-  --gray-100: 243 244 246;
-  --gray-200: 229 231 235;
-  --gray-300: 209 213 219;
-  --gray-400: 156 163 175;
-  --gray-500: 107 114 128;
-  --gray-600: 75 85 99;
-  --gray-700: 55 65 81;
-  --gray-800: 31 41 55;
-  --gray-900: 17 24 39;
-  --gray-950: 3 7 18;
+  /* ── 暖石色阶（夜间）──────────────────────── */
+  --gray-50: 250 249 247;
+  --gray-100: 245 243 240;
+  --gray-200: 231 229 224;
+  --gray-300: 209 204 197;
+  --gray-400: 168 162 154;
+  --gray-500: 124 117 108;
+  --gray-600: 92 85 77;
+  --gray-700: 62 55 48;
+  --gray-800: 33 28 24;
+  --gray-900: 20 17 14;
+  --gray-950: 12 10 9;
 
-  /* 页面与正文底色（body 用） */
-  --page-bg: rgb(15 23 42);
-  --body-fg: rgb(241 245 249);
-  --scroll-track: rgb(30 41 59);
-  --scroll-thumb: rgb(71 85 105);
-  --scroll-thumb-hover: rgb(100 116 139);
-  --theme-border: rgb(31 41 55);
-  --theme-ring: rgb(31 41 55);
+  /* ── 强调色：余烬橙 ─────────────────────────
+   * 只给"当前焦点"用：活动 Tab、进度条、标题装饰、氛围光。
+   * 单屏只应出现一处，别拿它去涂普通按钮。
+   */
+  --accent: 224 122 47;
+  --accent-strong: 240 148 76;
+  --accent-soft: 224 122 47;
+
+  /* ── 语义色（状态覆盖用，不参与品牌表达）── */
+  --ok: 74 222 128;
+  --warn: 251 191 36;
+  --danger: 248 113 113;
+
+  /* ── 表面与文字 ───────────────────────────── */
+  --page-bg: rgb(20 17 14);
+  --body-fg: rgb(245 243 240);
+  --hairline: rgb(62 55 48);
+  --theme-border: rgb(62 55 48);
+  --theme-ring: rgb(62 55 48);
+  --scroll-track: rgb(33 28 24);
+  --scroll-thumb: rgb(62 55 48);
+  --scroll-thumb-hover: rgb(92 85 77);
+
+  /* ── 氛围层强度（日间要压低，否则发灰）── */
+  --ember-glow: 0.5;
+  --grain-opacity: 0.045;
+
+  /* ── 动效令牌 ───────────────────────────────
+   * 微交互 160ms / 常规 320ms / 场景 640ms。
+   * 出场用 cubic-bezier(0.16, 1, 0.3, 1) —— 尾部极缓，观感"贵"。
+   */
+  --dur-fast: 160ms;
+  --dur-base: 320ms;
+  --dur-slow: 640ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 [data-theme='light'] {
   color-scheme: light;
 
   /* 文字侧：数字越小越深 */
-  --gray-50: 241 245 249;
-  --gray-100: 15 23 42; /* 主文字（暗底上最亮 → 亮底上最深） */
-  --gray-200: 30 41 59;
-  --gray-300: 51 65 85;
-  --gray-400: 71 85 105;
-  --gray-500: 100 116 139; /* 次要文字 */
-  --gray-600: 148 163 184; /* 更弱的文字 */
-  --gray-700: 203 213 225; /* 极弱文字 / 悬停底色 */
-  /* 表面侧：8xx 反相成"卡片=白"，9xx 是"页面=浅灰" */
-  --gray-800: 255 255 255;
-  --gray-900: 241 245 249;
-  --gray-950: 248 250 252;
+  --gray-50: 246 243 237;
+  --gray-100: 22 18 15; /* 主文字（暗底上最亮 → 亮底上最深） */
+  --gray-200: 41 36 30;
+  --gray-300: 68 62 54;
+  --gray-400: 87 80 70;
+  --gray-500: 120 112 100; /* 次要文字 */
+  --gray-600: 168 160 148; /* 更弱的文字 */
+  --gray-700: 226 220 210; /* 极弱文字 / 悬停底色 */
+  /* 表面侧：8xx 反相成"卡片=暖白"，9xx 是"页面=暖浅灰" */
+  --gray-800: 255 253 249;
+  --gray-900: 246 243 237;
+  --gray-950: 252 250 246;
 
-  --page-bg: rgb(241 245 249);
-  --body-fg: rgb(15 23 42);
-  --scroll-track: rgb(226 232 240);
-  --scroll-thumb: rgb(203 213 225);
-  --scroll-thumb-hover: rgb(148 163 184);
-  --theme-border: rgb(226 232 240);
-  --theme-ring: rgb(203 213 225);
+  /* 余烬橙在浅底上要压深一档才够对比度 */
+  --accent: 194 90 18;
+  --accent-strong: 160 70 10;
+  --accent-soft: 194 90 18;
+
+  --ok: 5 150 105;
+  --warn: 180 83 9;
+  --danger: 185 28 28;
+
+  --page-bg: rgb(246 243 237);
+  --body-fg: rgb(22 18 15);
+  --hairline: rgb(226 220 210);
+  --theme-border: rgb(226 220 210);
+  --theme-ring: rgb(214 206 194);
+  --scroll-track: rgb(231 226 217);
+  --scroll-thumb: rgb(214 206 194);
+  --scroll-thumb-hover: rgb(168 160 148);
+
+  --ember-glow: 0.28;
+  --grain-opacity: 0.03;
 }
+
+/* ─────────────────────────────────────────────
+ * 基础层
+ * ───────────────────────────────────────────── */
 
 body {
   margin: 0;
-  font-family: 'Lato', 'Helvetica Neue', Arial, sans-serif;
+  /* 正文用黑体：密度高、小字号下最耐看 */
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   background: var(--page-bg);
   color: var(--body-fg);
+  /* 中文正文行高要比拉丁文更松，1.7 起步 */
+  line-height: 1.7;
   overflow: hidden;
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── 氛围层①：余烬光晕 ──────────────────────────
+ * 两块低透明度径向渐变，模拟"篝火照在土墙上"的偏心暖光。
+ * 刻意偏心（10% / 104%），避免变成对称的居中光斑。
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--ember-glow);
+  background:
+    radial-gradient(48rem 32rem at 10% -8%, rgb(var(--accent) / 0.22), transparent 62%),
+    radial-gradient(40rem 30rem at 104% 6%, rgb(var(--accent) / 0.12), transparent 58%);
+}
+
+/* ── 氛围层②：颗粒噪点 ──────────────────────────
+ * 3–5% 透明度。作用不是"看得见"，而是让大片纯色表面不再死平。
+ * 用 soft-light 而不是 overlay：overlay 会把暗部压死、影响对比度。
+ */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 内容层要盖在氛围层之上 */
+#root {
+  position: relative;
+  z-index: 2;
 }
 
 button {
@@ -90,6 +181,55 @@ input {
   font-family: inherit;
 }
 
+/* ── 键盘可达性：可见焦点圈 ─────────────────────
+ * 用 :focus-visible 而不是 :focus —— 鼠标点击不该留下焦点圈，
+ * 但键盘 Tab 必须看得见（这是最常被忽略的可访问性项）。
+ */
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 面板入场：一次编排好的错峰序列，胜过一堆零散微交互 */
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.panel-in {
+  animation: panel-rise var(--dur-base) var(--ease-out) both;
+}
+.panel-in-2 {
+  animation-delay: 80ms;
+}
+.panel-in-3 {
+  animation-delay: 160ms;
+}
+
+/* 降级：任何动效都必须能在系统"减少动态效果"下关闭 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .panel-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── 滚动条：与暖色底统一，别留一块系统灰 ── */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -108,15 +248,14 @@ input {
   background: var(--scroll-thumb-hover);
 }
 
-/* ─────────────────────────────────────────────
- * 浅色主题的少量定点覆盖
- * ─────────────────────────────────────────────
+/* ═════════════════════════════════════════════
+ * 浅色主题的定点覆盖
+ * ═════════════════════════════════════════════
  *
- * 1) gray-800 同时是"卡片底色"和"边框色"。
- *    浅色下卡片要是白（--gray-800），但边框若也是白就等于没有边框，
- *    因此所有 border-gray-* / ring-gray-* 单独给浅灰。
- * 2) 强调色（emerald/amber/red…）在深色主题里统一用 300/400 档亮色，
- *    放到白底上对比度不足，浅色下整体压深 2–3 档。
+ * 1) gray-800 同时是"卡片底色"和"边框色"。浅色下卡片要是暖白（--gray-800），
+ *    但边框若也是白就等于没有边框，因此 border-gray-* / ring-gray-* 单独给浅灰。
+ * 2) 强调色（emerald/amber/red/sky…）在深色主题里统一用 300/400 档亮色，
+ *    放到暖白底上对比度不足，浅色下整体压深 2–3 档。
  *    只需处理**文字**：强调色背景（bg-red-800 / bg-emerald-500 / bg-sky-700）
  *    在项目里一律配 text-white，保持原样即可。
  */
@@ -134,7 +273,7 @@ input {
 
 /* 季节条里选中态文字压在彩色小块上，浅色下必须保持深色 */
 [data-theme='light'] .text-gray-900 {
-  color: rgb(15 23 42);
+  color: rgb(22 18 15);
 }
 
 [data-theme='light'] [class*='text-emerald-'],

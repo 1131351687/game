@@ -59,10 +59,13 @@ function computePos(rect: DOMRect): OverlayPos {
 }
 
 /** 方块状态 → 浮层里的状态文案与配色 */
+// 状态配色改用设计令牌的语义色：text-ok / text-warn / text-gray-500。
+// 这两组令牌在 styles.css 里都有深浅双主题变量，浅色下对比度比写死的
+// emerald-400 / amber-400 更稳，不必再靠 light 主题的覆盖规则兜底。
 const STATUS_META: Record<Status, { text: string; cls: string }> = {
   researched: { text: '已学', cls: 'text-gray-500' },
-  ready: { text: '可研究 · 点击即研究', cls: 'text-emerald-400' },
-  short: { text: '经验不足', cls: 'text-amber-400/90' },
+  ready: { text: '可研究 · 点击即研究', cls: 'text-ok' },
+  short: { text: '经验不足', cls: 'text-warn' },
 };
 
 export function TechGrid() {
@@ -171,14 +174,17 @@ export function TechGrid() {
   };
 
   // ── 方块视觉 ──
+  // min-h/min-w 提到 48px：触屏触控目标 ≥44px 是硬指标，48 留一点余量。
+  // 方块更大了，里面短名也从 text-sm 提到 text-base，字才不会显小、方块不显空。
   const tileClass = (status: Status): string => {
     const base =
-      'relative flex aspect-square min-h-[40px] min-w-[40px] items-center justify-center rounded-md text-center select-none transition-colors';
+      'relative flex aspect-square min-h-[48px] min-w-[48px] items-center justify-center rounded-md text-center select-none transition-colors';
     switch (status) {
       case 'researched':
         return `${base} bg-gray-800/40 opacity-55 ring-1 ring-gray-700`;
       case 'ready':
-        return `${base} cursor-pointer bg-emerald-500/10 text-gray-100 ring-2 ring-emerald-500/70 hover:bg-emerald-500/20`;
+        // 可研究=正向语义，用 ok（绿）而不是品牌橙：余烬橙每屏只该出现一处
+        return `${base} cursor-pointer bg-ok/10 text-gray-100 ring-2 ring-ok/70 hover:bg-ok/20`;
       case 'short':
         return `${base} cursor-pointer bg-gray-800/70 text-gray-200 ring-1 ring-gray-600`;
     }
@@ -188,19 +194,29 @@ export function TechGrid() {
     showIcons ? (
       <Icon emoji={def.icon} className="text-2xl leading-none" />
     ) : (
-      <span className="px-1 text-sm font-semibold leading-tight text-gray-100">{def.short}</span>
+      // 短名用正文黑体（默认 font-sans），不要用宋体——小方块里宋体会糊。
+      // text-base(16px) 配 leading-none；两字时加 tracking-tight 收字距，避免顶满。
+      <span
+        className={`px-1 text-base font-semibold leading-none text-gray-100 ${
+          def.short.length > 1 ? 'tracking-tight' : ''
+        }`}
+      >
+        {def.short}
+      </span>
     );
 
   return (
     <div>
       {/* ── 提示语：把两个手势一次说清 ── */}
-      <p className="mb-2 text-xs text-gray-600">
+      {/* 用 text-gray-500（双主题都定义为"次要文字"），浅色下也比 gray-600 更够对比 */}
+      <p className="mb-2 text-xs text-gray-500">
         点击方块立即研究 · 悬停（手机长按）查看详情
       </p>
 
       {/* ── 主区：可研究的科技 ── */}
+      {/* 移动端从 5 列降到 4 列，方块更大更易点；逐级 6/8/10 列铺满更宽屏 */}
       {available.length > 0 ? (
-        <div className="grid grid-cols-5 gap-2 sm:grid-cols-7 md:grid-cols-9 lg:grid-cols-11">
+        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
           {available.map(({ def, status }) => (
             <button
               key={def.id}
@@ -221,8 +237,9 @@ export function TechGrid() {
           ))}
         </div>
       ) : (
-        /* 空态：没有可研究的科技时给出原因，而不是留一片空白 */
-        <p className="rounded-md bg-gray-800/40 px-3 py-2 text-xs text-gray-500">
+        /* 空态：没有可研究的科技时给出原因，而不是留一片空白。
+           字号提到 text-sm 并保住 gray-500，浅色下也读得清 */
+        <p className="rounded-md bg-gray-800/40 px-3 py-2 text-sm text-gray-500">
           暂时没有可研究的科技 —— 攒够经验，或先完成前置科技。
         </p>
       )}
@@ -234,11 +251,11 @@ export function TechGrid() {
             type="button"
             onClick={() => setShowLearned(v => !v)}
             aria-expanded={showLearned}
-            className="flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
+            className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-2 text-left text-xs text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
           >
             <span className="text-[10px]">{showLearned ? '▼' : '▶'}</span>
             <span>已学科技</span>
-            <span className="tabular-nums text-gray-600">
+            <span className="tabular-nums text-gray-500">
               {learnedCount} / {techsOfEra(s.era).length}
             </span>
           </button>
@@ -257,15 +274,16 @@ export function TechGrid() {
                         aria-hidden
                       />
                       <span className="text-[11px] font-medium text-gray-400">{info.name}</span>
-                      <span className="text-[11px] tabular-nums text-gray-600">{list.length}</span>
+                      <span className="text-[11px] tabular-nums text-gray-500">{list.length}</span>
                     </div>
-                    {/* 已学方块更小（h-9）并整体降透明度——它们是"存档"，不是"待办" */}
+                    {/* 已学方块比主区弱一档：字号 text-sm、降透明度、细 ring；
+                       但仍是可点的"查看详情"入口，触控目标必须 ≥44px（故 min-h/min-w 取 44） */}
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {list.map(def => (
                         <button
                           key={def.id}
                           type="button"
-                          className="flex h-9 min-w-[36px] items-center justify-center rounded-md bg-gray-800/40 px-1.5 text-xs text-gray-400 ring-1 ring-gray-700 transition-colors hover:text-gray-200"
+                          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md bg-gray-800/30 px-2 text-sm text-gray-400 ring-1 ring-gray-700/60 transition-colors hover:bg-gray-800/50 hover:text-gray-200"
                           aria-label={def.name}
                           onMouseEnter={(e) => activate(def, 'researched', e.currentTarget)}
                           onMouseLeave={scheduleClose}
@@ -305,7 +323,8 @@ export function TechGrid() {
             <div className="flex items-start gap-2">
               <Icon emoji={overlay.def.icon} className="mt-0.5 text-2xl leading-none" />
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-gray-100">{overlay.def.name}</div>
+                {/* 浮层标题用宋体展示字（font-display）并加大——这是"深读"入口，值得给展示字 */}
+                <div className="font-display text-lg font-semibold text-gray-100">{overlay.def.name}</div>
                 <div className="text-[11px] text-gray-500">
                   {BRANCH_INFO[overlay.def.branch].name} · {TECH_TYPE_LABEL[overlay.def.type]}
                 </div>
@@ -328,13 +347,13 @@ export function TechGrid() {
               );
             })()}
 
-            {/* 成本 / 当前经验 */}
-            <div className="mt-2 flex items-center justify-between text-xs tabular-nums text-gray-500">
+            {/* 成本 / 当前经验：数字加 font-mono + tabular-nums，等宽对齐像测量记录 */}
+            <div className="mt-2 flex items-center justify-between font-mono text-xs tabular-nums text-gray-500">
               <span>
-                成本 <span className="text-gray-200">{formatNumber(overlay.def.cost, 0)}</span> 经验
+                成本 <span className="font-mono text-gray-200">{formatNumber(overlay.def.cost, 0)}</span> 经验
               </span>
               <span>
-                存量 <span className="text-gray-200">{formatNumber(view.experience, 0)}</span>
+                存量 <span className="font-mono text-gray-200">{formatNumber(view.experience, 0)}</span>
               </span>
             </div>
 
@@ -346,7 +365,9 @@ export function TechGrid() {
               {overlay.status === 'ready' && (
                 <button
                   type="button"
-                  className="min-h-[40px] rounded-md bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-500"
+                  // 研究按钮是浮层里的"当前焦点"动作，正好用品牌橙 bg-accent；
+                  // 触控目标补到 44px（min-h-[44px]）
+                  className="min-h-[44px] rounded-md bg-accent px-4 py-2 text-xs font-semibold text-white hover:bg-accent-strong"
                   onClick={() => {
                     research(overlay.def.id);
                     closeNow();

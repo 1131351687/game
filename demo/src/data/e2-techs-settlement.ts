@@ -5,7 +5,7 @@ export const E2_TECHS_SETTLEMENT: TechDef[] = [
   {
     id: 'settled_construction',
     name: '定居营造',
-    short: '营造',
+    short: '定居', // 旧"营造"信息不足、难联想；改"定居"对应"定居营造"，一看即知是定居时代的营造起点
     icon: '🏘️',
     branch: 'settlement',
     era: 'E2',

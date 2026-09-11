@@ -61,7 +61,7 @@ export const E2_TECHS_FARMING: TechDef[] = [
   {
     id: 'summer_fallow_rotation',
     name: '夏季休耕轮作',
-    short: '休耕',
+    short: '歇耕', // 旧"休耕"偏弱且与"轮作"意象近；改"歇耕"明确夏季歇田之意，并与轮作（轮X）拉开
     icon: '☀️',
     branch: 'farming',
     era: 'E2',

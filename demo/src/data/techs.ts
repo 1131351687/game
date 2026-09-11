@@ -329,7 +329,7 @@ const E1_TECHS: TechDef[] = [
   {
     id: 'atlatl',
     name: '投矛器',
-    short: '投矛',
+    short: '投杆', // 旧"投矛"与"木矛"同以"矛"收尾、只差一字；改"投杆"强调投矛器为延长手臂的杠杆/杆
     icon: '🎯',
     branch: 'tool',
     era: 'E1',
