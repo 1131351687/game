@@ -63,7 +63,7 @@ export function TopBar() {
   const capacity = getCapacity(view);
 
   return (
-    <div className="flex shrink-0 flex-nowrap items-center gap-5 overflow-x-auto border-b border-gray-800 bg-gray-900/40 px-4 py-1.5 text-sm leading-tight">
+    <div className="flex shrink-0 flex-nowrap items-center gap-5 overflow-x-auto border-b border-gray-800 bg-gray-900/40 py-1.5 pl-4 pr-14 text-sm leading-tight">
       {shown.map(id => {
         const def = RESOURCE_MAP[id];
         const rate = id === 'experience' ? calcExperienceOutput(view) : calcResourceOutput(id, view);

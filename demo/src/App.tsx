@@ -49,11 +49,23 @@ export default function App() {
     <div className="flex h-screen flex-col text-gray-200">
       {/* ① 顶部：资源条 + 右上角设置按钮（错峰入场第一拍） */}
       <div className="panel-in relative shrink-0">
-        <TopBar />
-        {/* 时代指示器 —— 全屏最有身份感的元素：宋体展示字 + 余烬橙强调。
-            这是本页"当前焦点"的载体，也是强调色唯一出现处之一。 */}
-        <div className="absolute left-2 top-1/2 -translate-y-1/2 font-display text-sm text-accent">
-          {ERAS[s.era].name}
+        {/* 顶部一行：时代标识（固定宽度）｜资源条（占剩余空间）。
+            时代标识**参与布局**而不是绝对悬浮 —— 否则资源一多、横向滚动时，
+            内容会从它下面滑过（也就是"时代显示遮挡资源"这个 bug 的根因）。 */}
+        <div className="flex items-stretch">
+          <div
+            className="flex w-20 shrink-0 items-center justify-center border-b border-gray-800 bg-gray-900/40 font-display text-sm text-accent"
+            aria-label={ERAS[s.era].name}
+          >
+            {/* 时代指示器 —— 全屏最有身份感的元素：宋体展示字 + 余烬橙强调。
+                这是本页"当前焦点"的载体，也是强调色唯一出现处之一。 */}
+            {ERAS[s.era].name}
+          </div>
+          {/* min-w-0 必须给：flex 子项默认 min-width:auto，不给的话
+              资源条的 overflow-x-auto 会被撑破、永远不滚动 */}
+          <div className="min-w-0 flex-1">
+            <TopBar />
+          </div>
         </div>
         {/* 设置按钮悬浮在资源条右上角，不占用资源条的布局空间 */}
         <div className="absolute right-2 top-1/2 -translate-y-1/2">
