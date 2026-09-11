@@ -24,7 +24,7 @@ import {
   isJobUnlocked,
   type E1State,
 } from '../../game/engine';
-import { getRevealedJobs } from '../../game/reveal';
+import { getRevealedJobs, isJobRetired } from '../../game/reveal';
 import { JOB_MAP } from '../../data/jobs';
 import { ERAS, eraDistance } from '../../data/era';
 import type { JobDef } from '../../data/jobs';
@@ -197,6 +197,8 @@ export function JobPanel() {
             const output = calcJobOutput(job.id, view);
             const per = perPersonRate(job, view, count);
             const outDef = RESOURCE_MAP[job.output];
+            // 已随时代退役的职业（采集者在农耕时代）：不再可分配，只显示正在转出
+            const retired = isJobRetired(job.id, view);
 
             // 岗位行：去掉卡片壳与底色，反白只在 hover 出现；未解锁行靠 opacity 弱化
             return (
@@ -234,9 +236,9 @@ export function JobPanel() {
                           在界面上完全看不到这个机制存在，以为它没做。
                           机制可以悄悄生效，但**不能悄悄存在**。
 
-                          两态（进阶以**时代**为界，不看科技/工位）：
-                            时代未到 → 进入某时代后自动专职
-                            时代已到 → 正在自动专职（每 0.25 秒 1 人）
+                          进阶不是"多一个岗位"，而是**这个职业被新时代取代**：
+                            时代未到 → 预告"进入某时代后该职业取消"
+                            时代已到 → 正在全员转出（每 0.25 秒 1 人）
                           仅展示状态、不提供按钮：转换是自动的，这里只是让玩家看得见。 */}
                       {job.upgradesTo &&
                         (() => {
@@ -246,14 +248,14 @@ export function JobPanel() {
 
                           return (
                             <div
-                              className={`mt-0.5 text-xs ${working ? 'text-ok' : 'text-gray-600'}`}
+                              className={`mt-0.5 text-xs ${working ? 'text-warn' : 'text-gray-600'}`}
                             >
-                              进阶 → {target.name}：
+                              {reached ? '已取消' : '时代演进'} → {target.name}：
                               {!reached
-                                ? `进入${ERAS[target.era].name}后自动专职`
+                                ? `进入${ERAS[target.era].name}后本职业取消，全员转为${target.name}`
                                 : working
-                                  ? '正在自动专职（每 0.25 秒 1 人）'
-                                  : '即将开始自动专职'}
+                                  ? `全员转为${target.name}中（每 0.25 秒 1 人）`
+                                  : `已全部转为${target.name}`}
                             </div>
                           );
                         })()}
@@ -281,7 +283,13 @@ export function JobPanel() {
                   </div>
                 </div>
 
-                {unlocked ? (
+                {retired ? (
+                  // 退役职业：不提供任何分配入口 —— 它正在被新时代消化掉
+                  <div className="text-xs text-warn">
+                    本职业已随时代取消，剩余 {count} 人正在转为
+                    {job.upgradesTo ? JOB_MAP[job.upgradesTo.job].name : '新职业'}
+                  </div>
+                ) : unlocked ? (
                   <div className="flex flex-wrap gap-1">
                     <button
                       type="button"

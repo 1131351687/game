@@ -139,12 +139,32 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
  * 岗位是否显示。
  * 开局只有采集者；其余随对应科技出现。
  */
+/**
+ * 该岗位是否已在当前时代**退役**（职业取消）。
+ *
+ * 规则（2026-09-12 用户拍板）：岗位的"进阶目标"所属时代一旦到来，
+ * 源岗位就不再存在 —— 采集者在农耕（定居）时代被**取消**，
+ * 从业者全员转为农夫并继承人数（不是"继承并降权"，是"这个职业没有了"）。
+ *
+ * 由数据驱动：只看 `JobDef.upgradesTo` 的目标岗位属于哪个时代。
+ * 没有进阶关系的岗位（猎人、伐木者…）永远不会退役。
+ */
+export function isJobRetired(jobId: JobId, s: E1State): boolean {
+  const up = JOB_MAP[jobId].upgradesTo;
+  if (!up) return false;
+  return eraDistance(JOB_MAP[up.job].era, s.era) >= 0;
+}
+
 export function isJobRevealed(jobId: JobId, s: E1State): boolean {
   const def = JOB_MAP[jobId];
-  // 已派了人的岗位**必须可见**：时代跃迁会把采集者自动进阶为农夫，
-  // 而农夫要等「农业」研究完才"解锁"——若按解锁判定，
-  // 玩家会看到"岗位统计里有人、列表里却没有这一行"，
-  // 人像是凭空消失了。（与建筑的"已有即显示"同一原则）
+
+  // 退役岗位：**还有人时仍然显示**（正在全员转出），人清零后彻底消失。
+  // 为什么不直接隐藏：那会让"统计里有人、列表里没这行"——人像是凭空消失了。
+  if (isJobRetired(jobId, s)) return (s.jobs[jobId] ?? 0) > 0;
+
+  // 已派了人的岗位**必须可见**：农夫在「农业」研究完之前处于"未解锁"状态，
+  // 但它可能已经有人了（时代跃迁带过来的）。若按解锁判定，
+  // 玩家会看到"岗位统计里有人、列表里却没有这一行"。（同退役岗位的道理）
   if ((s.jobs[jobId] ?? 0) > 0) return true;
   // 无前置的岗位（采集者）始终可见
   if (!def.requires.tech && def.requires.toolTier === undefined) return true;

@@ -9,6 +9,7 @@ import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
 import { INITIAL_STATE, QUEUE, LOOP } from '../data/constants';
 import * as engine from '../game/engine';
+import { isJobRetired } from '../game/reveal';
 import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
 
@@ -221,6 +222,9 @@ export const useStore = create<GameState>((set, get) => ({
   setJobCount: (jobId, count) => {
     const s = get();
     if (!engine.isJobUnlocked(jobId, engineView(s))) return;
+    // 退役岗位（如农耕时代的采集者）不接受分配：
+    // UI 已经不再显示它的加减按钮，这里再兜一层，防止旧存档/异常路径往里塞人。
+    if (isJobRetired(jobId, engineView(s))) return;
 
     const others = engine.getAssignedPopulation(engineView(s)) - (s.jobs[jobId] ?? 0);
     const maxAllowed = Math.max(0, Math.floor(s.population - others));
@@ -567,7 +571,7 @@ export const useStore = create<GameState>((set, get) => ({
         const fromName = JOBS.find(j => j.id === m.from)?.name ?? m.from;
         const toName = JOBS.find(j => j.id === m.to)?.name ?? m.to;
         get().addMessage(
-          `${fromName}专职为${toName}（${m.count} 人）—— 职业随时代一同演进`,
+          `「${fromName}」这一职业随时代取消 —— ${m.count} 人全部转为${toName}`,
           'event',
           true
         );
@@ -575,7 +579,11 @@ export const useStore = create<GameState>((set, get) => ({
       // 目的地产出依赖建筑（农夫 ← 田地）时，给出明确警告
       const noField = (get().buildings.field ?? 0) === 0;
       if (noField && upAll.moved.some(m => m.to === 'farmer')) {
-        get().addMessage('农夫需要有田地才能耕作 —— 先研究「农业」并开垦田地', 'warn', true);
+        get().addMessage(
+          '农夫需要有田地才能耕作 —— 尽快研究「农业」并开垦田地，否则食物会断供',
+          'warn',
+          true
+        );
       }
     }
 
