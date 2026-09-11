@@ -639,11 +639,38 @@ export function getJobSlotCapacity(jobId: JobId, state: E1State): number {
 }
 
 /**
+ * 一次岗位进阶是否可以发生。
+ *
+ * **判定只看时代**（2026-09-12 用户拍板）：
+ *   「进入农耕（定居）时代后，采集者自动进阶为农夫」——
+ *   因此规则是"目标岗位所属的时代已经到来"，而不是"目标岗位已解锁"。
+ *
+ * 为什么之前不是这样（历史记录，避免以后又改回去）：
+ *   上一版要求 `isJobUnlocked(目标岗位)`（即「农业」科技已研究）**且有空工位**，
+ *   理由是"农业刚研究完就把采集者全变成没田可种的农夫会当场断粮"。
+ *   但那样一来，玩家在界面上几乎看不到这个机制（农业还没研究时一句提示都没有），
+ *   而且进阶的时点被推迟到"研究完农业 + 建好田地"，与"时代推进带来职业专职化"
+ *   的设计意图不符。用户明确要"进城农耕时代就转"，故改为按时代判定。
+ *
+ * 代价与补偿：无田地时农夫**产出为 0**，因此时代入口会给出明确警告
+ * （见 store.advanceEra 的消息），岗位面板也会提示"需先建田地/研究农业"。
+ */
+export function canUpgradeJob(state: E1State, from: JobId): JobId | null {
+  const up = JOB_MAP[from].upgradesTo;
+  if (!up) return null;
+  if ((state.jobs[from] ?? 0) <= 0) return null;
+  // 目标岗位所属时代已到来即可进阶
+  if (eraDistance(JOB_MAP[up.job].era, state.era) < 0) return null;
+  return up.job;
+}
+
+/**
  * 推进一次岗位进阶（每 tick 调用；每次最多转换 1 人）。
  *
- * 为什么每次只转 1 人而不是一次转完：
- * 进阶是"人逐渐专职化"的过程，摊在若干个 tick 上更自然，
- * 也让 UI 上的人数变化看得清、不会一格跳完。
+ * 为什么每 tick 只转 1 人而不是一次转完：
+ * 逐人转换让"职业逐渐专职化"这件事在界面上看得见。
+ * 时代入口处会先做一次**批量转换**（见 applyJobUpgradeAll），
+ * 所以这里主要处理"玩家在此之后又把某人派回采集者"的情况。
  *
  * 返回新的岗位表与本次转换信息；无进阶可做时返回 null（调用方应保持原对象）。
  */
@@ -651,23 +678,38 @@ export function applyJobUpgrade(
   state: E1State
 ): { jobs: Record<string, number>; from: JobId; to: JobId } | null {
   for (const def of JOBS) {
-    const up = def.upgradesTo;
-    if (!up) continue;
-
-    const assigned = state.jobs[def.id] ?? 0;
-    if (assigned <= 0) continue;
-    if (!isJobUnlocked(up.job, state)) continue;
-
-    const capacity = getJobSlotCapacity(up.job, state);
-    const current = state.jobs[up.job] ?? 0;
-    if (current >= capacity) continue;
-
+    const to = canUpgradeJob(state, def.id);
+    if (!to) continue;
     const jobs = { ...state.jobs };
-    jobs[def.id] = assigned - 1;
-    jobs[up.job] = current + 1;
-    return { jobs, from: def.id, to: up.job };
+    jobs[def.id] = (state.jobs[def.id] ?? 0) - 1;
+    jobs[to] = (state.jobs[to] ?? 0) + 1;
+    return { jobs, from: def.id, to };
   }
   return null;
+}
+
+/**
+ * 一次性完成所有可进行的进阶（时代入口调用）。
+ *
+ * 时代入口用批量而不是逐 tick：玩家跨过时代边界的那一刻，
+ * "我的采集者成了农夫"应当是**一个事件**，而不是几秒钟内陆续发生。
+ */
+export function applyJobUpgradeAll(
+  state: E1State
+): { jobs: Record<string, number>; moved: Array<{ from: JobId; to: JobId; count: number }> } | null {
+  const jobs = { ...state.jobs };
+  const moved: Array<{ from: JobId; to: JobId; count: number }> = [];
+
+  for (const def of JOBS) {
+    const to = canUpgradeJob({ ...state, jobs }, def.id);
+    if (!to) continue;
+    const count = jobs[def.id] ?? 0;
+    jobs[def.id] = 0;
+    jobs[to] = (jobs[to] ?? 0) + count;
+    moved.push({ from: def.id, to, count });
+  }
+
+  return moved.length > 0 ? { jobs, moved } : null;
 }
 
 export function isJobUnlocked(jobId: JobId, state: E1State): boolean {

@@ -141,6 +141,11 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
  */
 export function isJobRevealed(jobId: JobId, s: E1State): boolean {
   const def = JOB_MAP[jobId];
+  // 已派了人的岗位**必须可见**：时代跃迁会把采集者自动进阶为农夫，
+  // 而农夫要等「农业」研究完才"解锁"——若按解锁判定，
+  // 玩家会看到"岗位统计里有人、列表里却没有这一行"，
+  // 人像是凭空消失了。（与建筑的"已有即显示"同一原则）
+  if ((s.jobs[jobId] ?? 0) > 0) return true;
   // 无前置的岗位（采集者）始终可见
   if (!def.requires.tech && def.requires.toolTier === undefined) return true;
 

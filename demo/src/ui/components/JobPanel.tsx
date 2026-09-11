@@ -21,12 +21,12 @@ import {
   calcJobOutput,
   getAssignedPopulation,
   getIdlePopulation,
-  getJobSlotCapacity,
   isJobUnlocked,
   type E1State,
 } from '../../game/engine';
 import { getRevealedJobs } from '../../game/reveal';
 import { JOB_MAP } from '../../data/jobs';
+import { ERAS, eraDistance } from '../../data/era';
 import type { JobDef } from '../../data/jobs';
 import { RESOURCE_MAP } from '../../data/resources';
 import { TECH_MAP } from '../../data/techs';
@@ -226,22 +226,34 @@ export function JobPanel() {
                       </div>
                       {/* 说明文字属次要层级（gray-400） */}
                       <div className="mt-0.5 truncate text-xs text-gray-400">{job.desc}</div>
-                      {/* 岗位进阶提示：让玩家知道"这个岗位会变成什么"，
-                          而不是等它悄悄变了才发现。条件满足后会逐人自动转换。
-                          仅在**目标岗位已解锁**时显示 —— E1 里农夫还不存在，
-                          此时给出未来的职业路径只会让人困惑（也保证了 E1 渲染不变）。
-                          工位已满时给出下一步指示，而不是让玩家干等。 */}
+                      {/* 岗位进阶提示：**三态**呈现，让玩家在任何时候都能看懂
+                          "这个岗位会变成什么"以及"现在还差什么"。
+
+                          为什么必须三态（而不是"解锁后才显示"）：
+                          最初只在目标岗位解锁后显示，结果是——「农业」还没研究的玩家
+                          在界面上完全看不到这个机制存在，以为它没做。
+                          机制可以悄悄生效，但**不能悄悄存在**。
+
+                          两态（进阶以**时代**为界，不看科技/工位）：
+                            时代未到 → 进入某时代后自动专职
+                            时代已到 → 正在自动专职（每 0.25 秒 1 人）
+                          仅展示状态、不提供按钮：转换是自动的，这里只是让玩家看得见。 */}
                       {job.upgradesTo &&
-                        isJobUnlocked(job.upgradesTo.job, view) &&
                         (() => {
                           const target = JOB_MAP[job.upgradesTo.job];
-                          const slots = getJobSlotCapacity(target.id, view);
-                          const taken = view.jobs[target.id] ?? 0;
-                          const full = taken >= slots;
+                          const reached = eraDistance(target.era, view.era) >= 0;
+                          const working = reached && (view.jobs[job.id] ?? 0) > 0;
+
                           return (
-                            <div className="mt-0.5 text-xs text-gray-600">
+                            <div
+                              className={`mt-0.5 text-xs ${working ? 'text-ok' : 'text-gray-600'}`}
+                            >
                               进阶 → {target.name}：
-                              {full ? '工位已满，先扩建对应建筑' : job.upgradesTo.hint}
+                              {!reached
+                                ? `进入${ERAS[target.era].name}后自动专职`
+                                : working
+                                  ? '正在自动专职（每 0.25 秒 1 人）'
+                                  : '即将开始自动专职'}
                             </div>
                           );
                         })()}

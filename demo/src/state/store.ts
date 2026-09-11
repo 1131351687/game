@@ -547,9 +547,39 @@ export const useStore = create<GameState>((set, get) => ({
     });
 
     // 5. 发送时代跃迁消息（重要，置顶显示）
+    //
+    //    先报"进入了哪个时代"，再报时代带来的岗位变化 —— 因果顺序读起来才对。
     get().addMessage(`进入${nextMeta.name}`, 'event', true);
 
-    // 6. 立即存档，确保跃迁状态持久化
+    // 6. 时代入口的**岗位进阶**：进入农耕（定居）时代时，采集者自动专职为农夫
+    //
+    //    这是"时代分界线只决定新增什么"的例外吗？不是——
+    //    岗位进阶**就是新时代带来的内容**之一：新的生产方式让旧职业专职化。
+    //    批量转换（而不是逐 tick）是因为这一刻应当是一个**事件**。
+    //
+    //    ⚠️ 无田地时农夫产出为 0，所以这里必须把话说清楚，
+    //    否则玩家会以为"跃迁把我的食物生产搞没了"。
+    const afterJobs = get();
+    const upAll = engine.applyJobUpgradeAll(engineView(afterJobs));
+    if (upAll) {
+      set({ jobs: upAll.jobs });
+      for (const m of upAll.moved) {
+        const fromName = JOBS.find(j => j.id === m.from)?.name ?? m.from;
+        const toName = JOBS.find(j => j.id === m.to)?.name ?? m.to;
+        get().addMessage(
+          `${fromName}专职为${toName}（${m.count} 人）—— 职业随时代一同演进`,
+          'event',
+          true
+        );
+      }
+      // 目的地产出依赖建筑（农夫 ← 田地）时，给出明确警告
+      const noField = (get().buildings.field ?? 0) === 0;
+      if (noField && upAll.moved.some(m => m.to === 'farmer')) {
+        get().addMessage('农夫需要有田地才能耕作 —— 先研究「农业」并开垦田地', 'warn', true);
+      }
+    }
+
+    // 7. 立即存档，确保跃迁状态持久化
     saveGame();
 
     return true;

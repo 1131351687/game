@@ -3,6 +3,7 @@
 
 import type { EraId } from './era';
 import type { ResourceId } from './resources';
+import type { BuildingId } from './buildings';
 
 export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver';
 
@@ -44,6 +45,11 @@ export interface JobDef {
     job: JobId;
     /** UI 上展示的一句话说明 */
     hint: string;
+    /**
+     * 目标岗位的工位来自哪座建筑（用于 UI 告诉玩家"还差什么"）。
+     * 农夫 ← 田地、牧人 ← 畜栏。留空表示不限工位。
+     */
+    slotBuilding?: BuildingId;
   };
   /** 所属时代（标记数据归属，不改变运行时行为） */
   era: EraId;
@@ -63,7 +69,7 @@ export const JOBS: JobDef[] = [
     // 采集 → 农耕：人类历史上最重要的一次职业专职化。
     // 注意它由「目标岗位解锁 + 有空工位」触发，所以玩家不会因为
     // 刚研究完「农业」就把食物生产全转成没田可种的农夫。
-    upgradesTo: { job: 'farmer', hint: '掌握「农业」并有田地工位后，采集者专职为农夫' },
+    upgradesTo: { job: 'farmer', hint: '掌握「农业」并有田地工位后自动专职', slotBuilding: 'field' },
     era: 'E1',
     desc: '采集野生植物与果实。门槛最低，但效率有限。',
   },
