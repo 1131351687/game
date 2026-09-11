@@ -316,9 +316,9 @@ export const STORAGE_PROFILES: Record<EraId, StorageProfile>;
 | `eras/E2-sedentary.md` | §8 建筑集：粮仓效果加"木材 +300 / 石头 +300" |
 | `eras/E3-citystate.md` | §8 建筑集：粮仓升格为"仓廪"；§11.1 起始值确认 ≤ 新容量 |
 | `eras/E4-empire.md` | §8 建筑集：**新增「国库」**；§11.1 起始值确认 |
-| `eras/E5-awakening.md` | §8 建筑集：图书馆追加基础容量效果 |
+| `eras/E5-maritime.md`（原 E5-awakening） | §8 建筑集：图书馆追加基础容量效果 |
 | `eras/E6-machine.md` | §8 建筑集：**新增「料场」** |
-| `eras/E7-electronic.md` | §8 建筑集：**新增「数据中心」** |
+| `eras/E8-information.md`（原 E7-electronic） | §8 建筑集：**新增「数据中心」** |
 | `02-tech-eras.md` | E1 §6 资源集：备注"木石无扩容为刻意设计" |
 | `01-core-loop.md` | 逐时代详设：各代"新增资源"补一行"存储形态" |
 
