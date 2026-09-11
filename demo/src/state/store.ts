@@ -9,6 +9,7 @@ import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
 import { INITIAL_STATE, QUEUE, LOOP } from '../data/constants';
 import * as engine from '../game/engine';
+import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
 
 // ─────────────────────────────────────────────
@@ -396,55 +397,44 @@ export const useStore = create<GameState>((set, get) => ({
 
     const nextMeta = ERAS[nextEraId];
 
-    // 3. 继承项：科技（按时代距离自动衰减）、经验、统计、设置
-    //    保留原因：玩家的研究成果代表文明积累，不应因时代更迭而清零
-    //    科技的效果会在 aggregateEffects 中按 decay = max(0.2, 0.6^d) 自动衰减
-    // 4. 重置项：资源 / 岗位 / 队列 / 人口
-    //    清零资源的原因：E2 的新资源体系（谷物/牲畜/织物）取代了 E1 的木材石头
-    //    作为主资源；新时代表面上有全新资源，旧资源清零避免数值叠加混乱
-    //    清零岗位：新时代的岗位体系重新开局，与"文明重走"主题一致
+    // 3. 交接规则统一由 game/transition.ts 的纯函数计算
     //
-    // 5. 建筑：**住宅跨时代继承**，其余清零
+    //    **跃迁 = 继承 + 降权 + 新增，绝不是清零。**（铁律 3）
     //
-    //    为什么住宅必须继承：承载力 K 必须在跃迁瞬间连续。
-    //    E2 起始人口 15（设计文档 §6 衔接表），若住宅被清零则 K = 基础 4，
-    //    逻辑斯蒂项 (1 − P/K) = 1 − 15/4 直接转负，人口会在数十秒内崩到 4，
-    //    定居时代当场不可玩。
-    //    设计文档 §4「住所 → 村落民居 升级路径」给出的正是答案：
-    //    住所（K +4）升级为村落民居（K +4），**数值不变**，只是聚落形态改变。
-    //    3 座住所 → 3 座村落民居 → K = 4 + 3×4 = 16，与设计文档 §12 时间线
-    //    「第 1 年人口 15 → 18」逐帧吻合（r=0.03、P=15、K=16 → +0.011/秒）。
+    //    旧实现在这里把木材/石头归零、人口硬编码 15，与设计文档
+    //    E2-sedentary.md §11.1 直接冲突（文档写明"木材/石头 保留 E1 结余/继承"，
+    //    人口 15 是"E1 跃迁条件要求 ≥15"的**下限**而非固定值）。
+    //    结果是玩家在 E1 攒的 1000 食物 / 20 人 / 300 木材跃迁后全部蒸发，
+    //    「层层递进」的体感被抹平。
     //
-    //    火塘 / 作坊不继承：E2 火源转为恒定（无需维护），工具加成由猎人继承。
-    const nextBuildings = Object.fromEntries(
-      BUILDINGS.map(b => [b.id, 0])
-    ) as Record<string, number>;
-    if (nextEraId === 'E2') {
-      nextBuildings.village_house = s.buildings.house ?? 0;
-    }
+    //    现在的规则（详见 transition.ts）：
+    //      · 人口   → 继承真实值，不低于 15（文档下限）
+    //      · 木材/石头 → **继承结余**
+    //      · 食物   → 按 50% 折算为谷物（采集食物易腐，入仓打对折）
+    //      · 建筑   → 按等值升级映射继承（住所 K+4 → 村落民居 K+4，保持 K 连续）
+    //      · 岗位   → 清零（新时代的岗位体系不同，这是"新动词"的体现）
+    //      · 科技/经验 → 保留（文明积累不清零，效果按 eraDecay 自动衰减）
+    const t = computeEraTransition(engineView(s), nextEraId);
 
     set({
-      era: nextEraId,
-      food: 0,
-      wood: 0,
-      stone: 0,
-      // E2 起始：谷物 300（设计文档 §6：靠 E1 遗产的 300 谷物撑过第一次越冬），
-      // 牲畜与织物从零开始
-      grain: 300,
-      livestock: 0,
-      fabric: 0,
-      // 季节计时归零 —— 新时代从春天开始
-      eraElapsedSec: 0,
-      jobs: Object.fromEntries(JOBS.map(j => [j.id, 0])) as Record<string, number>,
-      buildings: nextBuildings,
+      era: t.era,
+      food: t.food,
+      wood: t.wood,
+      stone: t.stone,
+      grain: t.grain,
+      livestock: t.livestock,
+      fabric: t.fabric,
+      experience: t.experience,
+      eraElapsedSec: t.eraElapsedSec,
+      jobs: t.jobs,
+      buildings: t.buildings,
       queue: [] as string[],
-      // 承接 E1 的人口规模（设计文档 §6：跃迁时人口 15，K=16）
-      population: 15,
-      populationProgress: 0,
+      population: t.population,
+      populationProgress: t.populationProgress,
       // researchProgress 也归零——新队列开头无正在进行的研究
       researchProgress: 0,
       // 以下字段显式保留（与 set patch 合并后等价于不改动）：
-      // techs / experience / stats / settings / fire / autoMaintainFire
+      // techs / stats / settings / fire / autoMaintainFire
     });
 
     // 5. 发送时代跃迁消息（重要，置顶显示）

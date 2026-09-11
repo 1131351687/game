@@ -24,9 +24,14 @@ import {
 import type { E1State } from '../game/engine';
 import { TECHS, techsOfEra } from '../data/techs';
 import { JOBS } from '../data/jobs';
-import { BUILDINGS } from '../data/buildings';
 import { POPULATION, E2 } from '../data/constants';
 import { SEASONS, getSeasonFromElapsed, getWinterConsumption } from '../game/season';
+import { computeEraTransition, TRANSITION } from '../game/transition';
+
+/** E1 链式推演的时长：beeline 门槛在 932s，多跑到 1200s 模拟"玩家达成门槛后又攒了一会儿" */
+const E1_CHAIN_SEC = 1200;
+/** `autoplay e2` 打印链式交接表；单独跑 E1 时不需要 */
+const quietChain = false;
 
 function makeState(): E1State {
   return {
@@ -93,7 +98,10 @@ function openingSim(): void {
 // ─────────────────────────────────────────────
 // 自动试玩（模拟一个"还算聪明"的玩家）
 // ─────────────────────────────────────────────
-function autoplay(totalSec = 1200): void {
+function autoplay(
+  totalSec = 1200,
+  opts: { quiet?: boolean; strategy?: 'greedy' | 'focus' | 'beeline' } = {}
+): E1State {
   const s = makeState();
   const researched: string[] = [];
   /** 首次达成门槛科技的秒数；-1 表示未达成 */
@@ -151,7 +159,9 @@ function autoplay(totalSec = 1200): void {
   //   focus   = 火之技艺优先，但买不起时退而买便宜的（实战常见的折中打法）
   //   beeline = 只买「通往门槛的必需项」，其余一律跳过（极限速通，验证最短通路）
   const args = process.argv.slice(1);
-  const strategy = args.includes('beeline') ? 'beeline' : args.includes('focus') ? 'focus' : 'greedy';
+  const strategy =
+    opts.strategy ??
+    (args.includes('beeline') ? 'beeline' : args.includes('focus') ? 'focus' : 'greedy');
   const FIRE_BRANCH = ['fire_starting', 'cooking', 'hearth_construction', 'hot_rock_cooking', 'torch', 'fire_preservation'];
   // 通关必需：核心 + 一条完整分支（火之技艺最便宜） + 住所（跃迁条件要 3 座、人口 ≥15） + 门槛
   const REQUIRED = new Set(['fire_mastery', ...FIRE_BRANCH, 'shelter_building', 'plant_cultivation']);
@@ -219,64 +229,63 @@ function autoplay(totalSec = 1200): void {
     }
   }
 
-  console.log(`=== 自动试玩（${totalSec / 60} 分钟 · 策略=${strategy}）===\n`);
-  console.log(log.join('\n'));
-  console.log('');
-  console.log(`完成研究 ${researched.length}/20 项：`);
-  console.log('  ' + researched.join(' → '));
-  console.log('');
-  console.log(`经验产出速率（末态）: ${calcExperienceOutput(s).toFixed(2)}/秒`);
-  if (s.techs['plant_cultivation']) {
-    console.log(`✅ 已达成门槛「植物栽培」，耗时 ${firstGateAt}s（${(firstGateAt / 60).toFixed(1)} 分钟）`);
-  } else {
-    console.log('❌ 未达门槛「植物栽培」');
+  if (!opts.quiet) {
+    console.log(`=== 自动试玩（${totalSec / 60} 分钟 · 策略=${strategy}）===\n`);
+    console.log(log.join('\n'));
+    console.log('');
+    console.log(`完成研究 ${researched.length}/20 项：`);
+    console.log('  ' + researched.join(' → '));
+    console.log('');
+    console.log(`经验产出速率（末态）: ${calcExperienceOutput(s).toFixed(2)}/秒`);
+    if (s.techs['plant_cultivation']) {
+      console.log(`✅ 已达成门槛「植物栽培」，耗时 ${firstGateAt}s（${(firstGateAt / 60).toFixed(1)} 分钟）`);
+    } else {
+      console.log('❌ 未达门槛「植物栽培」');
+    }
   }
+
+  return s;
 }
 
 // ─────────────────────────────────────────────
 // E2 定居时代自动试玩
 // ─────────────────────────────────────────────
 /**
- * E2 起始状态：镜像 store.advanceEra() 从 E1 跃迁的产物。
+ * E2 起始状态 —— **真实走一遍 E1 跃迁**，不再手工镜像。
  *
- * ⚠️ 建筑一栏刻意写成 `village_house = 3` 而不是全 0。
- * advanceEra 会把 E1 的 3 座住所按设计文档 §4「住所 → 村落民居」升级路径
- * 转换成村落民居，以保持承载力 K 在跃迁瞬间连续（K = 基础 4 + 3×4 = 16）。
- * 若这里图省事全填 0，K 会掉到 4 < 人口 15，逻辑斯蒂项 (1−P/K) 转负，
- * 人口会在几十秒内崩到 4 —— 模拟曲线将完全失真。
+ * 旧实现把 E2 起始状态硬编码（population: 15 / grain: 300 / wood: 0），
+ * 等于把"跃迁产物"抄了一份；一旦 store.advanceEra 改了规则，
+ * 模拟器就会和真实游戏漂移（这正是本次要修的 bug 之一）。
+ *
+ * 现在改为：跑 E1 → 交给 game/transition.ts 的同一个纯函数 → 得到 E2 起始状态。
+ * 这样**模拟器验证的就是真实跃迁规则本身**。
  */
 function makeE2State(): E1State {
-  const techs: Record<string, boolean> = {};
-  for (const t of TECHS) techs[t.id] = t.era === 'E1';
+  // E1 跑到 1200s（beeline 门槛在 932s，多跑的 268s 是"玩家在达成门槛后又攒了一会儿"）
+  const e1 = autoplay(E1_CHAIN_SEC, { quiet: true, strategy: 'beeline' });
+  const t = computeEraTransition(e1, 'E2');
 
-  const buildings: Record<string, number> = {};
-  for (const b of BUILDINGS) buildings[b.id] = 0;
-  buildings.village_house = 3;
-
-  const jobs: Record<string, number> = {};
-  for (const j of JOBS) jobs[j.id] = 0;
+  if (!quietChain) {
+    console.log('【时代跃迁交接】E1 → E2（由 game/transition.ts 计算）');
+    console.log(
+      `  E1 末态：人口 ${Math.floor(e1.population)} | 食物 ${e1.food.toFixed(0)} | ` +
+        `木 ${e1.wood.toFixed(0)} | 石 ${e1.stone.toFixed(0)} | 住所 ${e1.buildings.house} | ` +
+        `经验 ${e1.experience.toFixed(0)}`
+    );
+    console.log(
+      `  E2 起始：人口 ${Math.floor(t.population)} | 谷物 ${t.grain}（食物 ×${TRANSITION.FOOD_TO_GRAIN} 折算）| ` +
+        `木 ${t.wood.toFixed(0)}（继承）| 石 ${t.stone.toFixed(0)}（继承）| ` +
+        `村落民居 ${t.buildings.village_house}（K 连续）| 经验 ${t.experience.toFixed(0)}（继承）`
+    );
+    console.log('');
+  }
 
   return {
-    era: 'E2',
-    // 跃迁清零：E1 的食物 / 木材 / 石头让位给本时代资源
-    food: 0,
-    wood: 0,
-    stone: 0,
-    // E2 遗产：300 谷物（设计文档 §6「靠 E1 遗产的 300 谷物撑过第一次越冬」）
-    grain: 300,
-    livestock: 0,
-    fabric: 0,
-    // 季节计时归零 —— 新时代从春天开始
-    eraElapsedSec: 0,
-    // 跃迁刚达成时经验基本已花光，从 0 起算
-    experience: 0,
-    population: 15,
-    populationProgress: 0,
-    // 火源冻结值：E1 末态自动维持在阈值附近
-    fire: 41,
-    jobs,
-    buildings,
-    techs,
+    ...t,
+    // 火源：E2 已冻结为常量（E2 §11.1「火塘已建成，不再需要维护」）
+    fire: e1.fire,
+    // 科技继承：E1 的 20 项保留，效果按 eraDecay 自动衰减
+    techs: e1.techs,
     autoMaintainFire: true,
   };
 }
@@ -325,9 +334,18 @@ function autoplayE2(): void {
     const pop = Math.floor(s.population);
     const K = getCapacity(s);
 
-    // 1) 田地是 K 的主引擎（每块 +12），但必须有 ≥2 名农夫才计入承载力
-    //    —— 人口撑不起就先不开，否则是荒地（设计文档 §4 反刷机制）
-    if (fields < 10 && pop >= (fields + 1) * E2.FIELD_MIN_FARMERS && tryBuild('field')) return;
+    // 1) 田地是 K 的主引擎（每块 +12 K、+3 工位）。
+    //    只要还有"闲人"（人口 > 田地工位）就继续开田——这是 E2 唯一的
+    //    "把人口变成产出"的通道。同时要求人口撑得起下一块田的 2 名农夫，
+    //    否则是荒地（设计文档 §4 反刷机制）。
+    const fieldSlots = fields * E2.JOBS_PER_FIELD;
+    if (
+      fields < 12 &&
+      pop > fieldSlots &&
+      pop >= (fields + 1) * E2.FIELD_MIN_FARMERS &&
+      tryBuild('field')
+    )
+      return;
     // 2) 粮仓：容量逼近溢出就立刻补（溢出的谷物等于白产）
     if (granaries < 4 && s.grain > cap * 0.8 && tryBuild('granary')) return;
     // 3) 村落民居：人口顶到承载力时补
@@ -337,7 +355,7 @@ function autoplayE2(): void {
     // 5) 陶窑：抬谷物上限（最多 3 座生效）
     if (kilns < 3 && tryBuild('kiln')) return;
     // 6) 兜底：余粮充足就继续开田
-    if (fields < 10 && s.grain > 500) tryBuild('field');
+    if (fields < 12 && s.grain > 500) tryBuild('field');
   };
 
   // ── 分配人力 ──
@@ -351,7 +369,8 @@ function autoplayE2(): void {
     }
 
     const season = getSeasonFromElapsed(s.eraElapsedSec);
-    const fieldSlots = (s.buildings.field ?? 0) * E2.JOBS_PER_FIELD;
+    const fields = s.buildings.field ?? 0;
+    const fieldSlots = fields * E2.JOBS_PER_FIELD;
     let left = pop;
 
     const take = (id: string, n: number): void => {
@@ -383,31 +402,41 @@ function autoplayE2(): void {
 
     // ── 定居阶段 ──
 
-    // 1) 建材：只在库存低于目标时派人（木材 / 石头是 E2 建筑的唯一来源）
-    if (s.wood < 160) take('woodcutter', s.wood < 60 ? 3 : 1);
-    if (s.techs['stone_knapping'] && s.stone < 130) take('knapper', s.stone < 50 ? 2 : 1);
+    // 1) 建材：木材/石头是 E2 建筑的唯一来源，但上限只有 500，
+    //    所以按"下一座田 80 + 下一座粮仓 120"设目标，不做无脑堆人
+    const woodTarget = fields < 10 ? 220 : 160;
+    if (s.wood < woodTarget) take('woodcutter', s.wood < 60 ? 4 : 2);
+    if (s.techs['stone_knapping'] && s.stone < 150) take('knapper', s.stone < 50 ? 3 : 1);
     // 2) 牲畜：畜栏建好后常驻 1 名牧人
     if ((s.buildings.animal_pen ?? 0) > 0) take('herder', 1);
     // 3) 织物：纺织后派 1 名织工，攒够即撤
     if (s.techs['textile'] && s.fabric < 300) take('weaver', 1);
 
     // 4) 农耕：谷物是本时代的胜负手
+    //
+    // ⚠️ 关键：**农夫数不能超过田地工位数**。
+    //    超出的人不会产出（田地效率 = min(工位, 农夫/工位)），
+    //    只会白白空转——这是本模拟器此前最严重的一处失真：
+    //    人口 20、田地 1 块时把 17 个闲人全塞进田里，谷物实际产出为 0，
+    //    人口在 180 秒内饿死归零（详见本次交接记录）。
+    //    正确做法：只派满工位，余下的人去砍柴打石（才是下一块田的料）。
     if (season === 'winter') {
       // 冬季农业 ×0.05 ≈ 无产出，但**不能把田里的人全抽走**：
       // 承载力 K 只认「已耕作田地」（≥2 名农夫），抽空了 K 会当场塌下来，
       // 人口跟着掉 —— 这正是设计文档 §4 反刷机制在冬季考玩家的地方。
-      // 因此至少留 fields×2 人守田，其余转去砍柴打石。
       const keep = Math.min(
         fieldSlots,
-        Math.max((s.buildings.field ?? 0) * E2.FIELD_MIN_FARMERS, Math.floor(left / 4))
+        Math.max((s.buildings.field ?? 0) * E2.FIELD_MIN_FARMERS, Math.floor(pop / 4))
       );
       take('farmer', keep);
-      take('woodcutter', Math.ceil(left / 2));
-      take('knapper', left);
     } else {
-      // 其余季节：其余人力全部下田（秋季 ×2.5 是全年粮食大头）
-      take('farmer', left);
+      // 其余季节：把田地工位填满（秋季 ×2.5 是全年粮食大头）
+      take('farmer', fieldSlots);
     }
+
+    // 5) 余下人力：继续补建材（开更多的田 = 更多的工位 = 能养更多人）
+    take('woodcutter', Math.ceil(left / 2));
+    take('knapper', left);
 
     s.jobs = next;
   };
@@ -451,7 +480,10 @@ function autoplayE2(): void {
   };
 
   console.log('=== E2 定居时代自动试玩 ===\n');
-  console.log('（起始：人口 15 / K=16 / 谷物 300 / 3 座村落民居 / E1 科技全掌握）\n');
+  console.log(
+    `（起始：人口 ${Math.floor(s.population)} / K=${getCapacity(s)} / 谷物 ${s.grain.toFixed(0)} / ` +
+      `${s.buildings.village_house} 座村落民居 / 经验 ${s.experience.toFixed(0)} / E1 科技全掌握）\n`
+  );
 
   const log: string[] = [];
   const logged = new Set<number>();
