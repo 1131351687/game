@@ -14,14 +14,13 @@ import { aggregateEffects, countResearched, isBuildingUnlocked, type E1State } f
 // ─────────────────────────────────────────────
 // 顶层模块（Tab / 常驻面板）
 // ─────────────────────────────────────────────
-export type UiModule = 'fire' | 'production' | 'buildings' | 'queue' | 'advance';
+export type UiModule = 'fire' | 'production' | 'buildings' | 'advance';
 
 /**
  * 模块解锁条件：
  *   fire       掌握火之后（火种仪表盘才出现）
  *   production 掌握火之后（有伐木者可派了；开局只有采集者，不需独立 Tab）
  *   buildings  任一"本代可建建筑"解锁，**或手里已握有旧时代建筑**
- *   queue      研究 2 项科技后（第 1 项还没必要排队）
  *   advance    **本代核心（门槛）科技研究完成后**才出现
  */
 export function isModuleUnlocked(m: UiModule, s: E1State): boolean {
@@ -40,8 +39,6 @@ export function isModuleUnlocked(m: UiModule, s: E1State): boolean {
         b =>
           (b.era === s.era || (s.buildings[b.id] ?? 0) > 0) && isBuildingUnlocked(b.id, s)
       );
-    case 'queue':
-      return countResearched(s) >= 2;
     case 'advance':
       // 「时代跃迁」栏位只在**本代核心（门槛）科技研究完成**后才出现。
       //
@@ -55,7 +52,7 @@ export function isModuleUnlocked(m: UiModule, s: E1State): boolean {
 
 /** 当前可见的模块列表（按推荐顺序） */
 export function getVisibleModules(s: E1State): UiModule[] {
-  const order: UiModule[] = ['production', 'buildings', 'queue', 'advance'];
+  const order: UiModule[] = ['production', 'buildings', 'advance'];
   return order.filter(m => isModuleUnlocked(m, s));
 }
 

@@ -69,7 +69,6 @@ export interface EraTransitionSource {
   experience: number;
   buildings: Record<string, number>;
   jobs: Record<string, number>;
-  queue: string[];
   techs: Record<string, boolean>;
 }
 
@@ -93,7 +92,6 @@ export interface EraTransitionResult {
   experience: number;
   buildings: Record<string, number>;
   jobs: Record<string, number>;
-  queue: string[];
   techs: Record<string, boolean>;
 }
 
@@ -134,7 +132,5 @@ export function computeEraTransition(
     // 岗位：**保留分配**。E1 的采集者/猎人会继续产食物（见 E2 §7「继承并降权」），
     // 玩家不必在跃迁后把所有岗位重新点一遍
     jobs: s.jobs,
-    // 研究队列：继续排下去（新时代只是多出更多可选项，队列长度上限随之提高）
-    queue: s.queue,
   };
 }

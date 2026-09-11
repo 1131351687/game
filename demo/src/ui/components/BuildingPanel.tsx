@@ -14,11 +14,18 @@
 // 纯文字模式：所有 emoji 走 <Icon>；图标可能渲染为 null，
 // 因此所有含图标的行都用 flex + gap 排布，不依赖图标宽度。
 
+import { useState } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import type { BuildingDef } from '../../data/buildings';
 import { RESOURCE_MAP, type ResourceId } from '../../data/resources';
 import { TECH_MAP } from '../../data/techs';
-import { canAffordBuilding, getBuildingCost, isBuildingUnlocked } from '../../game/engine';
+import { E2 } from '../../data/constants';
+import {
+  aggregateEffects,
+  canAffordBuilding,
+  getBuildingCost,
+  isBuildingUnlocked,
+} from '../../game/engine';
 import { getRevealedBuildings, isBuildingBuildable } from '../../game/reveal';
 import { formatNumber } from '../../core/format';
 import { Icon } from './Icon';
@@ -221,10 +228,99 @@ export function BuildingPanel() {
         )}
       </div>
 
+      {/* ── 牲畜储备 · 宰杀（畜栏的配套操作：活体库存的兑现入口）──
+          livestock 只有在有畜栏（或继承了旧时代存栏）后才可能 > 0，
+          因此用「有牲畜 或 有畜栏」作为显示条件即可。 */}
+      {(state.livestock > 0 || (state.buildings.animal_pen ?? 0) > 0) && (
+        <LivestockReserve />
+      )}
+
       <p className="text-xs leading-relaxed text-gray-600">
         同种建筑每建一座，成本按倍率递增；三座建筑恰好对应人口上限、火源强度与产出效率三大限制。
       </p>
     </section>
+  );
+}
+
+/**
+ * 牲畜储备 · 宰杀面板。
+ *
+ * 牲畜是"活体储备"：不占粮仓容量，但每个 tick 都吃饲料；
+ * 存栏由畜栏上限约束（畜栏 = 活体库存的仓库）。
+ * 宰杀即是把活体储备兑现成食物 —— 按牲畜世代每头换 30（世代≥3 为 38）食物，
+ * 仍受食物储存上限约束（否则屠宰 = 无限粮仓，破坏"秋天必须攒够"的核心循环）。
+ */
+function LivestockReserve() {
+  const state = useStore();
+  const view = toEngineState(state);
+  const [amount, setAmount] = useState(1);
+
+  const pens = state.buildings.animal_pen ?? 0;
+  const eff = aggregateEffects(view);
+  const perHead = eff.livestockTier >= 3 ? E2.SLAUGHTER_YIELD_TIER3 : E2.SLAUGHTER_YIELD;
+  const penCap = pens * (E2.PEN_CAPACITY + eff.penCapacityAdd);
+  const maxSlaughter = Math.min(Math.floor(state.livestock), 99);
+  const headCount = Math.floor(state.livestock);
+
+  return (
+    <div className="rounded-md bg-gray-800/30 px-4 py-3.5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+        {/* 左：图标 + 名称 + 存栏数 + 说明 */}
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <Icon emoji="🐐" className="text-2xl leading-none" />
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-base font-semibold text-gray-100">牲畜储备</span>
+              <span className="rounded-md bg-gray-800/60 px-1.5 py-0.5 text-xs tabular-nums text-gray-400">
+                存栏 {headCount} / {Math.floor(penCap)}
+              </span>
+            </div>
+            <p className="text-xs leading-relaxed text-gray-400">
+              活体储备不占粮仓容量。宰杀一头换 {perHead} 食物
+              {eff.livestockTier >= 3 ? '（犁耕世代，产量更高）' : '；世代达到 3（犁耕）后为 38'}。
+              粮仓已满则换不到存粮。
+            </p>
+          </div>
+        </div>
+
+        {/* 右：数量步进器 + 宰杀按钮 */}
+        <div className="flex shrink-0 items-center gap-2 lg:w-72 lg:justify-end">
+          <button
+            type="button"
+            disabled={amount <= 1}
+            onClick={() => setAmount(a => Math.max(1, a - 1))}
+            aria-label="减少宰杀数量"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-800/70 text-gray-300 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            −
+          </button>
+          <span className="w-10 text-center font-mono tabular-nums text-sm text-gray-100">
+            {amount}
+          </span>
+          <button
+            type="button"
+            disabled={amount >= maxSlaughter}
+            onClick={() => setAmount(a => Math.min(maxSlaughter, a + 1))}
+            aria-label="增加宰杀数量"
+            className="flex h-8 w-8 items-center justify-center rounded-md bg-gray-800/70 text-gray-300 transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            disabled={headCount <= 0}
+            onClick={() => {
+              const done = state.slaughter(amount);
+              if (done > 0) setAmount(1);
+            }}
+            title={`宰杀 ${amount} 头，约得 ${(amount * perHead).toFixed(0)} 食物`}
+            className="rounded-md bg-orange-500/15 px-4 py-2 text-sm font-semibold text-orange-300 transition-colors hover:bg-orange-500/25 active:bg-orange-500/30 disabled:cursor-not-allowed disabled:text-gray-700"
+          >
+            宰杀
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

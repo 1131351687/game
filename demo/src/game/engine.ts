@@ -23,6 +23,7 @@ import {
   FOOD_FACTOR,
   BUILDING_EFFECTS,
   E2,
+  HUNT,
   getFireTier,
   getToolMultiplier,
   type FireTier,
@@ -501,7 +502,14 @@ export function calcJobOutput(jobId: JobId, state: E1State): number {
 
   const eff = aggregateEffects(state);
   const workshops = state.buildings.workshop ?? 0;
-  let rate = def.outputRate * count;
+
+  // 猎人：猎场承载力模型 —— 总产出按饱和曲线收敛，替代「单人产出 × 人数」的线性公式。
+  // 场地能养活的猎物有上限（HUNT.CAP），猎人越多边际产出越低。
+  // 见 data/constants.ts 的 HUNT 注释。工具世代与集体围猎加成仍在下方叠加。
+  let rate =
+    jobId === 'hunter'
+      ? HUNT.CAP * (1 - Math.exp(-count / HUNT.TAU))
+      : def.outputRate * count;
 
   if (def.scaledByTool) {
     const workshopBonus = workshops * BUILDING_EFFECTS.WORKSHOP_BONUS;

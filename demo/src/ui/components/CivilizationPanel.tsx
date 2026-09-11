@@ -2,7 +2,7 @@
 //
 // 职责：把与"文明进程"相关的界面聚合成一屏，并提供两种浏览视角。
 //   1. 顶栏：进度概览（已学 / 总数）+ 经验存量与产出 + 视图切换
-//   2. 跃迁 / 队列面板：按 reveal 规则渐进出现（放在最上方）
+//   2. 跃迁面板：按 reveal 规则渐进出现（放在最上方）
 //   3. 视图区：分类视图 / 树状图视图 二选一
 //
 // 布局约定（配合 App.tsx 的 Tab 结构）：
@@ -23,7 +23,6 @@ import { formatNumber, formatRate } from '../../core/format';
 
 import { Icon } from './Icon';
 import { TechGrid } from './TechGrid';
-import { QueuePanel } from './QueuePanel';
 import { AdvancePanel } from './AdvancePanel';
 
 export function CivilizationPanel() {
@@ -41,7 +40,6 @@ export function CivilizationPanel() {
 
   // 渐进解锁：条件未达成时整块面板不渲染（避免开局信息过载）
   const showAdvance = isModuleUnlocked('advance', view);
-  const showQueue = isModuleUnlocked('queue', view);
 
   const progress = total > 0 ? Math.min(1, researched / total) : 0;
 
@@ -85,12 +83,10 @@ export function CivilizationPanel() {
         </div>
       </header>
 
-      {/* ── 跃迁 + 队列：渐进解锁，收窄到与其它 Tab 一致的阅读宽度 ── */}
-      {(showAdvance || showQueue) && (
+      {/* ── 跃迁面板：渐进解锁，收窄到与其它 Tab 一致的阅读宽度 ── */}
+      {showAdvance && (
         <div className="mx-auto max-w-4xl space-y-6">
-          {/* 跃迁面板在上（时代进程比排队更重要） */}
-          {showAdvance && <AdvancePanel />}
-          {showQueue && <QueuePanel />}
+          <AdvancePanel />
         </div>
       )}
 

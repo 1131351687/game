@@ -1,10 +1,10 @@
 // 三级循环调度器 + 存档 + 离线收益
 // fastLoop : 250ms  资源累积 / 人口 / 火种
-// midLoop  : 1s     队列检查（当前由 doTick 内处理）
+// midLoop  : 1s     生产结算
 // longLoop : 5s     统计 + 自动存档
 
 import { useStore, type GameState } from '../../state/store';
-import { LOOP, QUEUE } from '../../data/constants';
+import { LOOP, OFFLINE } from '../../data/constants';
 
 const MID_RATIO = LOOP.MID_RATIO;   // 4
 const LONG_RATIO = LOOP.LONG_RATIO; // 20
@@ -141,8 +141,8 @@ export function applyOfflineProgress(): OfflineResult | null {
   const elapsed = (Date.now() - (s.lastActiveAt || Date.now())) / 1000;
   if (elapsed < 60) return null; // 少于 1 分钟不结算
 
-  const capped = Math.min(elapsed, QUEUE.OFFLINE_CAP_SEC);
-  const effective = capped * QUEUE.OFFLINE_EFFICIENCY;
+  const capped = Math.min(elapsed, OFFLINE.OFFLINE_CAP_SEC);
+  const effective = capped * OFFLINE.OFFLINE_EFFICIENCY;
 
   // 以 1 秒为步长模拟推进（上限 8 小时 → 最多 14400 步，可接受）
   const step = 1;

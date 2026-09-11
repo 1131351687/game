@@ -7,7 +7,7 @@ import { BUILDINGS, type BuildingId } from '../data/buildings';
 import type { EraId } from '../data/era';
 import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
-import { INITIAL_STATE, QUEUE, LOOP } from '../data/constants';
+import { INITIAL_STATE, LOOP, E2 } from '../data/constants';
 import * as engine from '../game/engine';
 import { isJobRetired } from '../game/reveal';
 import { computeEraTransition } from '../game/transition';
@@ -104,11 +104,8 @@ export interface GameState {
   jobs: Record<string, number>;
   buildings: Record<string, number>;
 
-  // 科技与队列
+  // 科技
   techs: Record<string, boolean>;
-  queue: string[];
-  /** 当前正在研究（队列首位）的已投入进度（0–1），用于进度环 */
-  researchProgress: number;
 
   // 统计
   stats: {
@@ -130,9 +127,12 @@ export interface GameState {
   clearJobs: () => void;
   build: (buildingId: BuildingId) => boolean;
   research: (techId: string) => boolean;
-  enqueue: (techId: string) => void;
-  dequeue: (index: number) => void;
-  reorderQueue: (from: number, to: number) => void;
+  /**
+   * 宰杀牲畜换粮。
+   * 每头按牲畜世代给 30（世代 ≥3 为 38）食物，受食物储存上限约束。
+   * 返回实际宰杀头数（0 = 参数非法或牲畜不足）。
+   */
+  slaughter: (count: number) => number;
   /** 由 fastLoop 调用 */
   doTick: (dt: number) => void;
   /** 由 longLoop 调用 */
@@ -149,7 +149,7 @@ export interface GameState {
   advanceEra: () => boolean;
 }
 
-const SAVE_VERSION = 5;
+const SAVE_VERSION = 6;
 
 const initialState = () => ({
   running: false,
@@ -169,8 +169,6 @@ const initialState = () => ({
   jobs: Object.fromEntries(JOBS.map(j => [j.id, 0])) as Record<string, number>,
   buildings: Object.fromEntries(BUILDINGS.map(b => [b.id, 0])) as Record<string, number>,
   techs: {} as Record<string, boolean>,
-  queue: [] as string[],
-  researchProgress: 0,
   stats: { startTime: Date.now(), playTime: 0, totalResearched: 0 },
   messages: [] as Message[],
   lastActiveAt: Date.now(),
@@ -282,25 +280,33 @@ export const useStore = create<GameState>((set, get) => ({
     return true;
   },
 
-  enqueue: (techId) => {
+  slaughter: (count) => {
     const s = get();
-    if (s.queue.length >= QUEUE.MAX_LENGTH) return;
-    if (s.queue.includes(techId) || s.techs[techId]) return;
-    set({ queue: [...s.queue, techId] });
-  },
+    const n = Math.floor(count);
+    if (n <= 0 || s.livestock < n) return 0;
 
-  dequeue: (index) => {
-    const s = get();
-    set({ queue: s.queue.filter((_, i) => i !== index), researchProgress: 0 });
-  },
+    const view = engineView(s);
+    // 牲畜世代 ≥3（犁耕）宰杀产量更高（猪 → 38）
+    const perHead =
+      engine.aggregateEffects(view).livestockTier >= 3
+        ? E2.SLAUGHTER_YIELD_TIER3
+        : E2.SLAUGHTER_YIELD;
+    const gained = n * perHead;
 
-  reorderQueue: (from, to) => {
-    const s = get();
-    const q = [...s.queue];
-    if (from < 0 || from >= q.length || to < 0 || to >= q.length) return;
-    const [item] = q.splice(from, 1);
-    q.splice(to, 0, item);
-    set({ queue: q });
+    // 食物是"活体储备"的兑现：仍受粮仓容量约束（否则屠宰=无限粮仓，破坏"秋天必须攒够"核心循环）
+    const cap = engine.getResourceStorage('food', view);
+    const food = Math.min(s.food + gained, cap);
+    const realGain = food - s.food;
+
+    set({ livestock: s.livestock - n, food });
+    get().addMessage(
+      realGain > 0
+        ? `宰杀 ${n} 头牲畜，获得 ${realGain} 食物`
+        : `粮仓已满，宰杀 ${n} 头牲畜换不到存粮`,
+      'event',
+      realGain <= 0
+    );
+    return n;
   },
 
   // ── 主循环 ──
@@ -341,22 +347,7 @@ export const useStore = create<GameState>((set, get) => ({
       }
     }
 
-    // 队列首位自动研究
-    const after = get();
-    if (after.queue.length > 0) {
-      const head = after.queue[0];
-      const def = TECH_MAP[head];
-      if (def && after.experience >= def.cost) {
-        // 前置检查
-        const check = engine.canResearch(head, engineView({ ...after, experience: after.experience }));
-        if (check.ok) {
-          after.research(head);
-          set({ queue: get().queue.filter((_, i) => i !== 0) });
-          set({ researchProgress: 0 });
-        }
-      }
-    }
-  },
+    },
 
   doLongTick: () => {
     const s = get();
@@ -409,7 +400,6 @@ export const useStore = create<GameState>((set, get) => ({
       jobs: s.jobs,
       buildings: s.buildings,
       techs: s.techs,
-      queue: s.queue,
       stats: s.stats,
       lastActiveAt: Date.now(),
       // 设置随存档保存（图标开关等偏好跟着玩家走）
@@ -525,7 +515,6 @@ export const useStore = create<GameState>((set, get) => ({
         experience: s.experience,
         buildings: s.buildings,
         jobs: s.jobs,
-        queue: s.queue,
         techs: s.techs,
       },
       nextEraId
@@ -543,11 +532,10 @@ export const useStore = create<GameState>((set, get) => ({
       experience: t.experience,
       jobs: t.jobs,
       buildings: t.buildings,
-      queue: t.queue,
       population: t.population,
       populationProgress: t.populationProgress,
       // 以下字段不经 transition，直接保持原值：
-      // techs / researchProgress / stats / settings / fire / autoMaintainFire
+      // techs / stats / settings / fire / autoMaintainFire
     });
 
     // 5. 发送时代跃迁消息（重要，置顶显示）

@@ -42,8 +42,6 @@ export interface EraMeta {
      */
     minBuildings?: Record<string, number>;
   };
-  /** 该时代的研究队列长度 */
-  queueLength: number;
 }
 
 /**
@@ -64,7 +62,6 @@ export const ERAS: Record<EraId, EraMeta> = {
       minHouses: 3,
       minPopulation: 15,
     },
-    queueLength: 5,
   },
   E2: {
     id: 'E2',
@@ -82,7 +79,6 @@ export const ERAS: Record<EraId, EraMeta> = {
       /** 粮仓 ≥3 座、田地 ≥8 块（文档 §11.8） */
       minBuildings: { granary: 3, field: 8 },
     },
-    queueLength: 7,
   },
 };
 
