@@ -76,10 +76,10 @@ function perPersonRate(job: JobDef, view: E1State, count: number): number {
 /** 列表内 +/- 按钮：放宽到 40px 高（h-10）适配触屏；保留 text-sm + 紧凑 px-2，
  *  避免一行 5 个按钮在窄屏换行爆版（实测 375px 屏也能单行容纳）。 */
 const BTN =
-  'inline-flex h-10 items-center justify-center rounded-md px-2 text-sm tabular-nums text-gray-500 transition-colors hover:bg-gray-800/70 hover:text-gray-200 disabled:cursor-not-allowed disabled:text-gray-700 disabled:hover:bg-transparent';
+  'inline-flex h-10 items-center justify-center rounded-md px-2 text-sm font-mono tabular-nums text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-gray-100 disabled:cursor-not-allowed disabled:text-gray-600 disabled:hover:bg-transparent';
 
-/** 小号区块标题：小号化 + 灰淡化 */
-const SECTION_TITLE = 'text-xs uppercase tracking-wide text-gray-500';
+/** 小号区块标题：小号化 + 灰淡化（标签属次要层级，统一收为 gray-400） */
+const SECTION_TITLE = 'text-xs uppercase tracking-wide text-gray-400';
 
 export function JobPanel() {
   const state = useStore();
@@ -93,10 +93,12 @@ export function JobPanel() {
 
   return (
     // pb-40：给 fixed bottom-0 的 MessageLog 让位
-    <section className="space-y-4 pb-40">
+    // space-y-6：区块之间用留白分层（去卡片化后，留白是唯一的分层手段）
+    <section className="space-y-6 pb-40">
+      {/* 页头：标题（主文字）+ 清空按钮（可点文字，hover 才显色） */}
       <header className="flex items-center justify-between">
-        <h2 className={`flex items-center gap-1.5 ${SECTION_TITLE}`}>
-          <Icon emoji="👥" className="text-xs" />
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-100">
+          <Icon emoji="👥" className="text-sm" />
           <span>岗位分配</span>
         </h2>
         <button
@@ -105,27 +107,27 @@ export function JobPanel() {
           disabled={assigned <= 0}
           className={`inline-flex h-10 items-center justify-center rounded-md px-3 text-sm transition-colors ${
             assigned <= 0
-              ? 'cursor-not-allowed text-gray-700'
-              : 'text-gray-500 hover:bg-gray-800/70 hover:text-gray-200'
+              ? 'cursor-not-allowed text-gray-600'
+              : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-100'
           }`}
         >
           清空分配
         </button>
       </header>
 
-      {/* 顶部：空闲人口 / 总人口 —— 无边框，靠留白与字重分层 */}
+      {/* 顶部：空闲人口 / 总人口 —— 无卡片，靠留白与字重分层（空闲>0 用强调色点出"尚待分配"） */}
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-xs text-gray-500">空闲人口</span>
+        <span className="text-xs text-gray-400">空闲人口</span>
         <span
           className={`text-lg font-semibold tabular-nums ${
-            idle > 0 ? 'text-amber-400' : 'text-gray-500'
+            idle > 0 ? 'text-accent' : 'text-gray-600'
           }`}
         >
           {idle}
         </span>
-        <span className="text-gray-700">/</span>
-        <span className="text-xs text-gray-500">总人口</span>
-        <span className="text-lg font-semibold tabular-nums text-gray-200">
+        <span className="text-gray-600">/</span>
+        <span className="text-xs text-gray-400">总人口</span>
+        <span className="text-lg font-semibold tabular-nums text-gray-100">
           {formatNumber(total, 0)}
         </span>
         <span className="text-xs tabular-nums text-gray-600">
@@ -141,7 +143,8 @@ export function JobPanel() {
             {assigned > 0 ? `${formatNumber(assigned, 0)} 人在岗` : '尚无人分配'}
           </span>
         </div>
-        <div className="flex h-2.5 w-full overflow-hidden rounded-md bg-gray-800/60">
+        {/* 横条轨道：保留极淡实色底（bg-gray-800）作为"槽"的语义，非内容卡片 */}
+        <div className="flex h-2.5 w-full overflow-hidden rounded-md bg-gray-800">
           {jobs.map(job => {
             const count = state.jobs[job.id] ?? 0;
             const pct = assigned > 0 ? (count / assigned) * 100 : 0;
@@ -182,7 +185,7 @@ export function JobPanel() {
       <div className="space-y-2">
         {jobs.length === 0 ? (
           // 理论上不会出现（采集者始终可见），仅作兜底
-          <div className="rounded-md bg-gray-800/40 px-4 py-8 text-center text-sm text-gray-500">
+          <div className="px-4 py-8 text-center text-sm text-gray-600">
             暂无可用岗位 —— 继续研究科技以解锁新的生产方式。
           </div>
         ) : (
@@ -193,11 +196,12 @@ export function JobPanel() {
             const per = perPersonRate(job, view, count);
             const outDef = RESOURCE_MAP[job.output];
 
+            // 岗位行：去掉卡片壳与底色，反白只在 hover 出现；未解锁行靠 opacity 弱化
             return (
               <div
                 key={job.id}
-                className={`space-y-2 rounded-md px-4 py-3 transition-colors ${
-                  unlocked ? 'hover:bg-gray-800/50' : 'bg-gray-800/20'
+                className={`space-y-2 px-4 py-3 transition-colors ${
+                  unlocked ? 'hover:bg-gray-800/50' : ''
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
@@ -208,17 +212,18 @@ export function JobPanel() {
                       {/* 明确显示「谁 · 几个人 → 每秒产出多少」 */}
                       <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
                         <span className="font-medium text-gray-100">{job.name}</span>
-                        <span className="tabular-nums text-gray-500">{count} 人</span>
+                        <span className="tabular-nums text-gray-400">{count} 人</span>
                         {unlocked && (
                           <>
-                            <span className="text-gray-700">→</span>
-                            <span className="tabular-nums text-gray-300">
+                            <span className="text-gray-600">→</span>
+                            <span className="tabular-nums text-gray-400">
                               {formatRate(output)} {outDef.name}/秒
                             </span>
                           </>
                         )}
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-gray-600">{job.desc}</div>
+                      {/* 说明文字属次要层级（gray-400） */}
+                      <div className="mt-0.5 truncate text-xs text-gray-400">{job.desc}</div>
                     </div>
                   </div>
 
@@ -226,7 +231,7 @@ export function JobPanel() {
                   <div className="shrink-0 text-right">
                     {unlocked ? (
                       <>
-                        <div className="flex items-center justify-end gap-1 text-xs tabular-nums text-gray-500">
+                        <div className="flex items-center justify-end gap-1 text-xs tabular-nums text-gray-400">
                           <Icon emoji={outDef.icon} className="text-xs" />
                           <span>每人 {formatRate(per)}/秒</span>
                         </div>
@@ -277,13 +282,13 @@ export function JobPanel() {
                     >
                       +10
                     </button>
-                    {/* Max 是主操作：空闲人口 > 0 时用色标记「可点击」 */}
+                    {/* Max 是主操作：空闲人口 > 0 时为"可行动"，用语义色 ok（可分配）提示 */}
                     <button
                       type="button"
-                      className={`rounded-md px-2 py-0.5 text-xs transition-colors ${
+                      className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${
                         idle > 0
-                          ? 'text-emerald-400 hover:bg-emerald-500/10'
-                          : 'cursor-not-allowed text-gray-700'
+                          ? 'text-ok hover:bg-ok/10'
+                          : 'cursor-not-allowed text-gray-600'
                       }`}
                       disabled={idle <= 0}
                       onClick={() => assignAllIdle(job.id)}
@@ -293,7 +298,7 @@ export function JobPanel() {
                   </div>
                 ) : (
                   // 前置科技已研究但工具世代未到（猎人）：灰化 + 提示缺什么
-                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
                     <Icon emoji="🔒" className="text-xs" />
                     <span>{unlockHint(job)}</span>
                   </div>

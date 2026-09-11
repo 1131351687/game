@@ -36,12 +36,12 @@ export function AdvancePanel() {
   };
 
   return (
-    // 单块卡片：不再自带 max-w/mx-auto 外层容器（外层 App 已给 mx-auto max-w-4xl）。
-    // 本面板位于「文明」页最上方，不在底部，因此不需要 pb-40 让开 MessageLog。
-    // 条件全部达成时整块加一层翠绿描边，让玩家一眼看到可以跃迁了。
+    // 极简处理：不再套卡片壳（bg + border + 圆角），内容直接坐在页面上，
+    // 与其余面板保持一致——分层靠上方一条发丝线 + 留白，不靠底色块。
+    // 「可以跃迁了」这个关键状态改用一条 ok 色顶线表达，比整块描边安静得多。
     <div
-      className={`space-y-3 rounded-lg border bg-gray-800 p-3 transition-colors ${
-        check.ok ? 'border-emerald-500/70 shadow-[0_0_18px_-6px_rgba(16,185,129,0.9)]' : 'border-gray-700'
+      className={`space-y-3 border-t-2 pt-3 transition-colors ${
+        check.ok ? 'border-ok' : 'border-gray-800'
       }`}
     >
       <div className="flex items-baseline justify-between">
@@ -77,9 +77,10 @@ export function AdvancePanel() {
         onClick={handleAdvance}
         className={`w-full rounded-md py-2.5 font-semibold transition-all ${
           check.ok && nextMeta
-            ? // 全部条件达成：加大加粗 + 亮翠绿 + 外发光 + 描边，做成页面最醒目的按钮
-              'bg-emerald-500 text-base text-white ring-2 ring-emerald-300/70 shadow-[0_0_24px_-2px_rgba(16,185,129,0.95)] hover:bg-emerald-400 hover:ring-emerald-200'
-            : 'cursor-not-allowed bg-gray-700 text-sm text-gray-500'
+            ? // 主操作按钮：品牌强调色（余烬橙），这是"当前焦点"的落点。
+              // 不加外发光/描边——极简方向下，醒目靠色块本身与字重，不靠特效。
+              'bg-accent text-base text-white hover:bg-accent-strong'
+            : 'cursor-not-allowed bg-gray-800 text-sm text-gray-600'
         }`}
       >
         {!nextMeta ? (

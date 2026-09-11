@@ -113,21 +113,21 @@ export function QueuePanel() {
   };
 
   return (
-    // 单块紧凑面板：去边框，只用极淡背景（外层已有 mx-auto max-w-4xl）
-    <div className="space-y-2 rounded-md bg-gray-800/40 px-3 py-2">
+    // 单块紧凑面板：去卡片壳与底色（内容直接坐在页面上，靠留白分层）
+    <div className="space-y-2">
       {/* 表头：队列占用 / 经验产出速率；队列为空时把黄色警告压进同一行 */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <h3 className="text-xs font-medium tracking-wide text-gray-300">
+        <h3 className="text-sm font-medium text-gray-100">
           研究队列{' '}
-          <span className="text-gray-500 tabular-nums">
+          <span className="text-gray-400 tabular-nums">
             {queue.length} / {QUEUE.MAX_LENGTH}
           </span>
         </h3>
-        <span className="text-gray-500 tabular-nums">经验 {formatRate(expRate)}/s</span>
+        <span className="text-gray-400 tabular-nums">经验 {formatRate(expRate)}/s</span>
 
         {/* 队列为空：挂机不会推进研究 —— 唯一保留的醒目色（压缩成一行，不额外占高度） */}
         {queue.length === 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 rounded bg-yellow-500/10 px-2 py-0.5 text-yellow-300/90">
+          <span className="ml-auto inline-flex items-center gap-1 rounded bg-warn/10 px-2 py-0.5 text-warn">
             <Icon emoji="⚠️" className="text-[11px]" />
             <span className="font-medium">队列为空 —— 挂机不会推进研究</span>
           </span>
@@ -145,14 +145,14 @@ export function QueuePanel() {
         {Array.from({ length: QUEUE.MAX_LENGTH }, (_, slot) => {
           const row = rows[slot];
 
-          // 空槽：虚线框占位（虚线自带"空"的语义）
+          // 空槽：去掉虚线边框（普通占位容器不允许描边），改用极淡实色底表达"可放东西的格子"
           if (!row) {
             return (
               <div
                 key={`empty-${slot}`}
-                className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-dashed border-gray-700/60 px-1.5 py-1.5 text-[11px] text-gray-600"
+                className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-gray-800 px-1.5 py-1.5 text-[11px] text-gray-600"
               >
-                <span className="text-gray-700 tabular-nums">{slot + 1}</span>
+                <span className="text-gray-600 tabular-nums">{slot + 1}</span>
                 <span className="hidden xl:inline">空槽位</span>
               </div>
             );
@@ -171,22 +171,23 @@ export function QueuePanel() {
               onDrop={e => handleDrop(e, row.index)}
               onDragEnd={handleDragEnd}
               title={`${row.name}｜拖动可调整研究顺序`}
+              // 已填充槽：极淡实色底表达"可拖拽的格子"；悬停目标用强调色描边（选中/激活态允许 ring）
               className={`flex min-w-0 flex-1 select-none flex-col gap-0.5 rounded-md px-1.5 py-1 text-[11px] transition-colors ${
                 isDragging
-                  ? 'cursor-grabbing bg-gray-800/40 opacity-40'
+                  ? 'cursor-grabbing bg-gray-800 opacity-40'
                   : isOver
-                    ? 'cursor-grab bg-gray-800/70 ring-1 ring-gray-600'
-                    : 'cursor-grab bg-gray-900/50 hover:bg-gray-800/60'
+                    ? 'cursor-grab bg-gray-800 ring-1 ring-accent'
+                    : 'cursor-grab bg-gray-800 hover:bg-gray-800/50'
               }`}
             >
               {/* 第 1 行：拖柄 + 图标 + 名称 + 删除 */}
               <div className="flex min-w-0 items-center gap-1">
                 {/* ⋮⋮ 是界面符号（非 emoji），保留 */}
-                <span className="shrink-0 leading-none text-gray-700">⋮⋮</span>
+                <span className="shrink-0 leading-none text-gray-600">⋮⋮</span>
                 {/* 科技图标（纯文字模式下为 null，靠 gap 保持间距） */}
                 <Icon emoji={row.icon} className="shrink-0 leading-none" />
-                <span className="min-w-0 flex-1 truncate text-gray-200">{row.name}</span>
-                {/* ✕ 是界面符号（非 emoji）：危险动作用红色 hover 提示即可 */}
+                <span className="min-w-0 flex-1 truncate text-gray-100">{row.name}</span>
+                {/* ✕ 是界面符号（非 emoji）：危险动作用危险色 hover 提示即可 */}
                 <button
                   type="button"
                   draggable={false}
@@ -194,7 +195,7 @@ export function QueuePanel() {
                   title="移出队列"
                   // 队列槽仅 ~60px 宽，删除键若给满 40px 宽会挤掉科技名；
                   // 故保持紧凑宽度（natural ~24px），仅把高度放到 40px（h-10）保证竖向触屏目标。
-                  className="inline-flex h-10 items-center justify-center shrink-0 rounded-md px-2 leading-none text-gray-600 transition-colors hover:bg-gray-700 hover:text-red-300"
+                  className="inline-flex h-10 items-center justify-center shrink-0 rounded-md px-2 leading-none text-gray-600 transition-colors hover:bg-gray-800/50 hover:text-danger"
                 >
                   ✕
                 </button>
@@ -202,7 +203,7 @@ export function QueuePanel() {
 
               {/* 第 2 行：成本 + 预计完成时间 */}
               <div className="flex min-w-0 items-center justify-between gap-1">
-                <span className="shrink-0 text-gray-500 tabular-nums">
+                <span className="shrink-0 text-gray-400 tabular-nums">
                   {formatNumber(row.cost)} 经验
                 </span>
                 <span className="shrink-0 text-gray-400 tabular-nums">≈ {formatTime(row.eta)}</span>
@@ -210,7 +211,7 @@ export function QueuePanel() {
 
               {/* 前置未满足时的原因（危险状态才用红） */}
               {row.reason !== null && (
-                <div className="truncate text-red-400/80" title={row.reason}>
+                <div className="truncate text-danger/80" title={row.reason}>
                   {row.reason}
                 </div>
               )}

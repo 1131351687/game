@@ -167,7 +167,7 @@ export function SettingsMenu() {
         title="设置"
         aria-label="设置"
         aria-expanded={open}
-        className="flex h-10 w-10 items-center justify-center rounded-md text-gray-300 transition-colors hover:bg-gray-700 hover:text-white"
+        className="flex h-10 w-10 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-gray-100"
       >
         <svg
           viewBox="0 0 24 24"
@@ -184,37 +184,38 @@ export function SettingsMenu() {
         </svg>
       </button>
 
+      {/* 浮层（popover）：保留 border + shadow-xl（需脱离页面）；其余内容面板一律不保留 */}
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-md border border-gray-700 bg-gray-800 p-3 shadow-xl">
-          <div className="pb-1 text-sm font-semibold text-gray-200">设置</div>
+        <div className="absolute right-0 top-full z-50 mt-1 w-72 rounded-md border border-gray-800 bg-gray-800 p-3 shadow-xl">
+          <div className="pb-1 text-sm font-semibold text-gray-100">设置</div>
 
           {/* ① 图标显示开关 */}
-          <div className="mt-2 border-t border-gray-700 pt-3">
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-300">
+            <div className="mt-2 border-t border-gray-800 pt-3">
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-400">
               <input
                 type="checkbox"
                 checked={s.settings.showIcons}
                 onChange={() => s.toggleIcons()}
-                className="h-4 w-4 cursor-pointer accent-blue-500"
+                className="h-4 w-4 cursor-pointer accent-accent"
               />
               <span>显示图标（emoji）</span>
             </label>
-            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+            <p className="mt-1 text-xs leading-relaxed text-gray-400">
               勾选后在界面中显示 emoji 图标；取消勾选进入「纯文字模式」，界面更素净。
             </p>
           </div>
 
           {/* ② 主题（日间 / 夜间） */}
           <div className="mt-2 border-t border-gray-700 pt-3">
-            <div className="text-sm text-gray-300">主题</div>
+            <div className="text-sm text-gray-400">主题</div>
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
                 onClick={() => s.updateSettings({ theme: 'light' })}
                 className={`flex h-10 flex-1 items-center justify-center rounded-md text-sm transition-colors ${
                   s.settings.theme === 'light'
-                    ? 'bg-blue-700 text-white'
-                    : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                    ? 'bg-accent text-white'
+                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-100'
                 }`}
               >
                 日间
@@ -224,14 +225,14 @@ export function SettingsMenu() {
                 onClick={() => s.updateSettings({ theme: 'dark' })}
                 className={`flex h-10 flex-1 items-center justify-center rounded-md text-sm transition-colors ${
                   s.settings.theme === 'dark'
-                    ? 'bg-blue-700 text-white'
-                    : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                    ? 'bg-accent text-white'
+                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-100'
                 }`}
               >
                 夜间
               </button>
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+            <p className="mt-1 text-xs leading-relaxed text-gray-400">
               日间适合明亮环境；夜间为默认深色护眼模式。设置会随存档保存。
             </p>
           </div>
@@ -243,21 +244,21 @@ export function SettingsMenu() {
               <button
                 type="button"
                 onClick={handleExport}
-                className="h-10 flex-1 rounded-md bg-gray-700 px-2 text-xs text-gray-200 transition-colors hover:bg-gray-600"
+                className="h-10 flex-1 rounded-md text-gray-400 px-2 text-xs transition-colors hover:bg-gray-800/50 hover:text-gray-100"
               >
                 导出
               </button>
               <button
                 type="button"
                 onClick={handleCopy}
-                className="h-10 flex-1 rounded-md bg-gray-700 px-2 text-xs text-gray-200 transition-colors hover:bg-gray-600"
+                className="h-10 flex-1 rounded-md text-gray-400 px-2 text-xs transition-colors hover:bg-gray-800/50 hover:text-gray-100"
               >
                 复制
               </button>
               <button
                 type="button"
                 onClick={handleImport}
-                className="h-10 flex-1 rounded-md bg-blue-700 px-2 text-xs text-white transition-colors hover:bg-blue-600"
+                className="h-10 flex-1 rounded-md bg-accent px-2 text-xs text-white transition-colors hover:bg-accent/80"
               >
                 导入
               </button>
@@ -270,7 +271,7 @@ export function SettingsMenu() {
                 value={manualCopy}
                 onFocus={(e) => e.currentTarget.select()}
                 rows={3}
-                className="mt-2 w-full resize-none rounded border border-gray-600 bg-gray-900 p-1 font-mono text-[10px] leading-tight text-gray-300"
+                className="mt-2 w-full resize-none rounded border border-gray-600 bg-gray-900 p-1 font-mono text-[10px] leading-tight text-gray-100"
               />
             )}
 
@@ -280,9 +281,9 @@ export function SettingsMenu() {
               onChange={(e) => setImportText(e.target.value)}
               placeholder="在此粘贴存档文本后点「导入」"
               rows={3}
-              className="mt-2 w-full resize-none rounded border border-gray-600 bg-gray-900 p-1 font-mono text-[10px] leading-tight text-gray-300 placeholder:text-gray-600"
+              className="mt-2 w-full resize-none rounded border border-gray-600 bg-gray-900 p-1 font-mono text-[10px] leading-tight text-gray-400 placeholder:text-gray-600"
             />
-            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+            <p className="mt-1 text-xs leading-relaxed text-gray-400">
               存档以 Base64 编码，可跨设备迁移；导入后页面会自动刷新。
             </p>
           </div>
@@ -294,30 +295,30 @@ export function SettingsMenu() {
               <button
                 type="button"
                 onClick={handleReset}
-                className="h-10 rounded-md bg-red-800 px-3 text-xs text-white transition-colors hover:bg-red-700"
+                className="h-10 rounded-md bg-danger px-3 text-xs text-white transition-colors hover:bg-danger/80"
               >
                 重置
               </button>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-red-400">将清空全部进度，确定？</span>
+                <span className="text-xs text-danger">将清空全部进度，确定？</span>
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="h-10 rounded-md bg-red-800 px-3 text-xs text-white transition-colors hover:bg-red-700"
+                  className="h-10 rounded-md bg-danger px-3 text-xs text-white transition-colors hover:bg-danger/80"
                 >
                   确认重置
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmingReset(false)}
-                  className="h-10 rounded-md px-3 text-xs text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+                  className="h-10 rounded-md px-3 text-xs text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-gray-100"
                 >
                   取消
                 </button>
               </div>
             )}
-            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+            <p className="mt-1 text-xs leading-relaxed text-gray-400">
               清空 localStorage 中的存档并从头开始，此操作不可撤销。
             </p>
           </div>

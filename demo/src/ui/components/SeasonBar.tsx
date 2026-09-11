@@ -53,12 +53,13 @@ export function SeasonBar() {
   const isAutumn = season === 'autumn';
 
   // 缺口配色：秋季仍不足 → 红 + 脉冲（最紧急）；其余季节不足 → 琥珀；充足 → 灰
+  // 越冬预报：充足=灰（弱化）、秋季仍缺=红闪（最紧急）、其余季节缺=琥珀
   const warnClass =
     gap <= 0
-      ? 'text-gray-500'
+      ? 'text-gray-400'
       : gap > 0 && isAutumn
-        ? 'animate-pulse text-red-400'
-        : 'text-amber-400';
+        ? 'animate-pulse text-danger'
+        : 'text-warn';
 
   // ── 谷仓容量 ──
   const grainCap = getResourceStorage('grain', view);
@@ -75,7 +76,7 @@ export function SeasonBar() {
 
       {/* ── 当季进度条（细条，融入页面；颜色随季节变化）── */}
       <div
-        className="relative h-2 min-w-[6rem] flex-1 overflow-hidden rounded-md bg-gray-800/60"
+        className="relative h-2 min-w-[6rem] flex-1 overflow-hidden rounded-md bg-gray-800"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -89,7 +90,7 @@ export function SeasonBar() {
       </div>
 
       {/* ── 本季剩余 ── */}
-      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-500">
+      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-400">
         剩 {seasonLeft}s
       </span>
 
@@ -115,10 +116,10 @@ export function SeasonBar() {
       </span>
 
       {/* ── 年份 + 当季农业倍率（把"季节对产出的作用"直接摆出来）── */}
-      <span className="shrink-0 whitespace-nowrap text-xs text-gray-500">
-        第 <span className="font-mono tabular-nums text-gray-300">{year}</span> 年
+      <span className="shrink-0 whitespace-nowrap text-xs text-gray-400">
+        第 <span className="font-mono tabular-nums text-gray-100">{year}</span> 年
       </span>
-      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-500">
+      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-400">
         农业 ×{def.agriMultiplier}
       </span>
 
@@ -126,7 +127,7 @@ export function SeasonBar() {
       <span className="shrink-0 whitespace-nowrap text-xs">
         <span className="text-gray-600">谷仓 </span>
         <span
-          className={`font-mono tabular-nums ${nearFull ? 'text-amber-400' : 'text-gray-400'}`}
+          className={`font-mono tabular-nums ${nearFull ? 'text-warn' : 'text-gray-400'}`}
           title={
             nearFull
               ? '接近满仓 —— 溢出部分会被直接浪费，考虑建造粮仓或陶窑'
@@ -135,7 +136,7 @@ export function SeasonBar() {
         >
           {formatNumber(grain, 0)} / {formatNumber(grainCap, 0)}
         </span>
-        {nearFull && <span className="text-amber-400"> ⚠ 将溢出</span>}
+        {nearFull && <span className="text-warn"> ⚠ 将溢出</span>}
       </span>
 
       {/* ── 越冬预报（本时代最重要的前瞻信息）── */}

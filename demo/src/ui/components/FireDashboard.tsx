@@ -81,14 +81,14 @@ export function FireDashboard() {
   return (
     <section className="flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto border-b border-gray-800 px-4 py-2 text-sm leading-tight">
       {/* ── 标题 ── */}
-      <span className="flex shrink-0 items-center gap-1.5 text-gray-500">
+      <span className="flex shrink-0 items-center gap-1.5 text-gray-400">
         <Icon emoji="🔥" className="text-sm" />
         <span>火种</span>
       </span>
 
       {/* ── 线性进度条（危险时红色闪烁）—— 细条、无外框，融入页面 ── */}
       <div
-        className="relative h-2 min-w-[7rem] flex-1 overflow-hidden rounded-md bg-gray-800/60"
+        className="relative h-2 min-w-[7rem] flex-1 overflow-hidden rounded-md bg-gray-800"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={max}
@@ -104,7 +104,7 @@ export function FireDashboard() {
       {/* ── 数值：等宽 + 右对齐，位数变化不抖动；危险时变红闪烁 ── */}
       <span
         className={`shrink-0 min-w-[5rem] text-right font-mono font-semibold tabular-nums ${
-          danger ? 'animate-pulse text-red-400' : tierInfo.color
+          danger ? 'animate-pulse text-danger' : tierInfo.color
         }`}
       >
         {Math.floor(fire)}
@@ -114,17 +114,17 @@ export function FireDashboard() {
       {/* ── 档位 + 火源因子 ── */}
       <span
         className={`shrink-0 whitespace-nowrap text-xs ${
-          danger ? 'text-red-400' : tierInfo.color
+          danger ? 'text-danger' : tierInfo.color
         }`}
       >
         {tierInfo.name}
       </span>
-      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-500">
+      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-400">
         ×{factor.toFixed(2)}
       </span>
 
       {/* ── 衰减速率 / 预计熄灭时间 ── */}
-      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-red-400/80">
+      <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-danger/80">
         −{decay.toFixed(2)}/秒
       </span>
       <span className="shrink-0 whitespace-nowrap text-xs text-gray-600">
@@ -132,11 +132,11 @@ export function FireDashboard() {
       </span>
 
       {/* ── 当前木材存量（投料按钮旁，不足时标红）── */}
-      <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-gray-500">
+      <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-gray-400">
         <Icon emoji="🪵" className="text-xs" />
         <span
           className={`font-mono tabular-nums ${
-            state.wood < FIRE.WOOD_INPUT_STEPS[0] ? 'text-red-400' : ''
+            state.wood < FIRE.WOOD_INPUT_STEPS[0] ? 'text-danger' : ''
           }`}
         >
           {formatNumber(state.wood, 0)}
@@ -160,8 +160,8 @@ export function FireDashboard() {
               }
               className={`${FUEL_BTN} ${
                 disabled
-                  ? 'cursor-not-allowed text-gray-700'
-                  : 'text-gray-400 hover:bg-orange-500/15 hover:text-orange-300 active:bg-orange-500/25'
+                  ? 'cursor-not-allowed text-gray-600'
+                  : 'hover:bg-accent/15 hover:text-accent active:bg-accent/25'
               }`}
             >
               +{step}
@@ -178,8 +178,8 @@ export function FireDashboard() {
         title={`低于 ${FIRE.AUTO_MAINTAIN_THRESHOLD} 时自动投入木材`}
         className={`shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-xs transition-colors ${
           state.autoMaintainFire
-            ? 'text-emerald-400 hover:bg-emerald-500/10'
-            : 'text-gray-600 hover:bg-gray-800/60 hover:text-gray-400'
+            ? 'text-ok hover:bg-ok/10'
+            : 'text-gray-600 hover:bg-gray-800/50 hover:text-gray-100'
         }`}
       >
         自动维持 {state.autoMaintainFire ? '✓' : '✗'}

@@ -46,18 +46,18 @@ export function CivilizationPanel() {
   const progress = total > 0 ? Math.min(1, researched / total) : 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* ── 顶栏：左侧进度 / 中间经验 / 右侧视图切换（无边框，仅极淡底色） ── */}
-      <header className="rounded-md bg-gray-800/40 px-4 py-2.5">
+      <header className="space-y-2 border-b border-gray-800 px-4 pb-3">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           {/* 左：已学科技数（数字等宽对齐） */}
-          <div className="text-xs font-mono tabular-nums text-gray-500">
+          <div className="text-xs font-mono tabular-nums text-gray-400">
             已学 <span className="text-sm font-semibold text-gray-100">{researched}</span>
             <span className="text-gray-600"> / {total}</span>
           </div>
 
           {/* 中：经验存量 + 每秒产出（数字等宽对齐） */}
-          <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-gray-500">
+          <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-gray-400">
             <span className="inline-flex items-center gap-1">
               经验{' '}
               <span className="text-sm font-semibold text-gray-100">
@@ -68,7 +68,7 @@ export function CivilizationPanel() {
             {/* 产出速率 > 0 时给一点点颜色（关键状态），否则纯灰 */}
             <span
               title="经验产出速率"
-              className={expOutput > 0 ? 'text-emerald-500/90' : 'text-gray-600'}
+              className={expOutput > 0 ? 'text-ok' : 'text-gray-600'}
             >
               {formatRate(expOutput)}/秒
             </span>
@@ -77,7 +77,7 @@ export function CivilizationPanel() {
 
         {/* 细进度条：把"已学 / 总数"视觉化。
             这是"文明推进了多少"的度量，正是余烬橙该出现的地方（强调色，非中性灰）。 */}
-        <div className="mt-2 h-0.5 overflow-hidden rounded-full bg-gray-800">
+        <div className="h-0.5 overflow-hidden rounded-full bg-gray-800">
           <div
             className="h-full rounded-full bg-accent transition-[width] duration-300"
             style={{ width: `${progress * 100}%` }}
@@ -87,7 +87,7 @@ export function CivilizationPanel() {
 
       {/* ── 跃迁 + 队列：渐进解锁，收窄到与其它 Tab 一致的阅读宽度 ── */}
       {(showAdvance || showQueue) && (
-        <div className="mx-auto max-w-4xl space-y-4">
+        <div className="mx-auto max-w-4xl space-y-6">
           {/* 跃迁面板在上（时代进程比排队更重要） */}
           {showAdvance && <AdvancePanel />}
           {showQueue && <QueuePanel />}

@@ -21,7 +21,7 @@ import { useStore, toEngineState } from '../../state/store';
 import { isTechRevealed } from '../../game/reveal';
 import { techsOfEra, BRANCH_INFO, type TechDef } from '../../data/techs';
 import { describeEffects, TECH_TYPE_LABEL } from './techEffectsText';
-import { Icon, useShowIcons } from './Icon';
+import { Icon } from './Icon';
 import { formatNumber } from '../../core/format';
 
 /** 浮层在屏幕上的固定坐标（已做过视口边界收拢） */
@@ -71,7 +71,6 @@ const STATUS_META: Record<Status, { text: string; cls: string }> = {
 export function TechGrid() {
   const s = useStore();
   const view = toEngineState(s);
-  const showIcons = useShowIcons();
   const research = s.research;
   const addMessage = s.addMessage;
 
@@ -174,36 +173,31 @@ export function TechGrid() {
   };
 
   // ── 方块视觉 ──
-  // min-h/min-w 提到 48px：触屏触控目标 ≥44px 是硬指标，48 留一点余量。
-  // 方块更大了，里面短名也从 text-sm 提到 text-base，字才不会显小、方块不显空。
+  // **长方形标签**：宽 6 字（桌面）/ 4 字（手机），高度自适应（一行文字 + 上下留白）。
+  //   · 宽度用 em 而不是 px：随字号缩放，"6 个汉字宽"在哪个字号下都成立
+  //   · 里面放**完整科技名**——宽度既然给到 6 字，塞 1–2 字短名就太空了；
+  //     名字直接可见，玩家不用悬停也知道自己在研究什么
+  //   · 超出宽度的长名（如「谷仓通风系统」在手机 4 字宽下）截断省略，
+  //     完整信息在悬停/长按浮层里
+  // **不画框**：状态用文字颜色表达，不套描边。
   const tileClass = (status: Status): string => {
     const base =
-      'relative flex aspect-square min-h-[48px] min-w-[48px] items-center justify-center rounded-md text-center select-none transition-colors';
+      'flex w-[4em] shrink-0 items-center justify-center rounded-md px-1 py-2 text-center text-sm select-none transition-colors sm:w-[6em]';
     switch (status) {
       case 'researched':
-        return `${base} bg-gray-800/40 opacity-55 ring-1 ring-gray-700`;
+        return `${base} text-gray-600`;
       case 'ready':
         // 可研究=正向语义，用 ok（绿）而不是品牌橙：余烬橙每屏只该出现一处
-        return `${base} cursor-pointer bg-ok/10 text-gray-100 ring-2 ring-ok/70 hover:bg-ok/20`;
+        return `${base} cursor-pointer bg-ok/10 text-ok hover:bg-ok/20`;
       case 'short':
-        return `${base} cursor-pointer bg-gray-800/70 text-gray-200 ring-1 ring-gray-600`;
+        return `${base} cursor-pointer text-gray-500 hover:text-gray-200`;
     }
   };
 
-  const tileLabel = (def: TechDef) =>
-    showIcons ? (
-      <Icon emoji={def.icon} className="text-2xl leading-none" />
-    ) : (
-      // 短名用正文黑体（默认 font-sans），不要用宋体——小方块里宋体会糊。
-      // text-base(16px) 配 leading-none；两字时加 tracking-tight 收字距，避免顶满。
-      <span
-        className={`px-1 text-base font-semibold leading-none text-gray-100 ${
-          def.short.length > 1 ? 'tracking-tight' : ''
-        }`}
-      >
-        {def.short}
-      </span>
-    );
+  const tileLabel = (def: TechDef) => (
+    // 颜色交给外层（ready=绿 / short=灰 / researched=更弱灰），这里只负责排版。
+    <span className="truncate leading-none">{def.name}</span>
+  );
 
   return (
     <div>
@@ -214,9 +208,9 @@ export function TechGrid() {
       </p>
 
       {/* ── 主区：可研究的科技 ── */}
-      {/* 移动端从 5 列降到 4 列，方块更大更易点；逐级 6/8/10 列铺满更宽屏 */}
+      {/* 固定尺寸方块 + flex 换行：不再随容器膨胀，手机/桌面都是同一个紧凑大小 */}
       {available.length > 0 ? (
-        <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
+        <div className="flex flex-wrap gap-1.5">
           {available.map(({ def, status }) => (
             <button
               key={def.id}
@@ -276,14 +270,14 @@ export function TechGrid() {
                       <span className="text-[11px] font-medium text-gray-400">{info.name}</span>
                       <span className="text-[11px] tabular-nums text-gray-500">{list.length}</span>
                     </div>
-                    {/* 已学方块比主区弱一档：字号 text-sm、降透明度、细 ring；
-                       但仍是可点的"查看详情"入口，触控目标必须 ≥44px（故 min-h/min-w 取 44） */}
-                    <div className="mt-1 flex flex-wrap gap-1.5">
+                    {/* 已学方块比主区更弱：纯文字、无底无框，靠颜色分层；
+                       仍是可点的"查看详情"入口，触控目标 ≥44px（min-h/min-w） */}
+                    <div className="mt-1 flex flex-wrap gap-x-1 gap-y-1">
                       {list.map(def => (
                         <button
                           key={def.id}
                           type="button"
-                          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md bg-gray-800/30 px-2 text-sm text-gray-400 ring-1 ring-gray-700/60 transition-colors hover:bg-gray-800/50 hover:text-gray-200"
+                          className="flex w-[4em] shrink-0 items-center justify-center rounded-md px-1 py-2 text-center text-sm text-gray-600 transition-colors hover:text-gray-200 sm:w-[6em]"
                           aria-label={def.name}
                           onMouseEnter={(e) => activate(def, 'researched', e.currentTarget)}
                           onMouseLeave={scheduleClose}
@@ -291,11 +285,7 @@ export function TechGrid() {
                           onTouchEnd={cancelPress}
                           onTouchMove={cancelPress}
                         >
-                          {showIcons ? (
-                            <Icon emoji={def.icon} className="text-base leading-none" />
-                          ) : (
-                            <span className="truncate">{def.short}</span>
-                          )}
+                          <span className="truncate leading-none">{def.name}</span>
                         </button>
                       ))}
                     </div>

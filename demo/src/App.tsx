@@ -70,18 +70,20 @@ export default function App() {
       {/* ③ 卡点提示（无卡点时不渲染） */}
       <HintBar />
 
-      {/* ④ 模块 Tab —— 置于顶部，紧邻资源条（错峰入场第二拍） */}
-      <nav className="panel-in-2 flex shrink-0 gap-1 border-b border-gray-700 bg-gray-800 px-4 py-2">
+      {/* ④ 模块 Tab —— 极简处理：纯文字 + 一条余烬色下划线。
+          不再给 Tab 套底色盒子（那是"面板套面板"的噪音来源之一），
+          分层只靠 nav 底部那条发丝线 + 活动态的下划线。 */}
+      <nav className="panel-in-2 flex shrink-0 gap-6 border-b border-gray-800 px-4">
         {tabs.map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-md px-4 py-2.5 text-sm font-medium transition-colors ${
-              // 活动态：用一条余烬色细环标记"当前 Tab"，而非整块橙色
-              // （整块蓝/橙都是默认值残留，会破坏"强调色单屏只一处"的纪律）
+            className={`-mb-px border-b-2 px-1 py-3 text-sm transition-colors ${
+              // 活动态：余烬色下划线（这是强调色"当前焦点"语义的正确落点）
+              // 非活动态：透明下划线占位，避免切换时高度跳动
               tab === t
-                ? 'bg-gray-800 text-gray-100 ring-1 ring-accent'
-                : 'text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                ? 'border-accent font-medium text-gray-100'
+                : 'border-transparent text-gray-500 hover:text-gray-200'
             }`}
           >
             {TAB_INFO[t].icon} {TAB_INFO[t].label}
