@@ -619,6 +619,57 @@ export function isBuildingUnlocked(buildingId: BuildingId, state: E1State): bool
 // ─────────────────────────────────────────────
 // 岗位
 // ─────────────────────────────────────────────
+/**
+ * 某岗位的工位上限（不限工位的岗位返回 Infinity）。
+ *
+ * 为什么需要它：岗位进阶**不能把人送进没有工位的地方**。
+ * 农夫受「田地 ×3」限制、牧人受「畜栏 ×3」限制——
+ * 若农业刚研究完就把采集者全转成农夫，而田地还没建，
+ * 这些农夫产出为 0，玩家会在毫无预警的情况下断粮。
+ */
+export function getJobSlotCapacity(jobId: JobId, state: E1State): number {
+  switch (jobId) {
+    case 'farmer':
+      return (state.buildings.field ?? 0) * E2.JOBS_PER_FIELD;
+    case 'herder':
+      return (state.buildings.animal_pen ?? 0) * E2.JOBS_PER_PEN;
+    default:
+      return Number.POSITIVE_INFINITY;
+  }
+}
+
+/**
+ * 推进一次岗位进阶（每 tick 调用；每次最多转换 1 人）。
+ *
+ * 为什么每次只转 1 人而不是一次转完：
+ * 进阶是"人逐渐专职化"的过程，摊在若干个 tick 上更自然，
+ * 也让 UI 上的人数变化看得清、不会一格跳完。
+ *
+ * 返回新的岗位表与本次转换信息；无进阶可做时返回 null（调用方应保持原对象）。
+ */
+export function applyJobUpgrade(
+  state: E1State
+): { jobs: Record<string, number>; from: JobId; to: JobId } | null {
+  for (const def of JOBS) {
+    const up = def.upgradesTo;
+    if (!up) continue;
+
+    const assigned = state.jobs[def.id] ?? 0;
+    if (assigned <= 0) continue;
+    if (!isJobUnlocked(up.job, state)) continue;
+
+    const capacity = getJobSlotCapacity(up.job, state);
+    const current = state.jobs[up.job] ?? 0;
+    if (current >= capacity) continue;
+
+    const jobs = { ...state.jobs };
+    jobs[def.id] = assigned - 1;
+    jobs[up.job] = current + 1;
+    return { jobs, from: def.id, to: up.job };
+  }
+  return null;
+}
+
 export function isJobUnlocked(jobId: JobId, state: E1State): boolean {
   const def = JOB_MAP[jobId];
   if (def.requires.tech && !state.techs[def.requires.tech]) return false;

@@ -318,6 +318,25 @@ export const useStore = create<GameState>((set, get) => ({
       fire: r.fire,
     });
 
+    // ── 岗位进阶（采集者 → 农夫 等）──
+    //
+    // 放在 tick 里逐人推进（每次 1 人），而不是跃迁时一次性转换：
+    //   ① 触发条件是"目标岗位已解锁 **且有工位**"，而工位来自建筑
+    //      （田地/畜栏）——那是在时代内陆续建起来的；一次性转换会在
+    //      "田地还没建"时把人送进闲置岗位，当场断粮。
+    //   ② 逐人转换让"职业专职化"这个过程在 UI 上看得见。
+    // 消息只在**第一次**转换时提示，避免刷屏。
+    const upgraded = engine.applyJobUpgrade(engineView(get()));
+    if (upgraded) {
+      const fromName = JOBS.find(j => j.id === upgraded.from)?.name ?? upgraded.from;
+      const toName = JOBS.find(j => j.id === upgraded.to)?.name ?? upgraded.to;
+      const firstTime = (get().jobs[upgraded.to] ?? 0) === 0;
+      set({ jobs: upgraded.jobs });
+      if (firstTime) {
+        get().addMessage(`${fromName}掌握新技艺，开始专职为${toName}`, 'event');
+      }
+    }
+
     // 队列首位自动研究
     const after = get();
     if (after.queue.length > 0) {
@@ -423,10 +442,28 @@ export const useStore = create<GameState>((set, get) => ({
     //    旧存档的结构里可能有 grain 字段（类型系统已不认它），故按 unknown 取
     const legacyGrain = oldVersion < 5 ? ((data as Record<string, unknown>).grain as number ?? 0) : 0;
 
+    // 旧跃迁映射的**还原**（v<5）：
+    //   早期版本的 advanceEra 会把 E1 的「住所」转换成「村落民居」，并把其余建筑清零。
+    //   于是这类存档在 E2 里既没有住所（被清零），却又有村落民居（映射产物），
+    //   玩家看到的就是"旧的建筑没有了"。
+    //   判据：**村落民居存在，但「定居营造」科技尚未研究** ——
+    //   村落民居的建造前提正是该科技，所以这些必是映射产物而非玩家所建。
+    //   把它们还原成「住所」：K 数值同为 +4，玩家的人口上限不受影响。
+    //   ⚠️ 同期被清零的火塘/作坊无数据可考，无法恢复，只能由玩家重建。
+    const legacyBuildings = { ...(data.buildings as Record<string, number> | undefined) };
+    if (oldVersion < 5 && (legacyBuildings.village_house ?? 0) > 0) {
+      const techs = (data.techs ?? {}) as Record<string, boolean>;
+      if (!techs['settled_construction']) {
+        legacyBuildings.house = (legacyBuildings.house ?? 0) + (legacyBuildings.village_house ?? 0);
+        legacyBuildings.village_house = 0;
+      }
+    }
+
     const migrated: Partial<GameState> = {
       ...data,
       era: (data.era as EraId | undefined) ?? 'E1',
       food: (data.food ?? 0) + legacyGrain,
+      buildings: legacyBuildings as Record<string, number>,
       livestock: data.livestock ?? 0,
       fabric: data.fabric ?? 0,
       eraElapsedSec: data.eraElapsedSec ?? 0,

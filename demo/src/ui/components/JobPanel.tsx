@@ -21,10 +21,12 @@ import {
   calcJobOutput,
   getAssignedPopulation,
   getIdlePopulation,
+  getJobSlotCapacity,
   isJobUnlocked,
   type E1State,
 } from '../../game/engine';
 import { getRevealedJobs } from '../../game/reveal';
+import { JOB_MAP } from '../../data/jobs';
 import type { JobDef } from '../../data/jobs';
 import { RESOURCE_MAP } from '../../data/resources';
 import { TECH_MAP } from '../../data/techs';
@@ -224,6 +226,25 @@ export function JobPanel() {
                       </div>
                       {/* 说明文字属次要层级（gray-400） */}
                       <div className="mt-0.5 truncate text-xs text-gray-400">{job.desc}</div>
+                      {/* 岗位进阶提示：让玩家知道"这个岗位会变成什么"，
+                          而不是等它悄悄变了才发现。条件满足后会逐人自动转换。
+                          仅在**目标岗位已解锁**时显示 —— E1 里农夫还不存在，
+                          此时给出未来的职业路径只会让人困惑（也保证了 E1 渲染不变）。
+                          工位已满时给出下一步指示，而不是让玩家干等。 */}
+                      {job.upgradesTo &&
+                        isJobUnlocked(job.upgradesTo.job, view) &&
+                        (() => {
+                          const target = JOB_MAP[job.upgradesTo.job];
+                          const slots = getJobSlotCapacity(target.id, view);
+                          const taken = view.jobs[target.id] ?? 0;
+                          const full = taken >= slots;
+                          return (
+                            <div className="mt-0.5 text-xs text-gray-600">
+                              进阶 → {target.name}：
+                              {full ? '工位已满，先扩建对应建筑' : job.upgradesTo.hint}
+                            </div>
+                          );
+                        })()}
                     </div>
                   </div>
 
