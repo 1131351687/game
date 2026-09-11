@@ -6,7 +6,7 @@
 //   1. 主区**只列「当前可研究」的科技**（前置已满足、尚未学）。
 //      已学的**不进主区**——它们移到下方"已学科技"分类区。这样主区永远清爽：
 //      开局 1 个方块（掌握火），中期也就几个，不会变成一大片网格。
-//   2. **点击方块 = 立即研究**。买不起时不开研究，改为弹出详情浮层（说明差多少经验）。
+//   2. **点击标签 = 只打开详情浮层**；研究由浮层里的「研究」按钮提交（两段式确认）。
 //   3. **悬停（桌面）/ 长按 ≥450ms（触屏）= 只看详情**，浮层里有完整说明、
 //      可读化效果列表、成本 / 存量 / 状态。
 //   4. 触屏没有 hover，所以长按是移动端唯一的"查看"入口；短按仍然是"研究"。
@@ -64,7 +64,7 @@ function computePos(rect: DOMRect): OverlayPos {
 // emerald-400 / amber-400 更稳，不必再靠 light 主题的覆盖规则兜底。
 const STATUS_META: Record<Status, { text: string; cls: string }> = {
   researched: { text: '已学', cls: 'text-gray-500' },
-  ready: { text: '可研究 · 点击即研究', cls: 'text-ok' },
+  ready: { text: '可研究', cls: 'text-ok' },
   short: { text: '经验不足', cls: 'text-warn' },
 };
 
@@ -72,7 +72,6 @@ export function TechGrid() {
   const s = useStore();
   const view = toEngineState(s);
   const research = s.research;
-  const addMessage = s.addMessage;
 
   const [overlay, setOverlay] = useState<{ def: TechDef; status: Status; pos: OverlayPos } | null>(null);
   /** 「已学科技」分类区默认收起——它只是存档展示，不该抢占主区注意力 */
@@ -152,24 +151,14 @@ export function TechGrid() {
   };
 
   /**
-   * 点击方块：**能研究就立刻研究**；买不起则改为弹详情，告诉玩家还差多少。
+   * 点击标签：**只打开详情浮层**，研究动作由浮层里的「研究」按钮提交。
    *
-   * 为什么买不起时不静默失败：玩家点了没反应会以为界面坏了。
-   * 弹浮层既能解释原因，又复用已有 UI，不必再加 toast。
+   * 为什么两段式：研究是不可撤销的花费，点一下就直接扣经验太冒进——
+   * 尤其触屏上没有 hover，短按若直接研究，玩家就失去了"先看再决定"的入口。
+   * 统一成「点击 = 查看，按钮 = 确认」，桌面与手机的手势也完全一致。
    */
   const onTileClick = (def: TechDef, status: Status, el: HTMLElement) => {
-    if (status !== 'ready') {
-      activate(def, status, el);
-      return;
-    }
-    const ok = research(def.id);
-    if (!ok) {
-      // canResearch 兜底失败（理论上刚才还是 ready），给出明确反馈而不是无声
-      addMessage(`「${def.name}」暂时无法研究`, 'warn');
-      activate(def, status, el);
-      return;
-    }
-    closeNow();
+    activate(def, status, el);
   };
 
   // ── 方块视觉 ──
@@ -204,7 +193,7 @@ export function TechGrid() {
       {/* ── 提示语：把两个手势一次说清 ── */}
       {/* 用 text-gray-500（双主题都定义为"次要文字"），浅色下也比 gray-600 更够对比 */}
       <p className="mb-2 text-xs text-gray-500">
-        点击方块立即研究 · 悬停（手机长按）查看详情
+        点击查看详情 · 可研究的科技在详情中研究
       </p>
 
       {/* ── 主区：可研究的科技 ── */}
