@@ -73,7 +73,7 @@ export function TechGrid() {
   const view = toEngineState(s);
   const research = s.research;
 
-  const [overlay, setOverlay] = useState<{ def: TechDef; status: Status; pos: OverlayPos } | null>(null);
+  const [overlay, setOverlay] = useState<{ def: TechDef; status: Status; pos: OverlayPos; armed: boolean } | null>(null);
   /** 「已学科技」分类区默认收起——它只是存档展示，不该抢占主区注意力 */
   const [showLearned, setShowLearned] = useState(false);
   const closeTimer = useRef<number | null>(null);
@@ -131,16 +131,16 @@ export function TechGrid() {
     }
     setOverlay(null);
   };
-  const activate = (def: TechDef, status: Status, el: HTMLElement) => {
+  const activate = (def: TechDef, status: Status, el: HTMLElement, armed: boolean) => {
     cancelClose();
-    setOverlay({ def, status, pos: computePos(el.getBoundingClientRect()) });
+    setOverlay({ def, status, pos: computePos(el.getBoundingClientRect()), armed });
   };
 
   // 触屏：手指按下开始计时，≥450ms 仍未抬起/移动才算长按 → 弹出浮层
   const onTouchStart = (def: TechDef, status: Status, el: HTMLElement) => {
     cancelClose();
     if (pressTimer.current !== null) clearTimeout(pressTimer.current);
-    pressTimer.current = window.setTimeout(() => activate(def, status, el), LONG_PRESS_MS);
+    pressTimer.current = window.setTimeout(() => activate(def, status, el, true), LONG_PRESS_MS);
   };
   // 手指抬起或滑动 → 取消长按计时（避免与滚动/点击混淆）
   const cancelPress = () => {
@@ -151,14 +151,38 @@ export function TechGrid() {
   };
 
   /**
-   * 点击标签：**只打开详情浮层**，研究动作由浮层里的「研究」按钮提交。
+   * 点击标签 —— **两段式**：
+   *   第一下 → 打开详情浮层（进入"待确认"态）
+   *   第二下（同一个标签）→ 真正研究
    *
-   * 为什么两段式：研究是不可撤销的花费，点一下就直接扣经验太冒进——
-   * 尤其触屏上没有 hover，短按若直接研究，玩家就失去了"先看再决定"的入口。
-   * 统一成「点击 = 查看，按钮 = 确认」，桌面与手机的手势也完全一致。
+   * 为什么不做"点一下就研究"：研究是不可撤销的花费，直接扣经验太冒进；
+   * 也不做"去点浮层里的按钮"——瞄准一个小按钮很费劲。
+   * 让**同一个标签**承担"看 → 确认"两步，桌面与手机手势完全一致。
+   *
+   * 注意：桌面 hover 也会打开浮层，但那是**预览**（armed=false）——
+   * 不计入"第一下"。所以桌面的完整序列是：悬停预览 → 点一下 → 再点一下确认。
    */
   const onTileClick = (def: TechDef, status: Status, el: HTMLElement) => {
-    activate(def, status, el);
+    const armed = !!overlay && overlay.def.id === def.id && overlay.armed;
+
+    // 第二下：真正研究（只有"可研究"态允许）
+    if (armed) {
+      if (status !== 'ready') {
+        // 经验不足 / 已学：没有可确认的动作，回到"只看详情"态
+        activate(def, status, el, false);
+        return;
+      }
+      if (research(def.id)) {
+        closeNow();
+        return;
+      }
+      // canResearch 兜底失败：不静默，回到待确认态让玩家再试
+      activate(def, status, el, true);
+      return;
+    }
+
+    // 第一下：打开详情并进入待确认态
+    activate(def, status, el, true);
   };
 
   // ── 方块视觉 ──
@@ -193,7 +217,7 @@ export function TechGrid() {
       {/* ── 提示语：把两个手势一次说清 ── */}
       {/* 用 text-gray-500（双主题都定义为"次要文字"），浅色下也比 gray-600 更够对比 */}
       <p className="mb-2 text-xs text-gray-500">
-        点击查看详情 · 可研究的科技在详情中研究
+        点一下看详情 · 再点一下研究（悬停可预览）
       </p>
 
       {/* ── 主区：可研究的科技 ── */}
@@ -207,7 +231,7 @@ export function TechGrid() {
               className={tileClass(status)}
               aria-label={`${def.name}（${STATUS_META[status].text}）`}
               // 桌面：悬停只看详情，移开延迟关
-              onMouseEnter={(e) => activate(def, status, e.currentTarget)}
+              onMouseEnter={(e) => activate(def, status, e.currentTarget, false)}
               onMouseLeave={scheduleClose}
               // 触屏：长按只看详情（不研究）；短按走 onClick = 研究
               onTouchStart={(e) => onTouchStart(def, status, e.currentTarget)}
@@ -268,7 +292,7 @@ export function TechGrid() {
                           type="button"
                           className="flex w-[4em] shrink-0 items-center justify-center rounded-md px-1 py-2 text-center text-sm text-gray-600 transition-colors hover:text-gray-200 sm:w-[6em]"
                           aria-label={def.name}
-                          onMouseEnter={(e) => activate(def, 'researched', e.currentTarget)}
+                          onMouseEnter={(e) => activate(def, 'researched', e.currentTarget, false)}
                           onMouseLeave={scheduleClose}
                           onTouchStart={(e) => onTouchStart(def, 'researched', e.currentTarget)}
                           onTouchEnd={cancelPress}
@@ -338,8 +362,16 @@ export function TechGrid() {
 
             {/* 状态 + 研究按钮（触屏主要靠这个按钮提交，因为长按只负责看） */}
             <div className="mt-2 flex items-center justify-between">
-              <span className={`text-xs font-medium ${STATUS_META[overlay.status].cls}`}>
-                {STATUS_META[overlay.status].text}
+              <span
+                className={`text-xs font-medium ${
+                  overlay.armed && overlay.status === 'ready'
+                    ? 'text-ok' // 已进入待确认态：提示第二下会真的研究
+                    : STATUS_META[overlay.status].cls
+                }`}
+              >
+                {overlay.armed && overlay.status === 'ready'
+                  ? '再点一下标签确认研究'
+                  : STATUS_META[overlay.status].text}
               </span>
               {overlay.status === 'ready' && (
                 <button
