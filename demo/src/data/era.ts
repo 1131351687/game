@@ -77,7 +77,7 @@ export const ERAS: Record<EraId, EraMeta> = {
       minFood: 1500,
       /** 文档未要求村落民居 —— 住房由「人口 ≥75」间接约束（K 必须够大才养得起） */
       minPopulation: 75,
-      /** 完整度过 ≥ 8 个冬季（= 8 年 = 1920 秒 = 32 分钟）—— E2 独有的时间条件 */
+      /** 完整度过 ≥ 8 个冬季 —— 用连续越冬证明定居的存续能力（E2 独有条件；不设现实时长目标） */
       minYears: 8,
       /** 粮仓 ≥3 座、田地 ≥8 块（文档 §11.8） */
       minBuildings: { granary: 3, field: 8 },

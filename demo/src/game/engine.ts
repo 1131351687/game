@@ -734,7 +734,7 @@ export function checkAdvance(state: E1State): AdvanceCheck {
     items.push({
       label: `完整度过 ≥ ${cond.minYears} 个冬季`,
       done: state.eraElapsedSec >= need,
-      detail: `${years} / ${cond.minYears} 年（${Math.floor(state.eraElapsedSec / 60)} / ${need / 60} 分钟）`,
+      detail: `${years} / ${cond.minYears} 年`,
     });
   }
 

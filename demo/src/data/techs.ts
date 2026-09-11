@@ -456,7 +456,7 @@ const E1_TECHS: TechDef[] = [
     // 这样「群体与定居」分支也被拉进关键路径，门槛真正成为三条分支的汇聚点。
     requires: ['stone_knapping', 'rope_weaving'],
     // OR 逻辑：三条分支任一走通即可跃迁
-    // （若用 AND，需 2505 经验才能到门槛，但 20 分钟只能获得 1870，会卡死）
+    // （若用 AND，需 2505 经验才能到门槛——远超单支线路的产出规模，会把首次跃迁拖成长跑）
     requiresAny: ['fire_preservation', 'bow_and_arrow', 'smoking_storage'],
     effects: { enableAdvance: true },
     position: { x: 0, y: 7 },
