@@ -87,6 +87,36 @@ export function TechGrid() {
     };
   }, []);
 
+  // ── 点外部关闭 + Esc 关闭 ─────────────────────────
+  //
+  // 为什么不用「全屏遮罩 div」当点击热区：遮罩是 fixed inset-0 z-40，
+  // 会把刚点过的那个标签也盖住 —— 标签随即触发 mouseleave，
+  // 浮层 150ms 后自己消失（用户看到的正是"点一下它自己没了"）。
+  // 而且遮罩会吞掉第二下点击，两段式根本无法成立。
+  //
+  // 改用 document 级监听：点在浮层外、且不是别的科技标签时才关闭。
+  // 点在标签上要放行——那是标签自己的 onClick（换目标 / 第二下确认）。
+  useEffect(() => {
+    if (!overlay) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (t.closest('[data-tech-overlay]')) return; // 浮层内部
+      if (t.closest('[data-tech-tile]')) return; // 交给标签自己的 onClick
+      closeNow();
+    };
+    const onDocKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeNow();
+    };
+    document.addEventListener('pointerdown', onDocPointerDown);
+    document.addEventListener('keydown', onDocKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onDocPointerDown);
+      document.removeEventListener('keydown', onDocKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlay]);
+
   // ── 主区：只收「前置已满足且尚未学」的科技 ──
   // 已学的**刻意排除**：它们进下方的分类区，主区保持"待办清单"的语义。
   const available: { def: TechDef; status: Status }[] = [];
@@ -122,6 +152,14 @@ export function TechGrid() {
   const scheduleClose = () => {
     cancelClose();
     closeTimer.current = window.setTimeout(() => setOverlay(null), HOVER_CLOSE_DELAY);
+  };
+
+  // 鼠标离开：只有「悬停预览」才自动关闭。
+  // 待确认态（armed）必须保持打开——用户正要点第二下，中途指针扫出标签是常有的事，
+  // 这时候把浮层收掉，就等于把「确认」弄丢了（正是本次反馈的 bug）。
+  const handleLeave = () => {
+    if (overlay?.armed) return;
+    scheduleClose();
   };
   const closeNow = () => {
     cancelClose();
@@ -228,11 +266,12 @@ export function TechGrid() {
             <button
               key={def.id}
               type="button"
+              data-tech-tile
               className={tileClass(status)}
               aria-label={`${def.name}（${STATUS_META[status].text}）`}
               // 桌面：悬停只看详情，移开延迟关
               onMouseEnter={(e) => activate(def, status, e.currentTarget, false)}
-              onMouseLeave={scheduleClose}
+              onMouseLeave={handleLeave}
               // 触屏：长按只看详情（不研究）；短按走 onClick = 研究
               onTouchStart={(e) => onTouchStart(def, status, e.currentTarget)}
               onTouchEnd={cancelPress}
@@ -290,10 +329,11 @@ export function TechGrid() {
                         <button
                           key={def.id}
                           type="button"
+                          data-tech-tile
                           className="flex w-[4em] shrink-0 items-center justify-center rounded-md px-1 py-2 text-center text-sm text-gray-600 transition-colors hover:text-gray-200 sm:w-[6em]"
                           aria-label={def.name}
                           onMouseEnter={(e) => activate(def, 'researched', e.currentTarget, false)}
-                          onMouseLeave={scheduleClose}
+                          onMouseLeave={handleLeave}
                           onTouchStart={(e) => onTouchStart(def, 'researched', e.currentTarget)}
                           onTouchEnd={cancelPress}
                           onTouchMove={cancelPress}
@@ -313,12 +353,12 @@ export function TechGrid() {
       {/* 浮层：点击/触摸其外区域即关闭（z-40 位于浮层之下、方块之上） */}
       {overlay && (
         <>
-          <div className="fixed inset-0 z-40" onClick={closeNow} onTouchStart={closeNow} aria-hidden />
           <div
             className="fixed z-50 max-h-[70vh] w-[300px] overflow-y-auto rounded-lg border border-gray-700 bg-gray-800 p-3 text-left shadow-xl"
             style={{ top: overlay.pos.top, left: overlay.pos.left }}
             onMouseEnter={cancelClose}
-            onMouseLeave={scheduleClose}
+            onMouseLeave={handleLeave}
+            data-tech-overlay
             role="dialog"
             aria-label={overlay.def.name}
           >
