@@ -14,6 +14,8 @@
 
 ## 目录结构
 
+后续 AI 开发首先阅读 design/AI-DESIGN-RULES.md，其中记录当前项目的架构边界、时代设计方法、UI 约束、测试验收和 GitHub 分阶段交付流程。
+
 ```
 .
 ├── demo/     # 可运行的 MVP demo（React 18 + TS + Zustand + Vite）
