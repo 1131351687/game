@@ -15,6 +15,7 @@ import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
 import { NEIGHBOR_MAP } from '../game/trade';
 import { createRngState, nextRandom, type RngState } from '../core/rng/seeded';
+import { simulateStep } from '../game/simulation/simulate';
 
 // ─────────────────────────────────────────────
 // 类型
@@ -401,13 +402,8 @@ export const useStore = create<GameState>((set, get) => ({
     const s = get();
     if (!s.running) return;
 
-    let rng = s.rng;
-    const random = (): number => {
-      const result = nextRandom(rng);
-      rng = result.state;
-      return result.value;
-    };
-    const r = engine.tick(engineView(s), dt, random);
+    const step = simulateStep(engineView(s), dt, s.rng);
+    const r = step.result;
     set({
       food: r.food,
       wood: r.wood,
@@ -425,7 +421,7 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: r.lapis,
       tradeRoutes: r.tradeRoutes,
       reputation: r.reputation,
-      rng,
+      rng: step.rng,
     });
 
     // ── 岗位进阶（采集者 → 农夫 等）──
