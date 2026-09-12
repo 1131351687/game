@@ -288,6 +288,15 @@ function engineView(s: GameState): engine.EraState {
  */
 export const toEngineState = engineView;
 
+/**
+ * 上一次 doTick 计算出的卡点文案（模块级，不进 zustand state）。
+ *
+ * 放模块级而非 state 的原因：doTick 每帧调用，若把"上一次文案"存进 state，
+ * 每次变化都会触发一次全量重渲染，毫无必要。这里只在"文案变化"或
+ * "非空↔空"切换时发消息，频率天然受变化驱动，无需额外节流。
+ */
+let lastBottleneckText: string | null = null;
+
 export const useStore = create<GameState>((set, get) => ({
   ...initialState(),
 
@@ -467,6 +476,21 @@ export const useStore = create<GameState>((set, get) => ({
       if (firstTime) {
         get().addMessage(`${fromName}掌握新技艺，开始专职为${toName}`, 'event');
       }
+    }
+
+    // ── 卡点提示进消息栏 ──
+    // 左栏 HintBar 已显示 getBottleneck 文案；这里同步进右侧消息流，
+    // 让"告急"与"危机解除"在消息栏也可见（warning 样式）。
+    // 比较状态用模块级 lastBottleneckText（不进 state，避免每帧重渲染）：
+    // 仅在"文案变化"或"非空↔空"切换时发消息，天然去抖。
+    const bottleneck = engine.getBottleneck(engineView(get()));
+    if (bottleneck !== lastBottleneckText) {
+      if (bottleneck !== null) {
+        get().addMessage(bottleneck, 'warn', true);
+      } else if (lastBottleneckText !== null) {
+        get().addMessage(`危机解除：${lastBottleneckText}`, 'event');
+      }
+      lastBottleneckText = bottleneck;
     }
 
     },

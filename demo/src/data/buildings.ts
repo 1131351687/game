@@ -32,7 +32,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '住所',
     icon: '🏕️',
     cost: { wood: 30 },
-    costMultiplier: 1.35,
+    costMultiplier: 1.15, // 人口建筑（03 §3.2）
     requires: { tech: 'shelter_building' },
     limit: 'population',
     era: 'E1',
@@ -43,7 +43,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '火塘',
     icon: '🔥',
     cost: { stone: 20 },
-    costMultiplier: 1.4,
+    costMultiplier: 1.20, // 生产建筑（03 §3.2，E1 火源归类生产）
     requires: { tech: 'hearth_construction' },
     limit: 'environment',
     era: 'E1',
@@ -54,7 +54,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '作坊',
     icon: '⚒️',
     cost: { stone: 40 },
-    costMultiplier: 1.45,
+    costMultiplier: 1.20, // 生产建筑（03 §3.2）
     requires: { tech: 'stone_knapping' },
     limit: 'output',
     era: 'E1',
@@ -65,7 +65,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '村落民居',
     icon: '🏘️',
     cost: { wood: 40, stone: 20 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.15, // 人口建筑（03 §3.2）
     requires: { tech: 'settled_construction' },
     limit: 'population',
     era: 'E2',
@@ -76,7 +76,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '田地',
     icon: '🌾',
     cost: { wood: 80, stone: 50 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.20, // 生产建筑（03 §3.2）
     requires: { tech: 'agriculture' },
     limit: 'output',
     era: 'E2',
@@ -87,7 +87,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '粮仓',
     icon: '🏺',
     cost: { wood: 120, stone: 80 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.12, // 存储建筑（03 §3.2）
     requires: { tech: 'granary_building' },
     limit: 'output',
     era: 'E2',
@@ -98,7 +98,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '畜栏',
     icon: '🐐',
     cost: { wood: 60, stone: 40 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.20, // 生产建筑（03 §3.2）
     requires: { tech: 'animal_domestication' },
     limit: 'output',
     era: 'E2',
@@ -109,7 +109,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '陶窑',
     icon: '🏺',
     cost: { stone: 100, wood: 40 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.20, // 生产建筑（03 §3.2）
     requires: { tech: 'pottery' },
     limit: 'output',
     era: 'E2',
@@ -120,7 +120,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '民居',
     icon: '🏠',
     cost: { wood: 220, stone: 120 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.15, // 人口建筑（03 §3.2）
     requires: { tech: '' },
     limit: 'population',
     era: 'E3',
@@ -131,7 +131,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '熔炉',
     icon: '🔥',
     cost: { stone: 180, copper: 40 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.20, // 生产建筑（03 §3.2）
     requires: { tech: 'bronze_smelting' },
     limit: 'output',
     era: 'E3',
@@ -142,7 +142,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '学宫',
     icon: '🏛️',
     cost: { wood: 260, stone: 200 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.25, // 战略建筑（03 §3.2）
     requires: { tech: 'clay_tablet' },
     limit: 'record',
     era: 'E3',
@@ -153,7 +153,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '商栈',
     icon: '⚖️',
     cost: { wood: 150, bronze: 60 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.20, // 网络建筑（03 §3.2）
     requires: { tech: 'caravan_org' },
     limit: 'trade',
     era: 'E3',
@@ -164,7 +164,7 @@ export const BUILDINGS: BuildingDef[] = [
     name: '标准器',
     icon: '📏',
     cost: { bronze: 100 },
-    costMultiplier: 1.0,
+    costMultiplier: 1.25, // 战略建筑（03 §3.2）
     requires: { tech: 'metrology' },
     limit: 'trade',
     era: 'E3',
@@ -175,11 +175,11 @@ export const BUILDINGS: BuildingDef[] = [
     name: '仓库',
     icon: '📦',
     cost: { wood: 120, stone: 80, copper: 30 },
-    costMultiplier: 1.35,
+    costMultiplier: 1.12, // 存储建筑（03 §3.2）
     requires: { tech: 'cuneiform' },
     limit: 'output',
     era: 'E3',
-    desc: '扩容木材/石料各 +200、铜/锡/青铜各 +400 储存上限，金属时代的物资底气。',
+    desc: '扩容木材/石料各 +200、铜/锡/青铜各 +400、食物 +600 储存上限，金属时代的物资底气。',
   },
 ];
 

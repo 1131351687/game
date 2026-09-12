@@ -27,7 +27,7 @@ const CATEGORY_STYLE: Record<Filter, { label: string; className: string }> = {
   all: { label: '消息', className: 'text-gray-600' },
   tech: { label: '科技', className: 'text-accent/70' },
   event: { label: '事件', className: 'text-ok/70' },
-  warn: { label: '警告', className: 'text-danger/80' },
+  warn: { label: '警告', className: 'text-orange-400/80' },
 };
 
 /** 展开时只保留最近这么多条 */
@@ -99,9 +99,10 @@ export function MessageLog() {
   }
 
   // ── 展开态：去掉外层视觉重量，只留一条淡淡的分隔线 ──
-  // 展开态同样保留实色底（固定 chrome），只去掉多余视觉重量
+  // 展开态同样保留实色底（固定 chrome），只去掉多余视觉重量；
+  // 改用 max-h + 内部滚动，避免展开后抢占主内容（约视口 1/3）。
   return (
-    <div className="flex max-h-40 shrink-0 flex-col border-t border-gray-800 bg-gray-900 px-2 py-1.5 text-xs">
+    <div className="flex max-h-[32vh] shrink-0 flex-col overflow-hidden border-t border-gray-800 bg-gray-900 px-2 py-1.5 text-xs">
       <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
           <button
@@ -149,14 +150,15 @@ export function MessageLog() {
         ) : (
           filtered.map(msg => {
             const style = CATEGORY_STYLE[msg.category];
+            // 警告（warn）：醒目但克制的橙色 + 左侧 2px 边条；其余保持灰阶分层
+            const rowClass =
+              msg.category === 'warn'
+                ? 'border-l-2 border-orange-500/70 bg-orange-500/5 text-orange-200'
+                : msg.important
+                ? 'bg-warn/10 text-warn'
+                : 'text-gray-400';
             return (
-              // 普通消息不加背景色，靠行距与灰阶分层；只有重要消息保留高亮
-              <div
-                key={msg.id}
-                className={`flex items-baseline gap-2 rounded px-2 py-0.5 ${
-                  msg.important ? 'bg-warn/10 text-warn' : 'text-gray-400'
-                }`}
-              >
+              <div key={msg.id} className={`flex items-baseline gap-2 rounded px-2 py-0.5 ${rowClass}`}>
                 <span className="shrink-0 font-mono text-gray-600">
                   {formatClock(msg.timestamp)}
                 </span>

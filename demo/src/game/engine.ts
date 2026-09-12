@@ -310,6 +310,21 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     resourceMultiplier: {},
   };
 
+  // ── E3 刻录口径预扫描（修复顺序依赖 bug）──
+  //
+  // 记录系统是否开启（只要任一已研究科技带 enableRecording，当前即「楔形文字」）。
+  // 必须在循环**之前**确定，否则 acc.recordingEnabled 是在循环内被楔形文字置位的，
+  // 导致遍历到 cuneiform 之前的科技不受口头 ×0.5 惩罚、之后的全罚——
+  // 口头乘数取决于科技在 TECHS 数组里的顺序（顺序依赖 bug）。
+  // 预扫描后用 recordingOn 判定，与遍历顺序彻底解耦。
+  let recordingOn = false;
+  for (const t of TECHS) {
+    if (state.techs[t.id] && t.effects.enableRecording) {
+      recordingOn = true;
+      break;
+    }
+  }
+
   for (const tech of TECHS) {
     if (!state.techs[tech.id]) continue;
     const e: TechEffects = tech.effects;
@@ -337,7 +352,8 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     //
     // ⚠️ 时代门控：E1/E2 没有记录系统（recorded 恒空、recordingEnabled=false），
     // 此处必须零影响，否则 E1/E2 基线（1163s/1920s）会被整体腰斩。
-    const isOral = acc.recordingEnabled && !state.recorded.includes(tech.id);
+    // recordingOn 由循环前预扫描得出（见上方），与遍历顺序无关，修复顺序依赖 bug。
+    const isOral = recordingOn && !state.recorded.includes(tech.id);
     const oralMul = isOral ? 0.5 : 1;
     /** 乘数衰减 × 刻录口径：口头再 ×0.5 */
     const mulR = (m: number): number => mul(m) * oralMul;
@@ -621,9 +637,13 @@ export function getFoodFactor(state: E1State): number {
   // 而是"入冬前攒了多少"。所以食物因子直接由人均储粮推导
   // （设计文档 §5：≥60→1.0，≥32→0.8，≥12→0.4，<12→0，=0→−0.5）。
   if (aggregateEffects(state).seasonsEnabled) {
-    // 定居时代：人均**存量**决定食物因子（原按谷物，现按合并后的食物）
-    const perPerson = state.population > 0 ? state.food / state.population : state.food;
-    return getFoodFactorFromStorage(perPerson);
+    // 定居/E3 时代：人均「存量秒数」决定食物因子（与消耗率无关的口径）。
+    // storedSec = food / (population × perSec)；perSec 取本时代人均消耗。
+    // 48/128/240 秒与 E2 原 12/32/60 粮完全等价，E2 行为逐字节不变，E3 自动适配。
+    const perSec = state.era === 'E3' ? E3.POP_FOOD_PER_PERSON : E2.FOOD_PER_PERSON_SEC;
+    const storedSec =
+      state.population > 0 ? state.food / (state.population * perSec) : state.food / perSec;
+    return getFoodFactorFromStorage(storedSec);
   }
 
   const prod = getFoodProduction(state);
@@ -775,18 +795,14 @@ export function calcJobOutput(jobId: JobId, state: E1State): number {
     }
   }
 
-  // ── E3 城邦时代：规模递减（N^0.9）──
+  // ── E3 城邦时代：通用规模模型 ──
   //
-  // 设计文档 §11：E3 起「实际产能 = 单位产出 × N^0.9」。
-  // 直觉：同一种岗位堆得越多，人均产出越低（组织/土地/原料的边际递减）。
-  // 必须**时代门控**——E1/E2 的产出公式字面上不变（回归基线 1163s/1920s 依赖它）。
-  // ⚠️ 猎人已有饱和曲线（HUNT.CAP），此处不再叠加 N^0.9（双重非线性失真）。
-  // ⚠️ 2026-09-12 修正：设计公式是「实际产能 = 单位产出 × N^0.9」（次线性），
-  // 原实现 rate = outputRate × count 之后再 ×count^0.9 = outputRate × N^1.9（超线性），
-  // 产能随人数爆炸（百人规模虚高约百倍）。此处**替换**线性基数，而不是叠加。
-  if (state.era === 'E3' && jobId !== 'hunter') {
-    rate = def.outputRate * Math.pow(count, E3.SCALING_EXP);
-  }
+  // 03-economy-and-growth-plan.md §5 已废除 E3 通用「N^0.9 规模递减」，
+  // 改为 §4 的职业分类模型：A 普通线性 / B 环境型(猎人饱和) / C 工位型(农夫·牧人)
+  // / D 投入型(冶炼) / E 网络型(商人) / F 机会成本型(书吏)。
+  // 各职业的主规模机制（猎人 HUNT.CAP 饱和、农夫 field×JOBS_PER_FIELD 覆盖度等）
+  // 已在上方各自实现，此处不再叠加任何通用规模公式——普通职业即为线性 outputRate×count。
+  // ⚠️ 原 E3.SCALING_EXP 常量（constants.ts）现已无引用；因禁止改动该文件，保留为死常量。
 
   return rate;
 }
@@ -819,7 +835,66 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
   const perResource = eff.resourceMultiplier[resourceId];
   if (perResource !== undefined) total *= perResource;
 
+  // ── E3 城邦时代：矿脉门控（让 UI 显示的毛速率与 tick 实际写回一致）──
+  //
+  // 现状 bug：UI 顶栏/资源表显示 calcResourceOutput('copper')（毛产出），
+  // 但 tick 里 ① localOre==='tin' 时矿工产出 ×0.5 实际计入 tin、铜毛速率却照常显示；
+  // ② 冶炼工每秒消耗铜（存量被抵消），玩家看到"有产量但存量不动"。
+  // 修复：按本地矿藏区分毛产出口径——
+  //   · localOre!=='copper' → 铜毛产出 0（锡矿带/冲积平原不产铜）
+  //   · localOre==='tin'    → 锡毛产出 = 铜矿工产出 ×0.5（复用铜矿工岗位，对齐 tick 5a 段）
+  // ⚠️ 此处返回「毛产出」；扣冶炼消耗后的净速率由 getNetResourceRate 提供（UI 用于显示）。
+  if (state.era === 'E3' && (resourceId === 'copper' || resourceId === 'tin')) {
+    if (resourceId === 'copper') {
+      return state.localOre === 'copper' ? total : 0;
+    }
+    // tin：锡矿带复用铜矿工岗位，按铜矿工产出 50% 计为少量自给（对齐 tick 5a 段）。
+    // 用裸铜矿工产出并叠加铜的资源乘数，与门控前 calcResourceOutput('copper') 口径一致。
+    if (state.localOre !== 'tin') return 0;
+    let copperMiner = 0;
+    for (const job of JOBS) {
+      if (job.output === 'copper') copperMiner += calcJobOutput(job.id, state);
+    }
+    const m = eff.resourceMultiplier['copper'];
+    if (m !== undefined) copperMiner *= m;
+    return copperMiner * 0.5;
+  }
+
   return total;
+}
+
+// ─────────────────────────────────────────────
+// T2.3b 资源净速率（毛产出 − 冶炼消耗）
+// ─────────────────────────────────────────────
+/**
+ * 资源的**净变化速率**（每秒），用于 UI 速率显示。
+ *
+ * 为什么显示净速率而不是毛速率：
+ * 毛速率（calcResourceOutput）只算产出，没算消耗。E3 铜/锡会被冶炼工
+ * 每秒吃掉一部分（smelters×SMELT_COPPER_IN / SMELT_TIN_IN，需 bronze_smelting），
+ * 于是玩家看到"有产量但存量不动"——毛速率虚高、存量被反吞。
+ * 净速率 = 毛产出 − 冶炼消耗速率，负数代表入不敷出（是有效告警信息，不强行夹 0）。
+ *
+ * 口径：
+ *   · E3 的 copper/tin：毛产出 − 冶炼消耗（仅当已研究 bronze_smelting 且有人当冶炼工）
+ *   · bronze：毛产出（青铜只产不耗，毛产出即净速率）
+ *   · 其余资源（含 E1/E2 全量）：直接取 calcResourceOutput 原值（这些资源在 tick 里没有
+ *     对应的"冶炼式"持续消耗，毛产出即净速率）
+ */
+export function getNetResourceRate(id: ResourceId, state: E1State): number {
+  const gross = calcResourceOutput(id, state);
+
+  if (state.era === 'E3' && (id === 'copper' || id === 'tin')) {
+    const smelters = state.jobs.smelter ?? 0;
+    if (smelters > 0 && state.techs.bronze_smelting) {
+      const per =
+        id === 'copper' ? E3.SMELT_COPPER_IN : E3.SMELT_TIN_IN;
+      // 可为负数：冶炼吃掉的超过矿工挖出的，代表存量正在被反吞
+      return gross - smelters * per;
+    }
+  }
+
+  return gross;
 }
 
 // ─────────────────────────────────────────────
@@ -840,21 +915,23 @@ export function calcExperienceOutput(state: E1State): number {
   if (state.era === 'E3') {
     // E3 起点保护：楔形文字是书吏的前置，而书吏又是正式知识产出的来源。
     // 若严格关闭人口经验通道，E2 末尾刚好花光经验的存档会形成无法研究首项科技的死锁。
-    // 在楔形文字完成前保留一段较慢的文明积累；研究完成后立即切换为书吏产出。
+    // 在楔形文字完成前（以及书吏尚未培养时）保留一段较慢的文明积累（bootstrap 通道）。
+    const bootstrapPath = state.population * POPULATION.EXP_PER_PERSON * E3.BOOTSTRAP_EXP_MULTIPLIER;
     if (!state.techs.cuneiform) {
-      return state.population * POPULATION.EXP_PER_PERSON * E3.BOOTSTRAP_EXP_MULTIPLIER;
+      return bootstrapPath;
     }
     const scribes = state.jobs.scribe ?? 0;
-    if (scribes <= 0) return 0;
-    // 书吏其实力受「记录容量」约束：无空槽则无产出（尚未拍板，先不实现）
+    // 书吏尚未培养：保留 bootstrap 通道，避免"研究完楔形文字 → 知识产量断崖跌到 0"。
+    if (scribes <= 0) return bootstrapPath;
     // 档案库加成：已刻录科技每项 +0.03（扩建后 0.04），与刻录本身解耦
     const archiveBonus = 1 + eff.archiveBonus * state.recordedOnce.length;
-    // 规模递减（E3-citystate.md §11.6）：知识同样吃 N^0.9 ——
-    //   305 人书吏 → 305^0.9 ≈ 172 等效 → 25.8 知识/秒
-    //   425 人书吏 → 425^0.9 ≈ 238 等效 → 35.7 知识/秒
-    // 之前漏算这条（纯线性），导致后期知识通胀、E3 科技成本形同虚设。
-    const effective = Math.pow(scribes, E3.SCALING_EXP);
-    return effective * 0.15 * eff.scribeOutputMul * archiveBonus;
+    // 03-economy-and-growth-plan.md §4.6：书吏属「F 机会成本型」，其约束来自人口机会成本
+    // （占用的手不能去种田/打猎）、记录容量（recordCapacityAdd 上限）与科技消耗，
+    // 不来自 N^0.9 规模递减。故书吏知识产出恢复线性 scribes×0.15×加成（§5 已废除通用 N^0.9）。
+    const scribePath = scribes * 0.15 * eff.scribeOutputMul * archiveBonus;
+    // 平滑交接：用 max 而不是硬切换——书吏经济自然长大后再接管 bootstrap 通道，
+    // 两条曲线在交叉点自然衔接，避免研究楔形文字 / 初派书吏时产量断崖下跌。
+    return Math.max(bootstrapPath, scribePath);
   }
 
   return state.population * POPULATION.EXP_PER_PERSON * eff.expMultiplier;
@@ -870,7 +947,9 @@ export function getBuildingCost(
   const def = BUILDING_MAP[buildingId];
   const owned = state.buildings[buildingId] ?? 0;
   const eff = aggregateEffects(state);
-  const mult = Math.pow(def.costMultiplier, owned) * eff.buildingCostMultiplier;
+  // §3.1：科技折扣不能把最终成本降到基础成本以下。
+  // costMultiplier≥1 时 Math.pow(...) 本身 ≥1，钳制只作用于科技折扣（buildingCostMultiplier<1）。
+  const mult = Math.max(1, Math.pow(def.costMultiplier, owned) * eff.buildingCostMultiplier);
 
   const out: Partial<Record<ResourceId, number>> = {};
   for (const [res, amount] of Object.entries(def.cost)) {
@@ -1220,7 +1299,12 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
         eff.granaryPerUnit > 0 ? eff.granaryPerUnit : undefined,
         eff.kilnBonus > 0 ? eff.kilnBonus : undefined
       );
-      return base + granaryCap * (1 + eff.granaryOverflowBonus);
+      // 通用仓库（E3 建筑）给食物上限再 +600/座；E1 无仓库、E2 仓库不可建，不影响旧时代
+      return (
+        base +
+        granaryCap * (1 + eff.granaryOverflowBonus) +
+        (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_FOOD_BONUS
+      );
     }
     case 'wood':
       // 基础建材容量 = 基础上限 500
@@ -1251,6 +1335,103 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
     // 牲畜是活体储备，不占粮仓容量；织物同理
     default:
       return Number.POSITIVE_INFINITY;
+  }
+}
+
+// ─────────────────────────────────────────────
+// 资源上限构成明细（UI 悬浮提示用）
+// ─────────────────────────────────────────────
+export interface StorageBreakdownItem {
+  /** 中文构成项标签（含数量，如「粮仓×3」） */
+  label: string;
+  /** 该项提供的上限数值（实时计算，不写死） */
+  amount: number;
+}
+
+/**
+ * 某资源上限的构成明细，供 UI 悬浮提示逐项展示。
+ *
+ * 返回数组各项的**实时数值之和 = getResourceStorage(id, state)**（不写死任何数）：
+ *   · food：基础储量(1000×倍率) + 粮仓·陶窑·陶罐 + 粮仓溢出加成 + 通用仓库·食物
+ *   · wood/stone：基础 500 + 粮仓×N + 通用仓库×N
+ *   · copper/tin/bronze（仅 E3）：基础 500 + 民居×N + 通用仓库×N
+ *   · 其余（livestock/fabric/experience/population，以及 E3 之前的金属）：返回 []，UI 显示「无上限」
+ */
+export function getStorageBreakdown(id: ResourceId, state: E1State): StorageBreakdownItem[] {
+  const eff = aggregateEffects(state);
+  switch (id) {
+    case 'food': {
+      const base = 1000 * eff.foodStorageMultiplier;
+      if (!eff.seasonsEnabled) {
+        return [{ label: `基础储量 (×${eff.foodStorageMultiplier})`, amount: base }];
+      }
+      const granaries = state.buildings.granary ?? 0;
+      const kilns = state.buildings.kiln ?? 0;
+      const jarStorageBonus = eff.granaryCapacityMul - 1;
+      const granaryCap = getGranaryCapacity(
+        granaries,
+        kilns,
+        jarStorageBonus,
+        eff.granaryPerUnit > 0 ? eff.granaryPerUnit : undefined,
+        eff.kilnBonus > 0 ? eff.kilnBonus : undefined
+      );
+      const items: StorageBreakdownItem[] = [
+        { label: `基础储量 (×${eff.foodStorageMultiplier})`, amount: base },
+      ];
+      // getGranaryCapacity 已把「400 基础 + 粮仓 + 陶窑/陶罐加成」打包成一项
+      if (granaryCap > 0) {
+        items.push({
+          label: `粮仓·陶窑·陶罐 (粮仓×${granaries}${kilns > 0 ? `，陶窑×${kilns}` : ''})`,
+          amount: granaryCap,
+        });
+      }
+      // 粮仓溢出加成：单独列出以解释"为什么食物上限比粮仓本身还大"
+      if (eff.granaryOverflowBonus > 0) {
+        items.push({
+          label: `粮仓溢出加成 (×${eff.granaryOverflowBonus})`,
+          amount: granaryCap * eff.granaryOverflowBonus,
+        });
+      }
+      const warehouseFood = (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_FOOD_BONUS;
+      if (warehouseFood > 0) {
+        items.push({
+          label: `通用仓库·食物 (×${state.buildings.warehouse ?? 0})`,
+          amount: warehouseFood,
+        });
+      }
+      return items;
+    }
+    case 'wood':
+    case 'stone': {
+      const bulk = id === 'wood' ? E2.GRANARY_WOOD_BONUS : E2.GRANARY_STONE_BONUS;
+      const items: StorageBreakdownItem[] = [{ label: '基础储存', amount: 500 }];
+      const granaries = state.buildings.granary ?? 0;
+      if (granaries > 0) {
+        items.push({ label: `粮仓 (×${granaries})`, amount: granaries * bulk });
+      }
+      const warehouses = state.buildings.warehouse ?? 0;
+      if (warehouses > 0) {
+        items.push({ label: `通用仓库 (×${warehouses})`, amount: warehouses * E3.WAREHOUSE_BULK_BONUS });
+      }
+      return items;
+    }
+    case 'copper':
+    case 'tin':
+    case 'bronze': {
+      if (state.era !== 'E3') return [];
+      const items: StorageBreakdownItem[] = [{ label: '基础储量', amount: 500 }];
+      const cityHouses = state.buildings.city_house ?? 0;
+      if (cityHouses > 0) {
+        items.push({ label: `民居 (×${cityHouses})`, amount: cityHouses * 150 });
+      }
+      const warehouses = state.buildings.warehouse ?? 0;
+      if (warehouses > 0) {
+        items.push({ label: `通用仓库 (×${warehouses})`, amount: warehouses * E3.WAREHOUSE_METAL_BONUS });
+      }
+      return items;
+    }
+    default:
+      return [];
   }
 }
 
@@ -1436,13 +1617,12 @@ export function tick(
 
   if (state.era === 'E3') {
     // 5a) 铜/锡/青铜产出
-    const minerGain = calcResourceOutput('copper', state) * dt;
-    if (state.localOre === 'copper') {
-      copper += minerGain;
-    } else if (state.localOre === 'tin') {
-      // 锡矿带复用矿工岗位，但按铜矿工产出的 50% 计为少量自给。
-      tin = Math.min(tin + minerGain * 0.5, getResourceStorage('tin', state));
-    }
+    // 矿脉门控已下沉到 calcResourceOutput（见该函数 E3 段）：
+    //   · localOre!=='copper' → 铜毛产出返回 0（不再虚高 UI 毛速率）
+    //   · localOre==='tin'    → 锡毛产出 = 铜矿工产出 ×0.5
+    // 这里只把产出写回，行为与原手工分支完全一致。
+    copper += calcResourceOutput('copper', state) * dt;
+    tin += calcResourceOutput('tin', state) * dt;
 
     // 5b) 冶炼：每名冶炼工需 0.045 铜 + 0.005 锡，产出 0.05 青铜/秒（×熔炉加成）
     //     缺料按比例降速（"缺料停工"而不是报错）

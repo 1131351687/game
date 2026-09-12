@@ -1,6 +1,6 @@
 /** 季节循环数值模块（定居时代 E2）。数值源：E2-sedentary.md §5 季节循环数值。 */
 
-import { E2 } from '../data/constants';
+import { E2, FOOD_FACTOR_STORED_SEC } from '../data/constants';
 
 export type SeasonId = 'spring' | 'summer' | 'autumn' | 'winter';
 
@@ -110,13 +110,23 @@ export function getSeasonRateMultiplier(elapsedSec: number): number {
   return SEASONS[season].growthFactor;
 }
 
-/** 人均储粮 → 食物因子（负或非有限按 0 处理 → −0.5） */
-export function getFoodFactorFromStorage(storedPerPerson: number): number {
-  const v = Number.isFinite(storedPerPerson) && storedPerPerson > 0 ? storedPerPerson : 0;
-  if (v === 0) return -0.5;
-  if (v < 12) return 0;
-  if (v < 32) return 0.4;
-  if (v < 60) return 0.8;
+/**
+ * 人均「存粮秒数」→ 食物因子（负或非有限按 0 处理 → −0.5 饥荒）。
+ *
+ * ⚠️ 参数语义已从「人均储粮(粮/人)」改为「人均存粮秒数」：
+ *   storedSec = food / (population × perSec)
+ * 原因：E2 旧公式按固定 0.25/秒/人 把阈值写成 12/32/60 粮，
+ * 但 E3 人口 300+、消耗 0.2/秒/人，食物上限撑不到人均 12 粮 → 食物因子恒 0 → 人口不涨。
+ * 改用与消耗率无关的「能撑多少秒」口径后，48/128/240 秒与 E2 原 12/32/60 粮完全等价
+ * （0.25×48=12），E2 行为逐字节不变，E3 自动适配。
+ * 换算来历见 constants.FOOD_FACTOR_STORED_SEC。
+ */
+export function getFoodFactorFromStorage(storedSec: number): number {
+  const v = Number.isFinite(storedSec) && storedSec > 0 ? storedSec : 0;
+  if (v === 0) return -0.5; // 食物耗尽 → 饥荒路径（storedSec=0）
+  if (v < FOOD_FACTOR_STORED_SEC.TIGHT) return 0;
+  if (v < FOOD_FACTOR_STORED_SEC.NORMAL_LOW) return 0.4;
+  if (v < FOOD_FACTOR_STORED_SEC.ABUNDANT) return 0.8;
   return 1.0;
 }
 

@@ -20,13 +20,14 @@ import {
 } from '../data/resources';
 import { isResourceRevealed, isModuleUnlocked } from '../game/reveal';
 import {
-  calcResourceOutput,
   calcExperienceOutput,
+  getNetResourceRate,
   getResourceStorage,
   getCapacity,
   getPopulationGrowth,
 } from '../game/engine';
 import { formatNumber, formatRate } from '../core/format';
+import { buildOutputTitle, buildStorageTitle } from './components/resourceTooltips';
 import { FireDashboard } from './components/FireDashboard';
 import { SeasonBar } from './components/SeasonBar';
 import { TradePanel } from './components/TradePanel';
@@ -34,7 +35,6 @@ import { JobPanel } from './components/JobPanel';
 import { BuildingPanel } from './components/BuildingPanel';
 import { CivilizationPanel } from './components/CivilizationPanel';
 import { SettingsMenu } from './components/SettingsMenu';
-import { HintBar } from './components/HintBar';
 import { MessageLog } from './components/MessageLog';
 import { Icon } from './components/Icon';
 import { ERAS } from '../data/era';
@@ -148,7 +148,7 @@ function ResourceList() {
     <div>
       {shown.map(id => {
         const def = RESOURCE_MAP[id];
-        const rate = id === 'experience' ? calcExperienceOutput(view) : calcResourceOutput(id, view);
+        const rate = id === 'experience' ? calcExperienceOutput(view) : getNetResourceRate(id, view);
         const cap = getResourceStorage(id, view);
         const amount =
           id === 'experience'
@@ -158,9 +158,16 @@ function ResourceList() {
 
         return (
           <div key={id} className="flex items-baseline gap-2 border-b border-gray-800/60 py-2 last:border-b-0">
-            <Icon emoji={def.icon} className="text-xs text-gray-500" />
-            <span className="text-xs text-gray-500">{displayName}</span>
-            <span className="ml-auto font-mono text-xs tabular-nums text-gray-100">
+            {/* 名称/图标：悬浮显示产出来源与加成 */}
+            <span className="flex items-center gap-1.5" title={buildOutputTitle(id, view)}>
+              <Icon emoji={def.icon} className="text-xs text-gray-500" />
+              <span className="text-xs text-gray-500">{displayName}</span>
+            </span>
+            {/* 数量：悬浮显示储量上限来源 */}
+            <span
+              className="ml-auto font-mono text-xs tabular-nums text-gray-100"
+              title={buildStorageTitle(id, view)}
+            >
               {formatNumber(amount)}
             </span>
             {Number.isFinite(cap) && (
@@ -224,22 +231,24 @@ export default function AppResponsiveB() {
         {/* 状态抽屉：点击展开 */}
         <div className="px-3 py-2">
           <Drawer title="状态" icon="📊">
-            {fireUnlocked && <FireDashboard />}
+            {s.era === 'E1' && fireUnlocked && <FireDashboard />}
             <SeasonBar />
             <TradePanel />
-            <HintBar />
           </Drawer>
         </div>
 
         {/* 主内容 */}
-        <main className="flex-1 overflow-y-auto px-3 pb-20">
+        <main className="flex-1 overflow-y-auto px-3 pb-4">
           {tab === 'work' && <JobPanel />}
           {tab === 'buildings' && <BuildingPanel />}
           {tab === 'civilization' && <CivilizationPanel />}
         </main>
 
-        {/* 底部粘性 Tab */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-gray-800 bg-gray-950/90 px-2 py-2">
+        {/* 消息栏：竖屏置于文档流内固定高度块，避免被底部 Tab 遮挡 */}
+        <MessageLog />
+
+        {/* 底部粘性 Tab（文档流内，常驻于消息栏之下） */}
+        <nav className="flex shrink-0 items-center justify-around border-t border-gray-800 bg-gray-950/90 px-2 py-2">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`flex flex-col items-center gap-1 px-3 py-1 text-xs ${tab === t.id ? 'text-gray-100' : 'text-gray-500'}`}>
               <Icon emoji={t.icon} className="text-lg" />
@@ -247,7 +256,6 @@ export default function AppResponsiveB() {
             </button>
           ))}
         </nav>
-        <MessageLog />
       </div>
     );
   }
@@ -274,10 +282,9 @@ export default function AppResponsiveB() {
         {/* 状态抽屉：火种/季节/记录/贸易/提示 默认收起 */}
         <div className="px-3 pb-3">
           <Drawer title="状态" icon="📊">
-            {fireUnlocked && <FireDashboard />}
+            {s.era === 'E1' && fireUnlocked && <FireDashboard />}
             <SeasonBar />
             <TradePanel />
-            <HintBar />
           </Drawer>
         </div>
       </aside>

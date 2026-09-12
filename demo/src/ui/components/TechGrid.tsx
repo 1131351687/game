@@ -25,6 +25,7 @@ import { Icon } from './Icon';
 import { formatNumber } from '../../core/format';
 import { researchCurrencyName } from '../../data/resources';
 import { canResearch } from '../../game/engine';
+import { TechTreeView } from './TechTreeView';
 
 /** 浮层在屏幕上的固定坐标（已做过视口边界收拢） */
 interface OverlayPos {
@@ -78,6 +79,8 @@ export function TechGrid() {
   const [overlay, setOverlay] = useState<{ def: TechDef; status: Status; pos: OverlayPos; armed: boolean } | null>(null);
   /** 「已学科技」分类区默认收起——它只是存档展示，不该抢占主区注意力 */
   const [showLearned, setShowLearned] = useState(false);
+  /** 已学科技区的展示形态：列表（按分支分组）| 图谱（完整依赖树） */
+  const [learnedView, setLearnedView] = useState<'list' | 'graph'>('list');
   const closeTimer = useRef<number | null>(null);
   const pressTimer = useRef<number | null>(null);
 
@@ -299,59 +302,87 @@ export function TechGrid() {
       {/* ── 分类区：已学科技（默认收起，不抢主区注意力） ── */}
       {learnedCount > 0 && (
         <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => setShowLearned(v => !v)}
-            aria-expanded={showLearned}
-            className="flex min-h-[44px] w-full items-center gap-2 rounded-md px-2 text-left text-xs text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
-          >
-            <span className="text-[10px]">{showLearned ? '▼' : '▶'}</span>
-            <span>已学科技</span>
-            <span className="tabular-nums text-gray-500">
-              {learnedCount} / {techsUpToEra(s.era).length}
-            </span>
-          </button>
+          <div className="flex min-h-[44px] items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowLearned(v => !v)}
+              aria-expanded={showLearned}
+              className="flex flex-1 items-center gap-2 rounded-md px-2 text-left text-xs text-gray-500 transition-colors hover:bg-gray-800/60 hover:text-gray-300"
+            >
+              <span className="text-[10px]">{showLearned ? '▼' : '▶'}</span>
+              <span>已学科技</span>
+              <span className="tabular-nums text-gray-500">
+                {learnedCount} / {techsUpToEra(s.era).length}
+              </span>
+            </button>
+
+            {/* 列表 | 图谱：紧凑 toggle，灰阶，激活侧微亮 */}
+            <div className="flex shrink-0 items-center gap-0.5 rounded-md bg-gray-800/40 p-0.5 text-xs">
+              {(['list', 'graph'] as const).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setLearnedView(m)}
+                  aria-pressed={learnedView === m}
+                  className={`rounded px-2 py-0.5 transition-colors ${
+                    learnedView === m
+                      ? 'bg-gray-700 text-gray-100'
+                      : 'text-gray-500 hover:text-gray-200'
+                  }`}
+                >
+                  {m === 'list' ? '列表' : '图谱'}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {showLearned && (
-            <div className="mt-2 space-y-3">
-              {learnedGroups.map(([branch, list]) => {
-                const info = BRANCH_INFO[branch as TechDef['branch']];
-                return (
-                  <div key={branch}>
-                    {/* 分支标题：用分支色做一条细标记，与科技树的配色语言一致 */}
-                    <div className="flex items-center gap-2 px-1">
-                      <span
-                        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                        style={{ background: info.color }}
-                        aria-hidden
-                      />
-                      <span className="text-[11px] font-medium text-gray-400">{info.name}</span>
-                      <span className="text-[11px] tabular-nums text-gray-500">{list.length}</span>
+            learnedView === 'list' ? (
+              <div className="mt-2 space-y-3">
+                {learnedGroups.map(([branch, list]) => {
+                  const info = BRANCH_INFO[branch as TechDef['branch']];
+                  return (
+                    <div key={branch}>
+                      {/* 分支标题：用分支色做一条细标记，与科技树的配色语言一致 */}
+                      <div className="flex items-center gap-2 px-1">
+                        <span
+                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{ background: info.color }}
+                          aria-hidden
+                        />
+                        <span className="text-[11px] font-medium text-gray-400">{info.name}</span>
+                        <span className="text-[11px] tabular-nums text-gray-500">{list.length}</span>
+                      </div>
+                      {/* 已学方块比主区更弱：纯文字、无底无框，靠颜色分层；
+                         仍是可点的"查看详情"入口，触控目标 ≥44px（min-h/min-w） */}
+                      <div className="mt-1 flex flex-wrap gap-x-1 gap-y-1">
+                        {list.map(def => (
+                          <button
+                            key={def.id}
+                            type="button"
+                            data-tech-tile
+                            className="flex w-[4em] shrink-0 items-center justify-center rounded-md px-1 py-2 text-center text-sm text-gray-600 transition-colors hover:text-gray-200 sm:w-[6em]"
+                            aria-label={def.name}
+                            onMouseEnter={(e) => activate(def, 'researched', e.currentTarget, false)}
+                            onMouseLeave={handleLeave}
+                            onTouchStart={(e) => onTouchStart(def, 'researched', e.currentTarget)}
+                            onTouchEnd={cancelPress}
+                            onTouchMove={cancelPress}
+                          >
+                            <span className="truncate leading-none">{def.name}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    {/* 已学方块比主区更弱：纯文字、无底无框，靠颜色分层；
-                       仍是可点的"查看详情"入口，触控目标 ≥44px（min-h/min-w） */}
-                    <div className="mt-1 flex flex-wrap gap-x-1 gap-y-1">
-                      {list.map(def => (
-                        <button
-                          key={def.id}
-                          type="button"
-                          data-tech-tile
-                          className="flex w-[4em] shrink-0 items-center justify-center rounded-md px-1 py-2 text-center text-sm text-gray-600 transition-colors hover:text-gray-200 sm:w-[6em]"
-                          aria-label={def.name}
-                          onMouseEnter={(e) => activate(def, 'researched', e.currentTarget, false)}
-                          onMouseLeave={handleLeave}
-                          onTouchStart={(e) => onTouchStart(def, 'researched', e.currentTarget)}
-                          onTouchEnd={cancelPress}
-                          onTouchMove={cancelPress}
-                        >
-                          <span className="truncate leading-none">{def.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              // 图谱：渲染 TechTreeView 的完整科技图谱模式（当前+以前时代全部科技，前置/解锁可见）
+              <div className="mt-2">
+                <TechTreeView full defaultOpen />
+              </div>
+            )
           )}
         </div>
       )}

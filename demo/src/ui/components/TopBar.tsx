@@ -21,14 +21,15 @@ import {
 } from '../../data/resources';
 import { isResourceRevealed } from '../../game/reveal';
 import {
-  calcResourceOutput,
   calcExperienceOutput,
+  getNetResourceRate,
   getResourceStorage,
   getCapacity,
   getPopulationGrowth,
 } from '../../game/engine';
 import { formatNumber, formatRate } from '../../core/format';
 import { Icon } from './Icon';
+import { buildOutputTitle, buildStorageTitle } from './resourceTooltips';
 
 /** 数值列固定宽度 + 右对齐，避免数字位数变化时整行抖动 */
 const VALUE_COL = 'min-w-[3.5rem] text-right';
@@ -96,7 +97,7 @@ export function TopBar() {
     <div className="flex shrink-0 flex-nowrap items-center gap-5 overflow-x-auto border-b border-gray-800 bg-gray-900/40 py-1.5 pl-4 pr-14 text-sm leading-tight">
       {shown.map(id => {
         const def = RESOURCE_MAP[id];
-        const rate = id === 'experience' ? calcExperienceOutput(view) : calcResourceOutput(id, view);
+        const rate = id === 'experience' ? calcExperienceOutput(view) : getNetResourceRate(id, view);
         const cap = getResourceStorage(id, view);
         const amount =
           id === 'experience'
@@ -109,10 +110,16 @@ export function TopBar() {
         return (
           // gap 负责间距：图标被隐藏（Icon → null）时不会留下空洞
           <span key={id} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
-            <Icon emoji={def.icon} className="text-sm" />
-            <span className="text-gray-500">{displayName}</span>
-            {/* 主数值：等宽字体 + 右对齐，位数变化不影响其他项的位置 */}
-            <span className={`${VALUE_COL} font-mono tabular-nums text-gray-100`}>
+            {/* 名称/图标：悬浮显示产出来源与加成 */}
+            <span className="flex shrink-0 items-center gap-1.5" title={buildOutputTitle(id, view)}>
+              <Icon emoji={def.icon} className="text-sm" />
+              <span className="text-gray-500">{displayName}</span>
+            </span>
+            {/* 主数值：等宽字体 + 右对齐，位数变化不影响其他项的位置；悬浮显示储量上限来源 */}
+            <span
+              className={`${VALUE_COL} font-mono tabular-nums text-gray-100`}
+              title={buildStorageTitle(id, view)}
+            >
               {formatNumber(amount)}
             </span>
             {Number.isFinite(cap) && (
@@ -121,7 +128,7 @@ export function TopBar() {
             )}
             <span
               className={`${RATE_COL} font-mono text-xs tabular-nums ${
-                rate > 0 ? 'text-emerald-400/80' : 'text-gray-600'
+                rate > 0 ? 'text-emerald-400/80' : rate < 0 ? 'text-red-400/80' : 'text-gray-600'
               }`}
             >
               {formatRate(rate)}

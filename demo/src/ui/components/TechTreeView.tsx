@@ -21,7 +21,7 @@
 import { useMemo, useState } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import { isTechRevealed } from '../../game/reveal';
-import { techsUpToEra, BRANCH_INFO, BRANCH_ORDER, type TechDef } from '../../data/techs';
+import { techsUpToEra, TECH_MAP, BRANCH_INFO, BRANCH_ORDER, type TechDef } from '../../data/techs';
 import { Icon } from './Icon';
 
 /** 集合内只算深度的递归（带记忆化，避免重复遍历长链） */
@@ -53,12 +53,12 @@ function buildDepths(set: TechDef[]): Map<string, number> {
   return cache;
 }
 
-export function TechTreeView() {
+export function TechTreeView({ full = false, defaultOpen = false }: { full?: boolean; defaultOpen?: boolean }) {
   const s = useStore();
   const view = toEngineState(s);
   // 默认收起：科技树是 TechGrid 的补充视图，信息量较大，开局不抢占主区注意力
   // （与 TechGrid 的「已学科技」分类区默认收起同一思路）。
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
 
   // ── 树形结构：分支 → 深度层 → 节点（只随时代变化，记忆化）──
   const branches = useMemo(() => {
@@ -79,6 +79,20 @@ export function TechTreeView() {
       }
       return { branch, info: BRANCH_INFO[branch], levels };
     });
+  }, [s.era]);
+
+  // ── 反向依赖（full 图谱模式用）：某科技解锁了哪些后续科技 ──
+  const reverseDeps = useMemo(() => {
+    const set = techsUpToEra(s.era);
+    const map = new Map<string, string[]>();
+    for (const t of set) {
+      for (const p of [...t.requires, ...(t.requiresAny ?? [])]) {
+        const arr = map.get(p) ?? [];
+        arr.push(t.id);
+        map.set(p, arr);
+      }
+    }
+    return map;
   }, [s.era]);
 
   // 可见节点总数（折叠态也展示，给玩家一个是否展开的提示）
@@ -139,12 +153,25 @@ export function TechTreeView() {
                       const researched = !!s.techs[def.id];
                       const revealed = isTechRevealed(def.id, view);
                       // 既未学也不可见 → 不渲染（渐进揭示，开局只露「掌握火」）
-                      if (!researched && !revealed) return null;
+                      // full 图谱模式：展示当前+以前时代全部科技，未学节点也可见（🔒）
+                      if (!full && !researched && !revealed) return null;
+
+                      // 悬浮 title：前置 + 解锁（从 requires 与反向依赖算）
+                      const prereqNames = [...def.requires, ...(def.requiresAny ?? [])].map(
+                        id => TECH_MAP[id]?.name ?? id
+                      );
+                      const unlockNames = (reverseDeps.get(def.id) ?? []).map(
+                        id => TECH_MAP[id]?.name ?? id
+                      );
+                      const title =
+                        `${def.name}\n` +
+                        `前置：${prereqNames.length ? prereqNames.join('、') : '无'}\n` +
+                        `解锁：${unlockNames.length ? unlockNames.join('、') : '无'}`;
 
                       return (
                         <div
                           key={def.id}
-                          title={def.name}
+                          title={title}
                           className={[
                             'flex max-w-[10rem] items-center gap-1 rounded-md border px-2 py-1.5 text-xs tabular-nums transition-colors',
                             researched
