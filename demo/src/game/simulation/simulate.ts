@@ -12,6 +12,7 @@ export interface SimulationOptions {
   mode: 'online' | 'offline' | 'test';
   efficiency?: number;
   maxStepSec?: number;
+  nowSec?: number;
 }
 
 export interface SimulationResult {
@@ -28,6 +29,7 @@ export function simulateStep(
   state: E1State,
   dt: number,
   rngState: RngState,
+  nowSec = Date.now() / 1000,
 ): SimulationStepResult {
   let rng = rngState;
   const random = (): number => {
@@ -37,7 +39,7 @@ export function simulateStep(
   };
 
   return {
-    result: tick(state, dt, random),
+    result: tick(state, dt, random, nowSec),
     rng,
     events: [],
   };
@@ -58,10 +60,12 @@ export function simulate(
   let state = initial;
   let rng = rngState;
   const events: GameEvent[] = [];
+  let nowSec = options.nowSec ?? Date.now() / 1000;
+  const emittedWarnings = new Set<string>();
 
   while (remaining > 0) {
     const dt = Math.min(remaining, maxStep);
-    const step = simulateStep(state, dt, rng);
+    const step = simulateStep(state, dt, rng, nowSec);
     state = {
       ...state,
       ...step.result,
@@ -70,7 +74,6 @@ export function simulate(
     if (upgraded) state = { ...state, jobs: upgraded.jobs };
     rng = step.rng;
     events.push(...step.events);
-    const emittedWarnings = new Set<string>();
     for (const note of step.result.tradeNotes) {
       const reason = note.includes('书吏')
         ? 'missing_scribe'
@@ -82,6 +85,7 @@ export function simulate(
         emittedWarnings.add(reason);
       }
     }
+    nowSec += dt;
     remaining -= dt;
   }
 

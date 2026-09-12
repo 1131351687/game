@@ -157,6 +157,7 @@ export function settleTradeCycle(
   state: E1State,
   cycleSec: number,
   rng: () => number = Math.random,
+  nowSec = Date.now() / 1000,
 ): TradeCycleResult {
   const eff = aggregateEffects(state);
   const merchants = state.jobs.merchant ?? 0;
@@ -195,7 +196,7 @@ export function settleTradeCycle(
     const scribeFactor = has >= needScribes ? 1 : Math.max(0.3, 0.3 + 0.7 * (has / needScribes));
 
     // 契约：运力 +20%
-    const contracted = r.contractUntil !== undefined && Date.now() / 1000 < r.contractUntil;
+    const contracted = r.contractUntil !== undefined && nowSec < r.contractUntil;
     const contractCapMul = contracted ? 1 + E3.CONTRACT_CAPACITY_BONUS : 1;
 
     // 距离系数损耗
@@ -206,7 +207,7 @@ export function settleTradeCycle(
     const jitter = E3.PRICE_JITTER_MIN + (E3.PRICE_JITTER_MAX - E3.PRICE_JITTER_MIN) * rng();
     const repEff = getReputationEffect(state.reputation);
     const demandShock = 1 + E3.DEMAND_COEFF * Math.min(1, totalBought(r));
-    const pricePay = getTradePrice(r.demand, r.distance, {
+    let pricePay = getTradePrice(r.demand, r.distance, {
       jitter,
       demandShock,
       repEff,
@@ -214,6 +215,9 @@ export function settleTradeCycle(
       contracted,
       hasMetrology: eff.conversionLoss === 0,
     });
+    if (r.breachPenaltyUntil !== undefined && nowSec < r.breachPenaltyUntil) {
+      pricePay *= 1 + E3.BREACH_PRICE_PENALTY;
+    }
     const priceGet = getTradePrice(r.supply, r.distance, {
       jitter,
       demandShock,
@@ -224,7 +228,13 @@ export function settleTradeCycle(
     });
 
     // 付出货物量（按付出货单价折算运力）：effectiveCap 是本周期运力（以食物当量计）
-    const payAmount = effectiveCap; // 单位：食物当量
+    const available = state[r.demand] as number;
+    const alreadyCommitted = delta[r.demand] ?? 0;
+    const payAmount = Math.min(effectiveCap, Math.max(0, available + alreadyCommitted));
+    if (payAmount <= 0) {
+      if (!notes.includes('缺' + r.demand)) notes.push('缺' + r.demand);
+      continue;
+    }
     const getAmount = (payAmount * pricePay) / priceGet; // 换得量 = 付出食物当量 ÷ 换得单价
 
     // 扣付出 + 加换得（青金石路线的计入由 delta 聚合）

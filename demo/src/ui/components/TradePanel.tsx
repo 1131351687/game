@@ -46,6 +46,9 @@ export function TradePanel() {
   const rep = state.reputation;
   const repEff = getReputationEffect(rep);
   const merchants = state.jobs.merchant ?? 0;
+  const nowSec = Date.now() / 1000;
+  const contractSlots = eff.contractSlots;
+  const activeContracts = state.tradeRoutes.filter(r => r.contractUntil !== undefined && r.contractUntil > nowSec).length;
 
   // 路线槽位：科技 routeSlotsAdd（商队组织 +2）+ 商栈×2 —— 统一走 getRouteSlots
   const slots = getRouteSlots(state);
@@ -123,7 +126,7 @@ export function TradePanel() {
             free <= 0 ? 'text-danger' : 'text-gray-500'
           }`}
         >
-          路线 {used} / {slots}
+          路线 {used} / {slots} · 契约 {activeContracts} / {contractSlots}
         </span>
 
         {/* 本地矿藏 */}
@@ -176,6 +179,16 @@ export function TradePanel() {
                     >
                       {isOpen ? '路线开通' : '未开通'}
                     </span>
+                    {route && route.contractUntil !== undefined && route.contractUntil > nowSec && (
+                      <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-xs tabular-nums text-amber-300">
+                        契约 {Math.ceil(route.contractUntil - nowSec)}s
+                      </span>
+                    )}
+                    {route && route.breachPenaltyUntil !== undefined && route.breachPenaltyUntil > nowSec && (
+                      <span className="rounded-md bg-red-500/15 px-1.5 py-0.5 text-xs tabular-nums text-red-300">
+                        违约惩罚 {Math.ceil(route.breachPenaltyUntil - nowSec)}s
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs leading-relaxed text-gray-400">
                     {n.desc}
@@ -189,7 +202,7 @@ export function TradePanel() {
               </div>
 
               {/* 右：开通/关闭按钮 */}
-              <div className="flex shrink-0 flex-col items-stretch gap-1.5 lg:w-44 lg:items-end">
+              <div className="flex shrink-0 flex-col items-stretch gap-1.5 lg:w-48 lg:items-end">
                 {/* 阻断原因（就近显示） */}
                 {blocked && (
                   <span className="text-right text-xs tabular-nums text-danger/80">
@@ -221,6 +234,26 @@ export function TradePanel() {
                 >
                   {isOpen ? '关闭' : '开通'}
                 </button>
+                {isOpen && route && route.contractUntil !== undefined && route.contractUntil > nowSec && (
+                  <button
+                    type="button"
+                    onClick={() => state.breachContract(n.id)}
+                    className="inline-flex h-9 items-center justify-center rounded-md bg-red-500/10 px-3 text-sm font-mono font-semibold text-red-300 hover:bg-red-500/20"
+                  >
+                    毁约
+                  </button>
+                )}
+                {isOpen && route && (route.contractUntil === undefined || route.contractUntil <= nowSec) && (
+                  <button
+                    type="button"
+                    disabled={activeContracts >= contractSlots}
+                    onClick={() => state.signContract(n.id)}
+                    className="inline-flex h-9 items-center justify-center rounded-md bg-amber-500/15 px-3 text-sm font-mono font-semibold text-amber-300 hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:text-gray-700"
+                    title={activeContracts >= contractSlots ? '契约槽位已满' : '签订锁价契约'}
+                  >
+                    签约
+                  </button>
+                )}
               </div>
             </div>
           );

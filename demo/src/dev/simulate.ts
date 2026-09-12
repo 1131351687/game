@@ -743,7 +743,7 @@ function autoplayE3(): void {
       take('smelter', Math.min(20, (s.buildings.furnace ?? 0) * 5));
     }
     // 6) 采矿（仅本地有铜时）
-    if (s.localOre === 'copper' || s.localOre === 'alluvial') {
+    if (s.localOre === 'copper' || s.localOre === 'tin') {
       take('copper_miner', Math.min(15, Math.ceil(left / 4)));
     }
     // 7) 兜底：剩下去种地/采集

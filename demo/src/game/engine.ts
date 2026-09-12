@@ -82,7 +82,7 @@ export interface EraState {
 
   /** 铜：青铜原料之一；仅本地矿藏为铜矿时可采 */
   copper: number;
-  /** 锡：本地产出恒为 0（设计约束），只能贸易进口 */
+  /** 锡：普通地形只能贸易进口；锡矿带可少量本地开采 */
   tin: number;
   /** 青铜：冶炼工以铜+锡炼出 */
   bronze: number;
@@ -121,6 +121,7 @@ export interface TradeRoute {
   priceHistory: number[];
   /** 契约锁价截止时间戳（秒，绝对时间） */
   contractUntil?: number;
+  breachPenaltyUntil?: number;
 }
 
 /** @deprecated 旧名单时代命名，仅为向后兼容保留。新代码请用 EraState */
@@ -1254,7 +1255,12 @@ export interface TickResult {
   tradeNotes: string[];
 }
 
-export function tick(state: E1State, dt: number, rng: () => number = Math.random): TickResult {
+export function tick(
+  state: E1State,
+  dt: number,
+  rng: () => number = Math.random,
+  nowSec = Date.now() / 1000
+): TickResult {
   const eff = aggregateEffects(state);
 
   // 本时代已经过的秒数——季节循环的驱动源
@@ -1369,19 +1375,13 @@ export function tick(state: E1State, dt: number, rng: () => number = Math.random
 
   if (state.era === 'E3') {
     // 5a) 铜/锡/青铜产出
-    const copperGain = calcResourceOutput('copper', state) * dt;
-    copper += copperGain;
-    // 锡矿带开局：采矿工转采锡，本地可自给"少量"锡（设计 §2.2「锡自给 ✅ 少量」）。
-    // ⚠️ 此前实现为"锡本地产出恒为 0"，与设计表冲突——锡矿带开局名存实亡。
-    // 产量按铜矿工产出的一半折算（"少量"），本地无铜 → copperGain 本来就是 0。
-    if (state.localOre === 'tin') {
-      tin = Math.min(tin + copperGain * 0.5, getResourceStorage('tin', state));
+    const minerGain = calcResourceOutput('copper', state) * dt;
+    if (state.localOre === 'copper') {
+      copper += minerGain;
+    } else if (state.localOre === 'tin') {
+      // 锡矿带复用矿工岗位，但按铜矿工产出的 50% 计为少量自给。
+      tin = Math.min(tin + minerGain * 0.5, getResourceStorage('tin', state));
     }
-
-    // 铜矿工仅当本地有铜矿时有效（开局随机，用户拍板）
-    // 已集成在 calcResourceOutput（job.output === 'copper'）里，
-    // 但铜矿 gating 在 isJobUnlocked（jobs.ts requires）通过 localOre 处理——
-    // 这里无需额外 gate，因为 job 本身不会有人分配给 copper_miner 当 localOre !== 'copper'。
 
     // 5b) 冶炼：每名冶炼工需 0.045 铜 + 0.005 锡，产出 0.05 青铜/秒（×熔炉加成）
     //     缺料按比例降速（"缺料停工"而不是报错）
@@ -1412,7 +1412,7 @@ export function tick(state: E1State, dt: number, rng: () => number = Math.random
       if (r.cycleAccum >= cycleSec) { needCycle = true; break; }
     }
     if (needCycle && tradeRoutes.length > 0) {
-      const result = settleTradeCycle(state, cycleSec, rng);
+      const result = settleTradeCycle(state, cycleSec, rng, nowSec);
       // 应用货物增量（付出侧做库存下限保护，不透支为负）
       const apply = (res: string, amount: number) => {
         switch (res) {

@@ -7,7 +7,7 @@ import { BUILDINGS, type BuildingId } from '../data/buildings';
 import type { EraId } from '../data/era';
 import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
-import { INITIAL_STATE, LOOP, E2 } from '../data/constants';
+import { INITIAL_STATE, LOOP, E2, E3 } from '../data/constants';
 import * as engine from '../game/engine';
 import * as engineRecord from '../game/record';
 import { isJobRetired } from '../game/reveal';
@@ -102,7 +102,7 @@ export interface GameState {
   // 研究货币：用户拍板「改名即可」——E3 继续用 experience 字段，显示名变「知识」
   /** 铜：青铜原料之一；仅本地矿藏为铜矿时可开采 */
   copper: number;
-  /** 锡：本地产出恒为 0，只能贸易进口 */
+  /** 锡：普通地形只能贸易进口；锡矿带可少量本地开采 */
   tin: number;
   /** 青铜：冶炼工以铜+锡炼出 */
   bronze: number;
@@ -194,6 +194,8 @@ export interface GameState {
    * 青金石路线需 lapis_route 科技；未研究时拒绝开通。
    */
   toggleRoute: (neighborId: string) => void;
+  signContract: (neighborId: string) => boolean;
+  breachContract: (neighborId: string) => boolean;
 }
 
 const SAVE_VERSION = 6;
@@ -729,6 +731,11 @@ export const useStore = create<GameState>((set, get) => ({
 
     const existing = s.tradeRoutes.find(r => r.partnerId === neighborId);
     if (existing) {
+      const nowSec = Date.now() / 1000;
+      if (existing.contractUntil !== undefined && existing.contractUntil > nowSec) {
+        get().addMessage('关闭失败：请先毁约，不能绕过契约惩罚', 'warn');
+        return;
+      }
       // 已存在 → 关闭（移除该路线）
       set({ tradeRoutes: s.tradeRoutes.filter(r => r.partnerId !== neighborId) });
       get().addMessage(`关闭与「${def.name}」的贸易路线`, 'event');
@@ -753,6 +760,44 @@ export const useStore = create<GameState>((set, get) => ({
     };
     set({ tradeRoutes: [...s.tradeRoutes, route] });
     get().addMessage(`开通与「${def.name}」的贸易路线`, 'event');
+  },
+  signContract: (neighborId) => {
+    const s = get();
+    const route = s.tradeRoutes.find(r => r.partnerId === neighborId);
+    const def = NEIGHBOR_MAP[neighborId];
+    if (!route || !def) return false;
+    const nowSec = Date.now() / 1000;
+    if (route.contractUntil !== undefined && route.contractUntil > nowSec) return false;
+    const effects = engine.aggregateEffects(engineView(s));
+    const activeContracts = s.tradeRoutes.filter(r => r.contractUntil !== undefined && r.contractUntil > nowSec).length;
+    if (activeContracts >= effects.contractSlots) {
+      get().addMessage('签约失败：契约槽位已满', 'warn');
+      return false;
+    }
+    const duration = E3.CONTRACT_BASE_SEC * effects.contractDurationMul;
+    const routes = s.tradeRoutes.map(r => r.partnerId === neighborId
+      ? { ...r, contractUntil: nowSec + duration, breachPenaltyUntil: undefined }
+      : r);
+    set({ tradeRoutes: routes, reputation: Math.min(100, s.reputation + E3.CONTRACT_REP_GAIN) });
+    get().addMessage(`已与「${def.name}」签订锁价契约`, 'event');
+    return true;
+  },
+  breachContract: (neighborId) => {
+    const s = get();
+    const route = s.tradeRoutes.find(r => r.partnerId === neighborId);
+    const def = NEIGHBOR_MAP[neighborId];
+    const nowSec = Date.now() / 1000;
+    if (!route || !def || route.contractUntil === undefined || route.contractUntil <= nowSec) return false;
+    const effects = engine.aggregateEffects(engineView(s));
+    const routes = s.tradeRoutes.map(r => r.partnerId === neighborId
+      ? { ...r, contractUntil: undefined, breachPenaltyUntil: nowSec + E3.BREACH_PENALTY_SEC }
+      : r);
+    set({
+      tradeRoutes: routes,
+      reputation: Math.max(0, s.reputation - Math.round(E3.BREACH_REP_LOSS * effects.contractBreachPenalty)),
+    });
+    get().addMessage(`已毁约「${def.name}」，该路线短期报价上浮`, 'warn', true);
+    return true;
   },
 }));
 
