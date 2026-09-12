@@ -323,10 +323,11 @@ export const E3 = {
   /** 熔炉：冶炼工效率加成 */
   FURNACE_BONUS: 0.25,
 
-  /** E3 人口参数（§11.3：r=0.003，K 基础 320，民居 +130） */
+  /** E3 人口参数（§11.3：r=0.003，K 基础 320，民居 +130，食耗 0.2/秒/人） */
   POP_GROWTH_RATE: 0.003,
   POP_BASE_CAPACITY: 320,
   POP_PER_CITY_HOUSE: 130,
+  POP_FOOD_PER_PERSON: 0.2,
 
   /** 贸易基准价（食物=1，价值尺度） */
   BASE_PRICES: {

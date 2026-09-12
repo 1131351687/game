@@ -34,10 +34,11 @@ export function isModuleUnlocked(m: UiModule, s: E1State): boolean {
       // （住所/火塘/作坊……）。若这里只数"本代建筑"，
       // 会在 E2 开局（E2 建筑一项都还没解锁时）把整个建筑栏位判为不可用，
       // 玩家的建筑就此"消失"——正是用户反馈的 bug。
-      // 因此：有本代可建建筑，或有任何一座已建成的建筑，栏位就该在。
+      // 因此：有当前及以前时代的可建建筑，或有任何一座已建成的建筑，栏位就该在。
       return BUILDINGS.some(
         b =>
-          (b.era === s.era || (s.buildings[b.id] ?? 0) > 0) && isBuildingUnlocked(b.id, s)
+          (eraDistance(b.era, s.era) >= 0 || (s.buildings[b.id] ?? 0) > 0) &&
+          isBuildingUnlocked(b.id, s)
       );
     case 'advance':
       // 「时代跃迁」栏位只在**本代核心（门槛）科技研究完成**后才出现。
@@ -181,28 +182,30 @@ export function getRevealedJobs(s: E1State) {
 // 建筑渐进显示
 // ─────────────────────────────────────────────
 /**
- * 当前时代可建的建筑集合。
+ * 当前可操作的建筑集合：**当前及以前时代的建筑 + 已建成的建筑**。
  *
- * 建筑**不跨时代继承**：E1 的住所按设计文档 §4 的「住所 → 村落民居」升级路径
- * 由 advanceEra 直接转换成村落民居，因此 E2 不再需要（也不应）重开 E1 建筑。
- * 若不过滤，E2 可以用 30 木材的 E1 住所绕过 40 木材 + 20 石头的村落民居，
- * 承载力 K 的经济性会被直接架空。
+ * 旧时代建筑保留新建入口（2026-09-12 修 bug）：跃迁不重置旧内容，
+ * 引擎的承载力/存储/产出模型也在持续计算旧建筑（见 engine.getCapacity 的 E3 分支）——
+ * 如果 UI 层单方面锁死新建，E3 里田地/粮仓/畜栏/陶窑（本代无替代建筑）将无法扩张，
+ * 粮食产能与存储直接卡死。
+ *
+ * 例外由数据声明：`supersededBy`（功能被后续建筑取代）与 `obsoleteAfterEra`
+ * （机制已失效），见 isBuildingBuildable——E1 住所/火塘仍按设计退役。
  *
  * 岗位则相反 —— 设计文档 §7 明确要求采集者 / 猎人**继承并降权**，
  * 且 E2 建筑仍消耗木材与石头，所以 JobPanel 不做时代过滤。
  */
 export function eraBuildings(s: E1State) {
-  // 本代建筑 + **已建成的旧时代建筑**。
-  // 后者必须保留在列表里：跃迁不重置旧内容，它们仍在贡献承载力与加成，
-  // 玩家得能看见"我的火塘还在"，而不是凭空消失。
-  return BUILDINGS.filter(b => b.era === s.era || (s.buildings[b.id] ?? 0) > 0);
+  return BUILDINGS.filter(
+    b => eraDistance(b.era, s.era) >= 0 || (s.buildings[b.id] ?? 0) > 0
+  );
 }
 
 export function isBuildingRevealed(id: BuildingId, s: E1State): boolean {
   const def = BUILDING_MAP[id];
   const owned = (s.buildings[id] ?? 0) > 0;
-  // 旧时代建筑：只有**已建成**的才显示（保留成果），不提供新建入口
-  if (def.era !== s.era && !owned) return false;
+  // 未来时代建筑：除非已建成（不该发生，防御性保留），否则不显示
+  if (eraDistance(def.era, s.era) < 0 && !owned) return false;
   if (!def.requires.tech) return true;
   return !!s.techs[def.requires.tech];
 }
@@ -210,13 +213,25 @@ export function isBuildingRevealed(id: BuildingId, s: E1State): boolean {
 /**
  * 该建筑在当前时代**是否还能新建**。
  *
- * 已建成的旧时代建筑继续生效（K、火源、工具加成照算），但**不再开放新建**——
- * 否则 E2 里 30 木材的「住所」会直接架空 40 木材 + 20 石头的「村落民居」
- * （两者同样提供 K+4），新内容会立刻变成死内容。
- * 这不是"重置旧内容"，而是"时代分界线只决定新增什么"的自然结果。
+ * 规则：所属时代已到达即可新建（跃迁不重置，旧建筑的产能必须能继续扩张），
+ * 但两类数据声明的例外除外：
+ *  - supersededBy：功能被后续时代的建筑取代（E1 住所 ← 村落民居），
+ *    取代者所属时代到达后不再开放——防止便宜旧建筑架空昂贵新内容；
+ *  - obsoleteAfterEra：依托的机制已失效（火塘——火机制只在 E1 有意义）。
+ * 已建成的建筑不受影响，继续生效（K、存储、加成照算）。
  */
 export function isBuildingBuildable(id: BuildingId, s: E1State): boolean {
-  return BUILDING_MAP[id].era === s.era && isBuildingUnlocked(id, s);
+  const def = BUILDING_MAP[id];
+  // 未来时代：不可建
+  if (eraDistance(def.era, s.era) < 0) return false;
+  // 功能被取代：取代者的时代到达后退役
+  if (def.supersededBy) {
+    const succ = BUILDING_MAP[def.supersededBy];
+    if (eraDistance(succ.era, s.era) >= 0) return false;
+  }
+  // 机制失效：过了失效时代即退役
+  if (def.obsoleteAfterEra && eraDistance(def.obsoleteAfterEra, s.era) > 0) return false;
+  return isBuildingUnlocked(id, s);
 }
 
 export function getRevealedBuildings(s: E1State) {

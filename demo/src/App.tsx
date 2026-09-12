@@ -10,6 +10,9 @@ import { useState } from 'react';
 import { useStore, toEngineState } from './state/store';
 import { TopBar } from './ui/components/TopBar';
 import { FireDashboard } from './ui/components/FireDashboard';
+import { RecordPanel } from './ui/components/RecordPanel';
+import { TradePanel } from './ui/components/TradePanel';
+import { EmpirePanel } from './ui/components/EmpirePanel';
 import { SeasonBar } from './ui/components/SeasonBar';
 import { JobPanel } from './ui/components/JobPanel';
 import { BuildingPanel } from './ui/components/BuildingPanel';
@@ -78,6 +81,18 @@ export default function App() {
 
       {/* ②′ 季节面板 —— 定居时代（研究「农业」后）的常驻核心元素 */}
       <SeasonBar />
+
+      {/* ②″ 记录容量面板 —— 城邦时代（研究「楔形文字」后）的常驻核心元素。
+          组件内部按 recordingEnabled 兜底，未开启时返回 null。 */}
+      <RecordPanel />
+
+      {/* ②″′ 贸易面板 —— 城邦时代（研究「商队组织」后）的常驻核心元素。
+          组件内部按 caravan_org 科技兜底，未开启时返回 null。 */}
+      <TradePanel />
+
+      {/* ②⁗ 帝国面板 —— 帝国时代的常驻核心元素。
+          组件内部按 era === 'E4' 兜底，其它时代返回 null。 */}
+      <EmpirePanel />
 
       {/* ③ 卡点提示（无卡点时不渲染） */}
       <HintBar />

@@ -13,6 +13,7 @@ import {
   canResearch,
   isTechAvailable,
   calcExperienceOutput,
+  calcResourceOutput,
   canAffordBuilding,
   getBuildingCost,
   getResourceStorage,
@@ -24,9 +25,12 @@ import {
 import type { E1State } from '../game/engine';
 import { TECHS, techsOfEra } from '../data/techs';
 import { JOBS } from '../data/jobs';
-import { POPULATION, E2 } from '../data/constants';
+import { POPULATION, E2, E3, E4 } from '../data/constants';
+import * as empire from '../game/empire';
 import { SEASONS, getSeasonFromElapsed, getWinterConsumption } from '../game/season';
 import { computeEraTransition } from '../game/transition';
+import { NEIGHBORS, getRouteSlots } from '../game/trade';
+import { getRecordCapacity, canRecord, recordTech } from '../game/record';
 
 /** E1 链式推演的时长：beeline 门槛在 932s，多跑到 1200s 模拟"玩家达成门槛后又攒了一会儿" */
 const E1_CHAIN_SEC = 1200;
@@ -301,7 +305,7 @@ function makeE2State(): E1State {
 }
 
 /** 一个"还算聪明"的定居时代玩家 */
-function autoplayE2(): void {
+function autoplayE2(quiet = false): E1State {
   const STEP = 0.25;
   /** 交接清单要求：至少 2400s（10 游戏年），每 60s 打印一行 */
   const LOG_UNTIL = 2400;
@@ -494,6 +498,8 @@ function autoplayE2(): void {
     );
   };
 
+  const origLog = console.log;
+  console.log = quiet ? (() => {}) : origLog;
   console.log('=== E2 定居时代自动试玩 ===\n');
   console.log(
     `（起始：人口 ${Math.floor(s.population)}（原样继承） / K=${getCapacity(s)} / 食物 ${s.food.toFixed(0)}（原样继承） / ` +
@@ -567,17 +573,702 @@ function autoplayE2(): void {
     console.log(`⛔ ${Math.round(t)}s 内未满足全部跃迁条件`);
   }
   console.log('');
+  console.log = origLog;
   console.log(`备注：末态食物净产出 ${(s.food > 0 ? '为正' : '为 0')}；人口上限 K 由村落民居与已耕作田地共同提供。`);
+  return s;
+}
+
+// ─────────────────────────────────────────────
+// E3 城邦时代自动试玩
+// ─────────────────────────────────────────────
+/**
+ * E3 起始状态 —— 同样真实走 E1 → E2 → 跃迁，不手工镜像。
+ * E2→E3 的 localOre 随机会影响铜矿可用性：模拟器固定跑 3 次取中位没必要，
+ * 直接接受单次随机结果并在输出中标注矿藏类型。
+ */
+function makeE3State(): { state: E1State; ore: string } {
+  const e2 = autoplayE2(true);
+  const t = computeEraTransition(e2, 'E3');
+  // transition 只透传跨代保留字段；E3 新增字段由 store.advanceEra 初始化，
+  // 模拟器不走 store，这里补齐同样的默认值（与 store.initialState 一致）。
+  const state: E1State = {
+    ...t,
+    recorded: [],
+    recordedOnce: [],
+    copper: 0,
+    tin: 0,
+    bronze: 0,
+    lapis: 0,
+    tradeRoutes: [],
+    reputation: 50,
+  };
+  const oreNames: Record<string, string> = {
+    copper: '铜矿（本地可采铜）',
+    tin: '锡矿（本地无铜，必须依赖贸易）',
+    alluvial: '冲积平原（无矿，铜锡全靠贸易）',
+  };
+  return { state, ore: oreNames[t.localOre] ?? t.localOre };
+}
+
+function autoplayE3(): void {
+  const STEP = 0.25;
+  const LOG_UNTIL = 3600;
+  const HARD_CAP = 60000; // E3 是长线时代，上限放宽到 16.7 小时游戏时
+
+  const { state: s, ore } = makeE3State();
+  const e3Techs = techsOfEra('E3');
+  const bag = s as unknown as Record<string, number>;
+
+  const researched: string[] = [];
+  const recordedList: string[] = [];
+  let advanceAt = -1;
+  let minFood = s.food;
+  let famineSec = 0;
+  let t = 0;
+
+  // 研究顺序（书写→青铜→贸易，门槛 iron 最后）
+  const E3_ORDER = [
+    'cuneiform', 'clay_tablet', 'scribe_training', 'bronze_smelting',
+    'sexagesimal', 'bronze_tools', 'wheel', 'granary', 'seal',
+    'metrology', 'caravan_org', 'account_class', 'donkey_caravan',
+    'recycling', 'river_sail', 'bronze_weapon', 'lapis_route',
+    'contract_record', 'archive_expand', 'iron',
+  ];
+
+  const countE3 = (): number => e3Techs.filter(x => s.techs[x.id]).length;
+
+  const tryBuild = (id: string): boolean => {
+    if (!isBuildingUnlocked(id as never, s)) return false;
+    if (!canAffordBuilding(id as never, s)) return false;
+    const cost = getBuildingCost(id as never, s);
+    for (const [res, amount] of Object.entries(cost)) {
+      const owned = bag[res];
+      if (typeof owned === 'number') bag[res] = owned - (amount as number);
+    }
+    s.buildings[id] = (s.buildings[id] ?? 0) + 1;
+    return true;
+  };
+
+  // ── 刻录策略：能刻就刻（槽位优先给已研究清单前列）──
+  const autoRecord = (): void => {
+    for (const id of E3_ORDER) {
+      if (!s.techs[id] || s.recorded.includes(id)) continue;
+      if (!canRecord(id, s).ok) continue;
+      const r = recordTech(id, s);
+      if (!r) continue;
+      s.experience = r.experience;
+      s.recorded = r.recorded;
+      s.recordedOnce = r.recordedOnce;
+      recordedList.push(id);
+    }
+  };
+
+  // ── 建造 ──
+  // 优先级依据 E3 的两条命脉：
+  //  ① 记录容量（学宫）——刻录 → 档案加成 → 知识产出
+  //  ② 食物链（田地→粮仓→陶窑）——人均储粮 <12 时人口增长因子归零，
+  //     存储撞上限 + 人口冻结 = 死锁（2026-09-12 实测），粮仓必须跟上人口。
+  const autoBuildE3 = (): void => {
+    const cap = getResourceStorage('food', s);
+    const academies = s.buildings.academy ?? 0;
+    const posts = s.buildings.trading_post ?? 0;
+    const cityHouses = s.buildings.city_house ?? 0;
+    const furnaces = s.buildings.furnace ?? 0;
+    const granaries = s.buildings.granary ?? 0;
+    const kilns = s.buildings.kiln ?? 0;
+    const fields = s.buildings.field ?? 0;
+    const pop = Math.floor(s.population);
+    const K = getCapacity(s);
+    const perPerson = pop > 0 ? s.food / pop : Infinity;
+
+    // 农夫工位需求：1 名农夫（3.0 食/秒）供养 ~15 人（食耗 0.2/秒/人），留 25% 余量
+    const farmersNeeded = Math.ceil((pop / 15) * 1.25);
+    const fieldSlots = fields * E2.JOBS_PER_FIELD;
+
+    // 1) 学宫 ×4（记录容量 3+4×5=23，够 12+ 项刻录）
+    if (academies < 4 && tryBuild('academy')) return;
+    // 2) 粮仓：人均储粮低于 32（因子 0.8 线）就扩容；早期也防撞顶
+    if (perPerson < 32 && granaries < 80 && tryBuild('granary')) return;
+    // 3) 田地：农夫工位不足就补（产出端）
+    if (fieldSlots < farmersNeeded && fields < 80 && tryBuild('field')) return;
+    // 4) 陶窑 ×3：粮仓容量 +15%/座（最多 3 座生效）
+    if (granaries >= 4 && kilns < 3 && tryBuild('kiln')) return;
+    // 5) 商栈 ×3（贸易槽 → 铜/锡/石进口）
+    if (posts < 3 && s.techs['caravan_org'] && tryBuild('trading_post')) return;
+    // 6) 民居（K 跟上人口目标 1800）
+    if (K < pop + 20 && cityHouses < 20 && tryBuild('city_house')) return;
+    // 7) 熔炉 ×4（青铜产出）
+    if (furnaces < 4 && s.techs['bronze_smelting'] && tryBuild('furnace')) return;
+    if (s.food > cap * 0.8 && (s.buildings.granary ?? 0) < 200) {
+      // 食物触顶 → 扩建粮仓（而非无限刷民居：曾把 K 推到 151 万）
+      tryBuild('granary');
+    }
+  };
+
+  // ── 分配人力 ──
+  const autoAssignE3 = (): void => {
+    const pop = Math.floor(s.population);
+    const next: Record<string, number> = {};
+    for (const j of JOBS) next[j.id] = 0;
+    if (pop <= 0) {
+      s.jobs = next;
+      return;
+    }
+    let left = pop;
+    const take = (id: string, n: number): void => {
+      const use = Math.min(Math.max(0, n), left);
+      if (use <= 0) return;
+      next[id] = (next[id] ?? 0) + use;
+      left -= use;
+    };
+
+    const fieldSlots = (s.buildings.field ?? 0) * E2.JOBS_PER_FIELD;
+
+    // 1) 食物优先（0.2/人/秒消耗比 E1/E2 都重；1 农夫 ≈ 供养 15 人）
+    //    按"实际需要"派而不是按人口比例堆——省下的人力给书吏
+    take('farmer', Math.min(fieldSlots, Math.ceil(pop / 12)));
+    if (next.farmer === 0 && !(s.buildings.field ?? 0)) take('hunter', Math.ceil(pop * 0.2));
+    // 2) 建材（建造程序重：粮仓/田地/民居都在排队，按比例派）
+    take('woodcutter', Math.max(3, Math.ceil(pop * 0.06)));
+    if (s.techs['stone_knapping']) take('knapper', Math.max(2, Math.ceil(pop * 0.04)));
+    // 3) 书吏：知识产出核心（设计目标 ≈25% 人口；425 人 → 35.7 知识/秒）
+    //    + 每条路线需 40 名记账
+    const routeCount = (s.tradeRoutes ?? []).length;
+    const scribeNeed = Math.max(6, Math.ceil(pop * 0.25)) + routeCount * E3.SCRIBES_PER_ROUTE;
+    take('scribe', scribeNeed);
+    // 4) 商人（有路线才有意义）
+    if (routeCount > 0) take('merchant', Math.min(20, routeCount * 6));
+    // 5) 冶炼（青铜是通关资源）
+    if (s.techs['bronze_smelting'] && (s.buildings.furnace ?? 0) > 0) {
+      take('smelter', Math.min(20, (s.buildings.furnace ?? 0) * 5));
+    }
+    // 6) 采矿（仅本地有铜时）
+    if (s.localOre === 'copper' || s.localOre === 'alluvial') {
+      take('copper_miner', Math.min(15, Math.ceil(left / 4)));
+    }
+    // 7) 兜底：剩下去种地/采集
+    if (left > 0) take('gatherer', left);
+    s.jobs = next;
+  };
+
+  // ── 贸易路线管理 ──
+  const autoTrade = (): void => {
+    if (!s.techs['caravan_org']) return;
+    const slots = getRouteSlots(s);
+    const routes = s.tradeRoutes ?? [];
+    if (routes.length >= slots) return;
+    // 优先：迪尔蒙（锡）→ 埃兰（铜）→ 南方城邦（石头）
+    const PRIORITY = ['dilmun', 'elam', 'uruk'];
+    for (const nid of PRIORITY) {
+      if (routes.some(r => r.partnerId === nid)) continue;
+      const def = NEIGHBORS.find(n => n.id === nid);
+      if (!def) continue;
+      routes.push({
+        partnerId: nid,
+        demand: def.accept,
+        supply: def.sell,
+        distance: def.distance,
+        cycleAccum: 0,
+        priceHistory: [],
+      });
+      if (routes.length >= slots) break;
+    }
+    s.tradeRoutes = routes;
+  };
+
+  // ── 研究：按预设顺序 ──
+  const autoResearchE3 = (): void => {
+    for (const id of E3_ORDER) {
+      if (s.techs[id]) continue;
+      const def = TECHS.find(x => x.id === id);
+      if (!def || !isTechAvailable(id, s) || !canResearch(id, s).ok) return;
+      s.experience -= def.cost;
+      s.techs[id] = true;
+      researched.push(def.name);
+      return;
+    }
+  };
+
+  const step = (): void => {
+    const r = tick(s, STEP);
+    s.food = r.food;
+    s.wood = r.wood;
+    s.stone = r.stone;
+    s.experience = r.experience;
+    s.copper = r.copper;
+    s.tin = r.tin;
+    s.bronze = r.bronze;
+    s.lapis = r.lapis;
+    s.tradeRoutes = r.tradeRoutes;
+    s.reputation = r.reputation;
+    s.eraElapsedSec = r.eraElapsedSec;
+    s.population = r.population;
+    s.populationProgress = r.populationProgress;
+    s.fire = r.fire;
+    s.livestock = r.livestock;
+    s.fabric = r.fabric;
+    t += STEP;
+    autoResearchE3();
+    autoAssignE3();
+    autoBuildE3();
+    autoTrade();
+    autoRecord();
+    minFood = Math.min(minFood, s.food);
+    if (s.food <= 0.01) famineSec += STEP;
+    if (advanceAt < 0 && checkAdvance(s).ok) advanceAt = Math.round(t);
+  };
+
+  const row = (): string =>
+    `  ${String(Math.round(t)).padStart(6)}s | 人口 ${String(Math.floor(s.population)).padStart(4)}/${String(getCapacity(s)).padStart(4)} | ` +
+    `食 ${s.food.toFixed(0).padStart(5)} | 铜 ${String(Math.round(s.copper)).padStart(5)} | 锡 ${String(Math.round(s.tin)).padStart(4)} | ` +
+    `青铜 ${String(Math.round(s.bronze)).padStart(5)} | 知识 ${s.experience.toFixed(0).padStart(6)} | ` +
+    `刻录 ${s.recorded.length}/${getRecordCapacity(s).cap} | 路线 ${(s.tradeRoutes ?? []).length} | E3科技 ${countE3()}/${e3Techs.length}`;
+
+  console.log('=== E3 城邦时代自动试玩 ===\n');
+  console.log(`（起始：人口 ${Math.floor(s.population)} / K=${getCapacity(s)} / 矿藏：${ore} / E1+E2 科技全掌握）\n`);
+
+  const log: string[] = [];
+  const logged = new Set<number>();
+  log.push(row());
+  logged.add(0);
+
+  while (t < LOG_UNTIL) {
+    step();
+    const mark = Math.round(t);
+    if (mark % 120 === 0 && !logged.has(mark)) {
+      logged.add(mark);
+      log.push(row());
+    }
+  }
+
+  const needPhase2 = advanceAt < 0;
+  if (needPhase2) {
+    console.log(log.join('\n'));
+    console.log('  …… 3600s 内未达成跃迁，继续推演 ……\n');
+    log.length = 0;
+    while (advanceAt < 0 && t < HARD_CAP) {
+      step();
+      const mark = Math.round(t);
+      if (mark % 600 === 0 && !logged.has(mark)) {
+        logged.add(mark);
+        log.push(row());
+      }
+    }
+    console.log(log.join('\n'));
+  } else {
+    console.log(log.join('\n'));
+  }
+
+  const adv = checkAdvance(s);
+  console.log('');
+  console.log(`E3 科技完成：${countE3()}/${e3Techs.length}`);
+  console.log(`刻录完成：${s.recorded.length} 项（${recordedList.slice(0, 6).join('、')}${recordedList.length > 6 ? ' 等' : ''}）`);
+  console.log(`最低食物值：${minFood.toFixed(0)}${famineSec > 0 ? `（饿过 ${famineSec.toFixed(0)}s）` : ''}`);
+  console.log(`末态：人口 ${Math.floor(s.population)} | 青铜 ${Math.round(s.bronze)} | 学宫 ${s.buildings.academy ?? 0} | 商栈 ${s.buildings.trading_post ?? 0} | 声望 ${Math.round(s.reputation)}`);
+  console.log('');
+  console.log('★ 时代跃迁检查（checkAdvance）：');
+  for (const item of adv.items) {
+    console.log(`   ${item.done ? '✅' : '⬜'} ${item.label} —— ${item.detail}`);
+  }
+  console.log(`   ${adv.ok ? '→ 可以跃迁到 E4' : '→ 尚未满足'}`);
+  if (advanceAt >= 0) {
+    console.log(`🎓 E3 通关时间（全部条件满足）：${advanceAt}s = ${(advanceAt / 60).toFixed(1)} 分钟 = ${(advanceAt / 3600).toFixed(1)} 小时`);
+  } else {
+    console.log(`⛔ ${Math.round(t)}s 内未满足全部跃迁条件`);
+  }
+}
+
+// ─────────────────────────────────────────────
+// E4 帝国时代自动试玩
+// ─────────────────────────────────────────────
+/** E4 起始状态：真实走 E1→E2→E3，再由 transition 交接；E4 新字段由 store.advanceEra 同款默认值补齐。 */
+function makeE4State(): E1State {
+  const e3 = autoplayE3State();
+  const t = computeEraTransition(e3, 'E4');
+  return {
+    // 先铺 e3（recorded/tradeRoutes 等引擎必需字段），再以 t 覆盖跨代透传部分
+    ...e3,
+    ...t,
+    iron: 0,
+    coin: 0,
+    order: 70,
+    territory: 1,
+    polity: null,
+    polityCooldownSec: 0,
+    expansionFlatSec: 0,
+    successionTimer: 0,
+    p1Unlocked: true,
+    legacyPoints: 0,
+  } as E1State;
+}
+
+/** autoplayE3 的无打印版：跑完返回 E3 末态（不满足跃迁条件则推演到 HARD_CAP） */
+function autoplayE3State(): E1State {
+  // 复用 makeE3State 的链式起点（E1→E2→E3），但用独立策略循环推演到满足 E3→E4
+  const STEP = 0.25;
+  const HARD_CAP = 120000;
+  const { state: s } = { state: makeE3State().state };
+
+  const e3Techs = techsOfEra('E3');
+  const bag = s as unknown as Record<string, number>;
+  const E3_ORDER = [
+    'cuneiform', 'clay_tablet', 'scribe_training', 'bronze_smelting',
+    'sexagesimal', 'bronze_tools', 'wheel', 'granary', 'seal',
+    'metrology', 'caravan_org', 'account_class', 'donkey_caravan',
+    'recycling', 'river_sail', 'bronze_weapon', 'lapis_route',
+    'contract_record', 'archive_expand', 'iron',
+  ];
+
+  const tryBuild = (id: string): boolean => {
+    if (!isBuildingUnlocked(id as never, s)) return false;
+    if (!canAffordBuilding(id as never, s)) return false;
+    const cost = getBuildingCost(id as never, s);
+    for (const [res, amount] of Object.entries(cost)) {
+      const owned = bag[res];
+      if (typeof owned === 'number') bag[res] = owned - (amount as number);
+    }
+    s.buildings[id] = (s.buildings[id] ?? 0) + 1;
+    return true;
+  };
+
+  const autoRecord = (): void => {
+    for (const id of E3_ORDER) {
+      if (!s.techs[id] || s.recorded.includes(id)) continue;
+      if (!canRecord(id, s).ok) continue;
+      const r = recordTech(id, s);
+      if (!r) continue;
+      s.experience = r.experience;
+      s.recorded = r.recorded;
+      s.recordedOnce = r.recordedOnce;
+    }
+  };
+
+  const autoBuild = (): void => {
+    const cap = getResourceStorage('food', s);
+    const pop = Math.floor(s.population);
+    const K = getCapacity(s);
+    const perPerson = pop > 0 ? s.food / pop : Infinity;
+    const farmersNeeded = Math.ceil((pop / 15) * 1.25);
+    const fieldSlots = (s.buildings.field ?? 0) * E2.JOBS_PER_FIELD;
+    if ((s.buildings.academy ?? 0) < 4 && tryBuild('academy')) return;
+    // 民居先行：跃迁条件人口 ≥1800，K 卡住则全盘卡死
+    if (K < pop + 40 && (s.buildings.city_house ?? 0) < 40 && tryBuild('city_house')) return;
+    if (perPerson < 32 && (s.buildings.granary ?? 0) < 200 && tryBuild('granary')) return;
+    if (fieldSlots < farmersNeeded && (s.buildings.field ?? 0) < 80 && tryBuild('field')) return;
+    if ((s.buildings.granary ?? 0) >= 4 && (s.buildings.kiln ?? 0) < 3 && tryBuild('kiln')) return;
+    if ((s.buildings.trading_post ?? 0) < 3 && s.techs['caravan_org'] && tryBuild('trading_post')) return;
+    if ((s.buildings.furnace ?? 0) < 4 && s.techs['bronze_smelting'] && tryBuild('furnace')) return;
+    if (s.food > cap * 0.8 && (s.buildings.granary ?? 0) < 200) tryBuild('granary');
+  };
+
+  const autoAssign = (): void => {
+    const pop = Math.floor(s.population);
+    const next: Record<string, number> = {};
+    for (const j of JOBS) next[j.id] = 0;
+    if (pop <= 0) { s.jobs = next; return; }
+    let left = pop;
+    const take = (id: string, n: number): void => {
+      const use = Math.min(Math.max(0, n), left);
+      if (use <= 0) return;
+      next[id] = (next[id] ?? 0) + use;
+      left -= use;
+    };
+    const fieldSlots = (s.buildings.field ?? 0) * E2.JOBS_PER_FIELD;
+    take('farmer', Math.min(fieldSlots, Math.ceil(pop / 12)));
+    if (next.farmer === 0 && !(s.buildings.field ?? 0)) take('hunter', Math.ceil(pop * 0.2));
+    take('woodcutter', Math.max(3, Math.ceil(pop * 0.06)));
+    if (s.techs['stone_knapping']) take('knapper', Math.max(2, Math.ceil(pop * 0.04)));
+    const routeCount = (s.tradeRoutes ?? []).length;
+    take('scribe', Math.max(6, Math.ceil(pop * 0.25)) + routeCount * E3.SCRIBES_PER_ROUTE);
+    if (routeCount > 0) take('merchant', Math.min(20, routeCount * 6));
+    if (s.techs['bronze_smelting'] && (s.buildings.furnace ?? 0) > 0) {
+      take('smelter', Math.min(20, (s.buildings.furnace ?? 0) * 5));
+    }
+    if (s.localOre === 'copper' || s.localOre === 'alluvial') {
+      take('copper_miner', Math.min(15, Math.ceil(left / 4)));
+    }
+    if (left > 0) take('gatherer', left);
+    s.jobs = next;
+  };
+
+  const autoTrade = (): void => {
+    if (!s.techs['caravan_org']) return;
+    const slots = getRouteSlots(s);
+    const routes = s.tradeRoutes ?? [];
+    if (routes.length >= slots) return;
+    for (const nid of ['dilmun', 'elam', 'uruk']) {
+      if (routes.some(r => r.partnerId === nid)) continue;
+      const def = NEIGHBORS.find(n => n.id === nid);
+      if (!def) continue;
+      routes.push({ partnerId: nid, demand: def.accept, supply: def.sell, distance: def.distance, cycleAccum: 0, priceHistory: [] });
+      if (routes.length >= slots) break;
+    }
+    s.tradeRoutes = routes;
+  };
+
+  const autoResearch = (): void => {
+    for (const id of E3_ORDER) {
+      if (s.techs[id]) continue;
+      const def = TECHS.find(x => x.id === id);
+      if (!def || !isTechAvailable(id, s) || !canResearch(id, s).ok) return;
+      s.experience -= def.cost;
+      s.techs[id] = true;
+      return;
+    }
+  };
+
+  let t = 0;
+  while (t < HARD_CAP) {
+    const r = tick(s, STEP);
+    s.food = r.food; s.wood = r.wood; s.stone = r.stone; s.experience = r.experience;
+    s.copper = r.copper; s.tin = r.tin; s.bronze = r.bronze; s.lapis = r.lapis;
+    s.tradeRoutes = r.tradeRoutes; s.reputation = r.reputation;
+    s.eraElapsedSec = r.eraElapsedSec; s.population = r.population;
+    s.populationProgress = r.populationProgress; s.fire = r.fire;
+    s.livestock = r.livestock; s.fabric = r.fabric;
+    t += STEP;
+    autoResearch(); autoAssign(); autoBuild(); autoTrade(); autoRecord();
+    if (checkAdvance(s).ok) break;
+  }
+  return s;
+}
+
+function autoplayE4(): void {
+  const STEP = 0.25;
+  const LOG_UNTIL = 7200;
+  const HARD_CAP = 200000; // E4 是超长线时代（铸币 15 万 + 版图 20）
+
+  const s = makeE4State();
+  const e4Techs = techsOfEra('E4');
+  const bag = s as unknown as Record<string, number>;
+
+  const researched: string[] = [];
+  let advanceAt = -1;
+  let minFood = s.food;
+  let minOrder = s.order;
+  let t = 0;
+
+  // 研究顺序：核心法典 → 六支撑（解锁官署/成文法/住宅/驰道/铸币/军团/政体）→ 效率 → 门槛印刷术
+  const E4_ORDER = [
+    'law_code', 'written_law', 'coinage', 'legion_org', 'road_building',
+    'household_reg', 'commandery',
+    'iron_plow', 'blast_furnace', 'census', 'standing_army', 'merit_rank',
+    'salt_iron', 'postal_relay', 'bread_circus', 'trade_treaty', 'tuntian',
+    'secretary', 'jus_gentium', 'roman_road', 'building_code', 'sea_grain',
+    'imperial_roads', 'printing_press',
+  ];
+
+  const countE4 = (): number => e4Techs.filter(x => s.techs[x.id]).length;
+
+  const tryBuild = (id: string): boolean => {
+    if (!isBuildingUnlocked(id as never, s)) return false;
+    if (!canAffordBuilding(id as never, s)) return false;
+    const cost = getBuildingCost(id as never, s);
+    for (const [res, amount] of Object.entries(cost)) {
+      const owned = bag[res];
+      if (typeof owned === 'number') bag[res] = owned - (amount as number);
+    }
+    s.buildings[id] = (s.buildings[id] ?? 0) + 1;
+    return true;
+  };
+
+  // ── 建造：官署(κ)→铸币厂(钱)→营垒(军团)→住宅(人口→知识)→驰道(半径)→法典碑 ──
+  const autoBuildE4 = (): void => {
+    const pop = Math.floor(s.population);
+    const K = getCapacity(s);
+    const chanceries = s.buildings.chancery ?? 0;
+    const mints = s.buildings.mint ?? 0;
+    const forts = s.buildings.fort ?? 0;
+
+    // 官署：先 1 座救秩序，再向 6 座（跃迁条件）推进
+    if (s.techs['law_code'] && chanceries < Math.max(1, Math.min(6, Math.floor(t / 600) + 1)) && tryBuild('chancery')) return;
+    if (s.techs['coinage'] && mints < 6 && tryBuild('mint')) return;
+    if (s.techs['legion_org'] && forts < 8 && tryBuild('fort')) return;
+    // 住宅阶梯：人口是知识产出与铸币消费的引擎
+    if (K < pop + 40) {
+      if (s.techs['building_code'] && tryBuild('housing_4')) return;
+      if (s.techs['census'] && tryBuild('housing_3')) return;
+      if (s.techs['household_reg'] && tryBuild('housing_2')) return;
+      if (s.techs['law_code'] && tryBuild('housing_1')) return;
+      tryBuild('city_house');
+      return;
+    }
+    if (s.techs['road_building'] && (s.buildings.road ?? 0) < 4 && tryBuild('road')) return;
+    if (s.techs['written_law'] && (s.buildings.stele ?? 0) < 6 && tryBuild('stele')) return;
+  };
+
+  // ── 人力：食物 → 铁矿/铸币工 → 官吏（压 κ≥0.85）→ 军团（配额）→ 兜底 ──
+  const autoAssignE4 = (): void => {
+    const pop = Math.floor(s.population);
+    const next: Record<string, number> = {};
+    for (const j of JOBS) next[j.id] = 0;
+    if (pop <= 0) { s.jobs = next; return; }
+    let left = pop;
+    const take = (id: string, n: number): void => {
+      const use = Math.min(Math.max(0, n), left);
+      if (use <= 0) return;
+      next[id] = (next[id] ?? 0) + use;
+      left -= use;
+    };
+
+    const fieldSlots = (s.buildings.field ?? 0) * E2.JOBS_PER_FIELD;
+    // 1) 食物（0.2/人/秒 + 官吏军团额外口粮）
+    take('tenant_farmer', Math.min(fieldSlots, Math.ceil(pop / 10)));
+    if ((next.tenant_farmer ?? 0) + (next.farmer ?? 0) === 0) take('hunter', Math.ceil(pop * 0.2));
+    // 2) 建材
+    take('woodcutter', Math.max(4, Math.ceil(pop * 0.05)));
+    take('knapper', Math.max(2, Math.ceil(pop * 0.03)));
+    take('iron_miner', Math.max(4, Math.ceil(pop * 0.08)));
+    // 3) 铸币工（铸币厂 20 工位/座）——俸禄链的入口
+    const mintSlots = (s.buildings.mint ?? 0) * 20;
+    take('mint_worker', Math.min(mintSlots, Math.ceil(pop * 0.2)));
+    // 4) 官吏（官署 12 工位/座）：覆盖 κ ≥ 0.85
+    const chancerySlots = (s.buildings.chancery ?? 0) * 12;
+    const Aeff = empire.getAdminLoad(s).Aeff;
+    const officialsNeed = Math.min(chancerySlots, Math.ceil((Aeff * 0.85) / Math.max(0.1, 1 + 0.25 * empire.getChanceryLevel(s))));
+    take('official', officialsNeed);
+    // 5) 军团（营垒 2 工位/座）：当前版图的兵员配额 + 1 备用
+    const fortSlots = (s.buildings.fort ?? 0) * 2;
+    take('legionary', Math.min(fortSlots, empire.legionRequirement(s.territory) + 1));
+    // 6) 兜底：农夫/采集
+    if (left > 0) take('gatherer', Math.floor(left / 2));
+    if (left > 0) {
+      next.tenant_farmer = (next.tenant_farmer ?? 0) + left;
+      left = 0;
+    }
+    s.jobs = next;
+  };
+
+  const autoResearchE4 = (): void => {
+    for (const id of E4_ORDER) {
+      if (s.techs[id]) continue;
+      const def = TECHS.find(x => x.id === id);
+      if (!def || !isTechAvailable(id, s)) return;
+      if (!canResearch(id, s).ok) return;
+      s.experience -= def.cost;
+      s.techs[id] = true;
+      researched.push(def.name);
+      return;
+    }
+  };
+
+  // ── 扩张：条件满足就扩（铸币/铁/军团由上面的策略备货）──
+  const autoExpand = (): void => {
+    const check = empire.canExpand(s);
+    if (!check.ok) return;
+    s.territory += 1;
+    s.coin -= check.coinCost;
+    s.iron -= check.ironCost;
+    s.expansionFlatSec = check.flatSec;
+  };
+
+  // ── 政体：共和制研究加成（铸币 ≥ 40 万时切换，避免挤占扩张资金）──
+  const autoPolity = (): void => {
+    if (!empire.isPolityUnlocked(s)) return;
+    if (empire.getPolity(s) === null && s.coin >= 400000) {
+      const err = empire.canSwitchPolity(s, 'republic');
+      if (err.ok) {
+        s.polity = 'republic';
+        s.coin -= E4.GOV_SWITCH_COIN_COST;
+        s.order = Math.max(0, s.order - E4.GOV_SWITCH_ORDER_COST);
+        s.polityCooldownSec = E4.GOV_SWITCH_COOLDOWN_SEC;
+      }
+    }
+  };
+
+  const step = (): void => {
+    const r = tick(s, STEP);
+    s.food = r.food; s.wood = r.wood; s.stone = r.stone; s.experience = r.experience;
+    s.copper = r.copper; s.tin = r.tin; s.bronze = r.bronze; s.lapis = r.lapis;
+    s.tradeRoutes = r.tradeRoutes; s.reputation = r.reputation;
+    s.eraElapsedSec = r.eraElapsedSec; s.population = r.population;
+    s.populationProgress = r.populationProgress; s.fire = r.fire;
+    s.livestock = r.livestock; s.fabric = r.fabric;
+    s.iron = r.iron; s.coin = r.coin; s.order = r.order;
+    s.polityCooldownSec = r.polityCooldownSec; s.expansionFlatSec = r.expansionFlatSec;
+    s.successionTimer = r.successionTimer;
+    t += STEP;
+    autoResearchE4();
+    autoAssignE4();
+    autoBuildE4();
+    autoExpand();
+    autoPolity();
+    minFood = Math.min(minFood, s.food);
+    minOrder = Math.min(minOrder, s.order);
+    if (advanceAt < 0 && checkAdvance(s).ok) advanceAt = Math.round(t);
+  };
+
+  const row = (): string =>
+    `  ${String(Math.round(t)).padStart(7)}s | 版图 ${String(s.territory).padStart(2)} | 人口 ${String(Math.floor(s.population)).padStart(5)}/${String(getCapacity(s)).padStart(5)} | ` +
+    `食 ${Math.round(s.food).toString().padStart(6)} | 铁 ${Math.round(s.iron).toString().padStart(6)} | 铸币 ${Math.round(s.coin).toString().padStart(7)} | ` +
+    `秩序 ${s.order.toFixed(0).padStart(3)} | κ ${empire.getCoverage(s).toFixed(2)} | ρ ${(empire.getStabilityRate(s) * 100).toFixed(0).padStart(3)}% | ` +
+    `官吏 ${String(s.jobs.official ?? 0).padStart(3)} 军团 ${s.jobs.legionary ?? 0} | E4科技 ${countE4()}/${e4Techs.length}`;
+
+  console.log('=== E4 帝国时代自动试玩 ===\n');
+  console.log(`（起始：版图 ${s.territory} / 人口 ${Math.floor(s.population)} / K=${getCapacity(s)} / 秩序 ${s.order} / E1–E3 科技全掌握）\n`);
+
+  const log: string[] = [];
+  const logged = new Set<number>();
+  log.push(row());
+  logged.add(0);
+
+  while (t < LOG_UNTIL) {
+    step();
+    const mark = Math.round(t);
+    if (mark % 240 === 0 && !logged.has(mark)) {
+      logged.add(mark);
+      log.push(row());
+    }
+  }
+
+  const needPhase2 = advanceAt < 0;
+  if (needPhase2) {
+    console.log(log.join('\n'));
+    console.log('  …… 7200s 内未达成跃迁，继续推演 ……\n');
+    log.length = 0;
+    while (advanceAt < 0 && t < HARD_CAP) {
+      step();
+      const mark = Math.round(t);
+      if (mark % 1200 === 0 && !logged.has(mark)) {
+        logged.add(mark);
+        log.push(row());
+      }
+    }
+    console.log(log.join('\n'));
+  } else {
+    console.log(log.join('\n'));
+  }
+
+  const adv = checkAdvance(s);
+  console.log('');
+  console.log(`E4 科技完成：${countE4()}/${e4Techs.length}（${researched.slice(0, 8).join('、')}${researched.length > 8 ? ' 等' : ''}）`);
+  console.log(`最低食物：${Math.round(minFood)} | 最低秩序：${minOrder.toFixed(0)}`);
+  console.log(`末态：版图 ${s.territory} | 人口 ${Math.floor(s.population)} | 铸币 ${Math.round(s.coin)} | 官署 ${s.buildings.chancery ?? 0} | 政体 ${s.polity ?? '无'}`);
+  console.log('');
+  console.log('★ 时代跃迁检查（checkAdvance）：');
+  for (const item of adv.items) {
+    console.log(`   ${item.done ? '✅' : '⬜'} ${item.label} —— ${item.detail}`);
+  }
+  console.log(`   ${adv.ok ? '→ 可以跃迁到 E5' : '→ 尚未满足'}`);
+  if (advanceAt >= 0) {
+    console.log(`🎓 E4 通关时间（五项条件全部满足）：${advanceAt}s = ${(advanceAt / 3600).toFixed(2)} 小时`);
+  } else {
+    console.log(`⛔ ${Math.round(t)}s 内未满足全部跃迁条件`);
+  }
 }
 
 const args = process.argv.slice(1);
 if (args.includes('autoplay')) {
-  if (args.includes('e2')) {
+  if (args.includes('e4')) {
+    autoplayE4();
+  } else if (args.includes('e3')) {
+    autoplayE3();
+  } else if (args.includes('e2')) {
     autoplayE2();
   } else {
     autoplay();
   }
 } else {
   openingSim();
-  console.log('提示：autoplay [beeline|focus] 跑 E1 自动试玩；autoplay e2 跑 E2 定居时代');
+  console.log('提示：autoplay [beeline|focus] 跑 E1 自动试玩；autoplay e2 跑 E2 定居时代；autoplay e3 跑 E3 城邦时代');
 }

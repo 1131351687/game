@@ -411,3 +411,5 @@ if oldVersion < 6:
 ---
 
 *返回 [E3 设计规格](./E3-citystate.md) ｜ [时代方向提案](../era-directions.md) ｜ [游戏规划索引](../README.md)*
+
+> 📖 **动手前必读** [时代实装通用执行手册](../DEV-GUIDE.md) —— 架构分层、时代门控、基线保护、存档迁移、tick 顺序、常见坑（10 条实际踩过）。

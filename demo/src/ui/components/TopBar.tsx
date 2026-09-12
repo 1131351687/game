@@ -13,7 +13,12 @@
 // 外层容器一律使用 flex + gap 排布，因此不依赖图标宽度，不会塌陷错位。
 
 import { useStore, toEngineState } from '../../state/store';
-import { MATERIAL_RESOURCES, RESOURCE_MAP, type ResourceId } from '../../data/resources';
+import {
+  MATERIAL_RESOURCES,
+  RESOURCE_MAP,
+  researchCurrencyName,
+  type ResourceId,
+} from '../../data/resources';
 import { isResourceRevealed } from '../../game/reveal';
 import {
   calcResourceOutput,
@@ -53,11 +58,36 @@ const E2_RESOURCE_ORDER: ResourceId[] = [
   'food',
 ];
 
+/**
+ * E3 城邦时代的资源排列顺序。
+ *
+ * 本时代的核心仪表盘数值是**知识**（沿用 experience 字段，显示名由
+ * researchCurrencyName 切换为「知识」）与青铜供应链（铜 → 锡 → 青铜），
+ * 这三者必须排在最前；青金石作为远方贸易珍宝紧随其后。
+ * 木材 / 石头 / 食物是继承资源 —— E3 的建筑（学宫、商栈、冶炼工坊…）
+ * 仍消耗它们，因此继续显示。
+ *
+ * 锡：本地产出恒为 0（设计约束："必须贸易"），只显示数值不显示容量。
+ * 铜 / 锡 / 青铜 / 青金石均无硬容量上限（getResourceStorage 返回 Infinity），
+ * 故渲染分支天然不画 `/ 上限` 尾巴。
+ */
+const E3_RESOURCE_ORDER: ResourceId[] = [
+  'experience',
+  'copper',
+  'tin',
+  'bronze',
+  'lapis',
+  'wood',
+  'stone',
+  'food',
+];
+
 export function TopBar() {
   const s = useStore();
   const view = toEngineState(s);
 
-  const order = s.era === 'E1' ? MATERIAL_RESOURCES : E2_RESOURCE_ORDER;
+  const order =
+    s.era === 'E3' ? E3_RESOURCE_ORDER : s.era === 'E2' ? E2_RESOURCE_ORDER : MATERIAL_RESOURCES;
   const shown = order.filter(id => isResourceRevealed(id, view));
   const popGrowth = getPopulationGrowth(view);
   const capacity = getCapacity(view);
@@ -71,13 +101,16 @@ export function TopBar() {
         const amount =
           id === 'experience'
             ? s.experience
-            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric'] as number);
+            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis'] as number);
+        // experience 的显示名按时代切换：E3 起「知识」，E1/E2「经验」。
+        // 直接用 data 层的 researchCurrencyName，避免在本文件硬编码时代字符串。
+        const displayName = id === 'experience' ? researchCurrencyName(s.era) : def.name;
 
         return (
           // gap 负责间距：图标被隐藏（Icon → null）时不会留下空洞
           <span key={id} className="flex shrink-0 items-center gap-1.5 whitespace-nowrap">
             <Icon emoji={def.icon} className="text-sm" />
-            <span className="text-gray-500">{def.name}</span>
+            <span className="text-gray-500">{displayName}</span>
             {/* 主数值：等宽字体 + 右对齐，位数变化不影响其他项的位置 */}
             <span className={`${VALUE_COL} font-mono tabular-nums text-gray-100`}>
               {formatNumber(amount)}
