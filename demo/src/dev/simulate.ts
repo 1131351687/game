@@ -687,19 +687,20 @@ function autoplayE3(): void {
 
     // 1) 学宫 ×4（记录容量 3+4×5=23，够 12+ 项刻录）
     if (academies < 4 && tryBuild('academy')) return;
-    // 2) 粮仓：人均储粮低于 32（因子 0.8 线）就扩容；早期也防撞顶
-    if (perPerson < 32 && granaries < 80 && tryBuild('granary')) return;
-    // 3) 田地：农夫工位不足就补（产出端）
+    // 2) 民居先行：K 必须始终领先人口 40+（跃迁条件人口 ≥1800；粮仓优先时
+    //    木石被粮仓吃光、K 卡 730，人口永不达标——2026-09-12 实测）
+    if (K < pop + 40 && cityHouses < 40 && tryBuild('city_house')) return;
+    // 3) 粮仓：人均储粮低于 32（因子 0.8 线）就扩容；早期也防撞顶
+    if (perPerson < 32 && granaries < 200 && tryBuild('granary')) return;
+    // 4) 田地：农夫工位不足就补（产出端）
     if (fieldSlots < farmersNeeded && fields < 80 && tryBuild('field')) return;
-    // 4) 陶窑 ×3：粮仓容量 +15%/座（最多 3 座生效）
+    // 5) 陶窑 ×3：粮仓容量 +15%/座（最多 3 座生效）
     if (granaries >= 4 && kilns < 3 && tryBuild('kiln')) return;
-    // 5) 商栈 ×3（贸易槽 → 铜/锡/石进口）
+    // 6) 商栈 ×3（贸易槽 → 铜/锡/石进口）
     if (posts < 3 && s.techs['caravan_org'] && tryBuild('trading_post')) return;
-    // 6) 民居（K 跟上人口目标 1800）
-    if (K < pop + 20 && cityHouses < 20 && tryBuild('city_house')) return;
     // 7) 熔炉 ×4（青铜产出）
     if (furnaces < 4 && s.techs['bronze_smelting'] && tryBuild('furnace')) return;
-    if (s.food > cap * 0.8 && (s.buildings.granary ?? 0) < 200) {
+    if (s.food > cap * 0.8 && granaries < 200) {
       // 食物触顶 → 扩建粮仓（而非无限刷民居：曾把 K 推到 151 万）
       tryBuild('granary');
     }
