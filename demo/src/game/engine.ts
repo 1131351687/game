@@ -9,7 +9,7 @@ import { RESOURCE_MAP, researchCurrencyName, type ResourceId } from '../data/res
 import { ERAS, eraDistance, eraDecay, type EraId } from '../data/era';
 import {
   getFoodFactorFromStorage,
-  getSeasonGrowthFactor,
+  getSeasonRateMultiplier,
   getSeasonOutputMultiplier,
   getGranaryCapacity,
   getSeasonFromElapsed,
@@ -635,26 +635,68 @@ export function getFoodFactor(state: E1State): number {
   return FOOD_FACTOR.NORMAL;
 }
 
+/**
+ * 季节人口增长率乘数（非负）。
+ *
+ * 设计修复（「冬季反号」bug）：原 getSeasonGrowthFactor 冬季返回 −0.15（负数），
+ * 与 foodFactor 相乘产生「负×负=正」的符号交互 bug —— 饿肚子冬天人口反而增长，
+ * 储粮越足掉得越快。修复后本函数永不为负：冬季用 WINTER_RATE_MULTIPLIER（0.4）
+ * 只放慢增长，真正的减员方向完全由食物决定（见 getWinterAttrition）。
+ * E1 无季节（seasonsEnabled=false）→ 恒为 1.0，远古时代配平逐字节不变。
+ */
+function getSeasonGrowthMultiplier(state: E1State): number {
+  if (!aggregateEffects(state).seasonsEnabled) return 1;
+  return getSeasonRateMultiplier(state.eraElapsedSec);
+}
+
+/**
+ * 冬季缺粮独立减员（每秒）。
+ *
+ * 与 logistic 增长项**独立**：只在「季节循环开启 + 当前为冬季 + 人均储粮 < 阈值」时触发。
+ * 方向只由食物决定 —— 修复原 seasonR 负值与 foodFactor 的符号交互缺陷：
+ *   · 原 bug：food=0 时 foodFactor=−0.5，负×负=正 → 饿肚子冬天反而增长；
+ *   · 现修复：减员只在这里以「正扣除」表达，且要求人均储粮不足才扣。
+ * population<=0 视为充裕（不会饿死），不触发减员。
+ */
+function getWinterAttrition(state: E1State): number {
+  const eff = aggregateEffects(state);
+  if (!eff.seasonsEnabled) return 0;
+  if (getSeasonFromElapsed(state.eraElapsedSec) !== 'winter') return 0;
+  if (state.population <= 0) return 0;
+  const perPerson = state.food / state.population;
+  if (perPerson >= POPULATION.WINTER_STORED_FOOD_THRESHOLD) return 0;
+  return POPULATION.WINTER_ATTRITION_PER_SEC;
+}
+
+/**
+ * 计算单帧人口增量 = logistic 项 − 冬季减员。
+ * foodFactor<0（食物耗尽）优先级最高，直接饥荒衰减。
+ * 各分支（无火 / E1 / E3 / 通用）统一复用本函数，避免复制粘贴导致季节处理不一致。
+ */
+function applyLogisticGrowth(state: E1State, r0: number, P: number, K: number): number {
+  const foodFactor = getFoodFactor(state);
+  // 饥荒路径保留：food=0 时 foodFactor<0，优先级最高
+  if (foodFactor < 0) return -POPULATION.STARVATION_DECAY;
+  const logistic = r0 * P * (1 - P / K) * foodFactor;
+  // 冬季缺粮减员：独立于 logistic，方向只由食物决定（修复负号交互 bug）
+  return logistic - getWinterAttrition(state);
+}
+
 /** 人口增长速率（每秒），可正可负 */
 export function getPopulationGrowth(state: E1State): number {
   const eff = aggregateEffects(state);
   const K = getCapacity(state);
   const P = state.population;
 
-  // 季节因子：只在开启季节循环（E2 农业）后生效，E1 恒为 1.0
-  // —— 因此远古时代的配平逐字节不变。
-  // 冬季为负（−0.15）：人口自然回落，这是"青黄不接"的机制表达，
-  // 而不是靠饿死人来惩罚玩家。
-  const seasonR = eff.seasonsEnabled ? getSeasonGrowthFactor(state.eraElapsedSec) : 1;
+  // 季节增长率乘数：E1 无季节恒为 1.0；E2+ 用非负乘数（冬季放慢但不反号）。
+  const seasonMult = getSeasonGrowthMultiplier(state);
 
   // 火种系统尚未开启（还没研究「掌握火」）：
   // 此时不存在"熄灭惩罚"，火源因子按中性 1.0 处理。
   // —— 否则开局 fire=0 会被误判为"火灭了"，人口在几秒内死光。
   if (!eff.fireEnabled) {
-    const r0 = POPULATION.BASE_GROWTH_RATE * seasonR;
-    const foodFactor0 = getFoodFactor(state);
-    if (foodFactor0 < 0) return -POPULATION.STARVATION_DECAY;
-    return r0 * P * (1 - P / K) * foodFactor0;
+    const r0 = POPULATION.BASE_GROWTH_RATE * seasonMult;
+    return applyLogisticGrowth(state, r0, P, K);
   }
 
   // 火源因子：定居时代（E2 起）火源转为恒定，不再作为生存开关。
@@ -670,17 +712,12 @@ export function getPopulationGrowth(state: E1State): number {
   // E3 基础增长率从 0.03 下调到 0.003（更慢的增长配合更低的资源门槛）。
   // 贸易繁荣 / 农业底线三因子首版留为 TODO(balance)：先用 1.0。
   if (state.era === 'E3') {
-    const r0 = E3.POP_GROWTH_RATE * fireFactor * seasonR;
-    const foodFactor = getFoodFactor(state);
-    if (foodFactor < 0) return -POPULATION.STARVATION_DECAY;
-    return r0 * P * (1 - P / K) * foodFactor;
+    const r0 = E3.POP_GROWTH_RATE * fireFactor * seasonMult;
+    return applyLogisticGrowth(state, r0, P, K);
   }
 
-  const r = POPULATION.BASE_GROWTH_RATE * fireFactor * seasonR;
-  const foodFactor = getFoodFactor(state);
-  if (foodFactor < 0) return -POPULATION.STARVATION_DECAY;
-
-  return r * P * (1 - P / K) * foodFactor;
+  const r0 = POPULATION.BASE_GROWTH_RATE * fireFactor * seasonMult;
+  return applyLogisticGrowth(state, r0, P, K);
 }
 
 // ─────────────────────────────────────────────
@@ -1186,17 +1223,31 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
       return base + granaryCap * (1 + eff.granaryOverflowBonus);
     }
     case 'wood':
-      // 基础建材容量 = 基础上限 500 + Σ粮仓 ×300（「存储建筑双扩容」，见 storage-plan.md §4）
-      // 粮仓是 E2 建筑，E1 拿不到（受时代 + 科技双重门禁），因此本条对 E1 无影响。
-      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_WOOD_BONUS;
+      // 基础建材容量 = 基础上限 500
+      //   + Σ粮仓 ×300（「存储建筑双扩容」，见 storage-plan.md §4；粮仓是 E2 建筑，E1 无）
+      //   + Σ通用仓库(warehouse) ×200（E3 通用仓库，散装建材扩容）
+      return (
+        500 +
+        (state.buildings.granary ?? 0) * E2.GRANARY_WOOD_BONUS +
+        (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_BULK_BONUS
+      );
     case 'stone':
-      return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_STONE_BONUS;
-    // E3 金属：共用建材仓储体系（铜/锡/青铜，无独立仓库建筑——学宫/商栈时代扩容靠 city_house）
+      return (
+        500 +
+        (state.buildings.granary ?? 0) * E2.GRANARY_STONE_BONUS +
+        (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_BULK_BONUS
+      );
+    // E3 金属：铜/锡/青铜 共用建材仓储体系。
+    // 扩容手段：city_house ×150（原）+ 通用仓库(warehouse) ×400（新增 E3 通用仓库）。
     case 'copper':
     case 'tin':
     case 'bronze':
       if (state.era !== 'E3') return Number.POSITIVE_INFINITY;
-      return 500 + (state.buildings.city_house ?? 0) * 150;
+      return (
+        500 +
+        (state.buildings.city_house ?? 0) * 150 +
+        (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_METAL_BONUS
+      );
     // 牲畜是活体储备，不占粮仓容量；织物同理
     default:
       return Number.POSITIVE_INFINITY;

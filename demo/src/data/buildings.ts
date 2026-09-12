@@ -4,7 +4,7 @@
 import type { EraId } from './era';
 import type { ResourceId } from './resources';
 
-export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard';
+export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard' | 'warehouse';
 
 export interface BuildingDef {
   id: BuildingId;
@@ -22,14 +22,6 @@ export interface BuildingDef {
   limit: 'population' | 'environment' | 'output' | 'record' | 'trade';
   /** 所属时代（标记数据归属，不改变运行时行为） */
   era: EraId;
-  /**
-   * 被哪座**后续时代**的建筑取代了功能。
-   * 该后续建筑所属时代到达后，本建筑不再开放新建（已建成的继续生效）。
-   * ——防止便宜旧建筑架空昂贵新建筑（如 E1 住所 30 木 vs E2 村落民居 40木+20石，同为 K+4）。
-   */
-  supersededBy?: BuildingId;
-  /** 该建筑依托的机制在此时代之后失效（如"火"只在 E1 有意义），此后不再开放新建。 */
-  obsoleteAfterEra?: EraId;
   /** 一句话说明 */
   desc: string;
 }
@@ -44,8 +36,6 @@ export const BUILDINGS: BuildingDef[] = [
     requires: { tech: 'shelter_building' },
     limit: 'population',
     era: 'E1',
-    // E2 起「村落民居」取代其功能（同为 K+4，但更贵——防止便宜旧房架空新内容）
-    supersededBy: 'village_house',
     desc: '为族人提供栖身之所。每座提升人口上限 4。',
   },
   {
@@ -57,8 +47,6 @@ export const BUILDINGS: BuildingDef[] = [
     requires: { tech: 'hearth_construction' },
     limit: 'environment',
     era: 'E1',
-    // 火种衰减/火源机制只在 E1 有意义（E2 起火因子恒为 1），火塘随之退役
-    obsoleteAfterEra: 'E1',
     desc: '固定的火塘让火种衰减减缓 20%，并提升火种上限 20。',
   },
   {
@@ -181,6 +169,17 @@ export const BUILDINGS: BuildingDef[] = [
     limit: 'trade',
     era: 'E3',
     desc: '换算损耗 −5%（与度量衡科技叠加）——对应本代贸易限制线。',
+  },
+  {
+    id: 'warehouse',
+    name: '仓库',
+    icon: '📦',
+    cost: { wood: 120, stone: 80, copper: 30 },
+    costMultiplier: 1.35,
+    requires: { tech: 'cuneiform' },
+    limit: 'output',
+    era: 'E3',
+    desc: '扩容木材/石料各 +200、铜/锡/青铜各 +400 储存上限，金属时代的物资底气。',
   },
 ];
 

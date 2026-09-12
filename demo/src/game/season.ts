@@ -85,9 +85,29 @@ export function getSeasonOutputMultiplier(elapsedSec: number, isAgricultural: bo
   return isAgricultural ? def.agriMultiplier : def.loggingMultiplier;
 }
 
-/** 人口增长的季节因子 r（冬季为负数） */
+/**
+ * 人口增长的季节因子 r（冬季为负数）。
+ *
+ * ⚠️ 历史版本：冬季返回 −0.15（负数），与 foodFactor 相乘会产生
+ * 「负×负=正」的符号交互 bug（饿肚子冬天人口反而增长，储粮越足掉得越快）。
+ * 新人口模型请改用 getSeasonRateMultiplier（冬季改为非负 0.4，减员方向由食物决定）。
+ * 本函数暂保留以便回溯旧配平，引擎不再引用。
+ */
 export function getSeasonGrowthFactor(elapsedSec: number): number {
   return SEASONS[getSeasonFromElapsed(elapsedSec)].growthFactor;
+}
+
+/**
+ * 人口增长的季节**速率乘数**（非负）。
+ *
+ * 修复「冬季反号」bug 的入口：冬季不再用负数，而是用 E2.WINTER_RATE_MULTIPLIER（0.4）
+ * 把增长放慢，方向完全由食物决定；其余季节沿用 SEASONS 表的 growthFactor（1.0 / 1.2 / 1.1）。
+ * 真正的冬季减员由 engine.getPopulationGrowth 的冬季独立减员项表达。
+ */
+export function getSeasonRateMultiplier(elapsedSec: number): number {
+  const season = getSeasonFromElapsed(elapsedSec);
+  if (season === 'winter') return E2.WINTER_RATE_MULTIPLIER;
+  return SEASONS[season].growthFactor;
 }
 
 /** 人均储粮 → 食物因子（负或非有限按 0 处理 → −0.5） */

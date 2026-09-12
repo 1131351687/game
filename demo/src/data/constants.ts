@@ -64,6 +64,20 @@ export const POPULATION = {
   EXP_PER_PERSON: 0.08,
   /** 火种熄灭时的人口下降速率（每秒） */
   STARVATION_DECAY: 0.5,
+  /**
+   * 冬季缺粮减员速率（每秒/人）。
+   *
+   * 与 logistic 增长项**独立**：只在「季节循环开启 + 当前冬季 + 人均储粮 < 阈值」时触发，
+   * 方向只由食物决定（修复原 seasonR 负值与 foodFactor 的符号交互 bug）。
+   * 0.05/秒 是温和减员；储粮 ≥ 阈值的冬天不扣人，只是增长率×0.4 慢慢涨。
+   */
+  WINTER_ATTRITION_PER_SEC: 0.05,
+  /**
+   * 冬季减员的人均储粮阈值。
+   * 对应 getFoodFactorFromStorage 的分级：人均 < 32（foodFactor ≤ 0.4 那档）视为"存粮偏薄"，
+   * 触发冬季减员；≥ 32 视为过冬充裕，不扣人。
+   */
+  WINTER_STORED_FOOD_THRESHOLD: 32,
   /** 起始人口 */
   START: 2,
 } as const;
@@ -238,6 +252,15 @@ export const E2 = {
   SLAUGHTER_YIELD: 30,
   /** 牲畜世代 3 时的宰杀产量 */
   SLAUGHTER_YIELD_TIER3: 38,
+  /**
+   * 冬季人口增长率乘数（非负）。
+   *
+   * 修复「冬季反号」bug：原季节因子冬季为 −0.15（负数），与 foodFactor 相乘后
+   * 出现"负×负=正"的反直觉行为（饿肚子冬天人口反而增长，储粮越足掉得越快）。
+   * 现改为非负乘数：冬季用 0.4 把增长放慢，但方向完全由食物决定；真正的减员由
+   * engine.getPopulationGrowth 的冬季独立减员项表达（见 POPULATION.WINTER_*）。
+   */
+  WINTER_RATE_MULTIPLIER: 0.4,
 } as const;
 
 // ─────────────────────────────────────────────
@@ -332,6 +355,18 @@ export const E3 = {
   POP_BASE_CAPACITY: 320,
   POP_PER_CITY_HOUSE: 130,
   POP_FOOD_PER_PERSON: 0.2,
+
+  /**
+   * 通用仓库 warehouse（E3 建筑，由并行代理在 buildings.ts 定义；
+   * 引擎只读 state.buildings.warehouse ?? 0，不在此定义建筑数据）。
+   * 每座仓库给「散装建材」木材 / 石头 各 +200。
+   */
+  WAREHOUSE_BULK_BONUS: 200,
+  /**
+   * 每座通用仓库给金属 铜 / 锡 / 青铜 各 +400。
+   * 金属此前只能靠 city_house×150 扩容、很快顶满 500；仓库提供通用扩容手段。
+   */
+  WAREHOUSE_METAL_BONUS: 400,
 
   /** 贸易基准价（食物=1，价值尺度） */
   BASE_PRICES: {

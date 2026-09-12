@@ -29,7 +29,6 @@ import {
 import { formatNumber, formatRate } from '../core/format';
 import { FireDashboard } from './components/FireDashboard';
 import { SeasonBar } from './components/SeasonBar';
-import { RecordPanel } from './components/RecordPanel';
 import { TradePanel } from './components/TradePanel';
 import { JobPanel } from './components/JobPanel';
 import { BuildingPanel } from './components/BuildingPanel';
@@ -227,7 +226,6 @@ export default function AppResponsiveB() {
           <Drawer title="状态" icon="📊">
             {fireUnlocked && <FireDashboard />}
             <SeasonBar />
-            <RecordPanel />
             <TradePanel />
             <HintBar />
           </Drawer>
@@ -278,7 +276,6 @@ export default function AppResponsiveB() {
           <Drawer title="状态" icon="📊">
             {fireUnlocked && <FireDashboard />}
             <SeasonBar />
-            <RecordPanel />
             <TradePanel />
             <HintBar />
           </Drawer>

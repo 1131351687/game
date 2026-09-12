@@ -46,7 +46,7 @@ function recordableTechs(
   );
 }
 
-export function RecordPanel() {
+export function RecordPanel({ className }: { className?: string }) {
   const state = useStore();
   const view = toEngineState(state);
 
@@ -65,7 +65,7 @@ export function RecordPanel() {
   const list = recordableTechs(state.techs, state.recorded);
 
   return (
-    <section className="space-y-3 pb-40">
+    <section className={className ?? 'space-y-3 pb-40'}>
       {/* ── 容量仪表盘（紧凑横向条，对标 FireDashboard）── */}
       <div className="flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto rounded-md bg-gray-900/40 px-4 py-2.5 text-sm leading-tight">
         {/* 标题 */}

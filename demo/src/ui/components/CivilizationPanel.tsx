@@ -25,6 +25,8 @@ import { researchCurrencyName } from '../../data/resources';
 import { Icon } from './Icon';
 import { TechGrid } from './TechGrid';
 import { AdvancePanel } from './AdvancePanel';
+import { RecordPanel } from './RecordPanel';
+import { TechTreeView } from './TechTreeView';
 
 export function CivilizationPanel() {
   const s = useStore();
@@ -102,9 +104,33 @@ export function CivilizationPanel() {
         </div>
       )}
 
+      {/* ── 刻录 · 泥板档案（E3 记录系统；由左侧状态栏移入文明板块）──
+          记录系统仅在研究「楔形文字」后开启，未开启时整节不渲染。 */}
+      {s.techs.cuneiform && (
+        <section className="mx-auto max-w-4xl space-y-2 rounded-md border border-gray-800 bg-gray-900/30 px-3 py-3">
+          <div className="flex items-center gap-2">
+            <Icon emoji="📜" className="text-sm" />
+            <h2 className="text-sm font-semibold text-gray-200">刻录 · 泥板档案</h2>
+          </div>
+          <p className="text-xs leading-relaxed text-gray-500">
+            刻录（E3·研究「楔形文字」后开启）以至少 1 名书吏把已学科技刻上泥板：数值型效果从口头知识的
+            ×50% 恢复为 ×100%；解锁类效果（火种、岗位、建筑等）本就全额生效，与刻录无关。旧时代科技跨入新代后
+            数值效果仍按时代距离衰减（×0.6 → ×0.36 → ×0.22，下限 ×0.20），刻录只免除此「口头腰斩」、并不取消时代衰减本身。
+          </p>
+          {/* RecordPanel 自带容量仪表盘与可刻录列表；去掉其默认 pb-40，由外层统一留白 */}
+          <RecordPanel className="space-y-3" />
+        </section>
+      )}
+
       {/* ── 视图区：紧凑方块网格（替代原来的分类 / 树状图长文案） ── */}
-      <div className="pb-40">
+      <div>
         <TechGrid />
+      </div>
+
+      {/* ── 科技树（依赖结构视图；与 TechGrid 的方块列表并存，强调前置关系）──
+          自带可折叠外壳与底部留白，避免被 fixed 消息栏遮挡。 */}
+      <div className="pb-40">
+        <TechTreeView />
       </div>
     </div>
   );

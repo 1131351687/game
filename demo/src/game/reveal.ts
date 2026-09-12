@@ -194,13 +194,11 @@ export function getRevealedJobs(s: E1State) {
 /**
  * 当前可操作的建筑集合：**当前及以前时代的建筑 + 已建成的建筑**。
  *
- * 旧时代建筑保留新建入口（2026-09-12 修 bug）：跃迁不重置旧内容，
- * 引擎的承载力/存储/产出模型也在持续计算旧建筑（见 engine.getCapacity 的 E3 分支）——
- * 如果 UI 层单方面锁死新建，E3 里田地/粮仓/畜栏/陶窑（本代无替代建筑）将无法扩张，
- * 粮食产能与存储直接卡死。
- *
- * 例外由数据声明：`supersededBy`（功能被后续建筑取代）与 `obsoleteAfterEra`
- * （机制已失效），见 isBuildingBuildable——E1 住所/火塘仍按设计退役。
+ * 旧时代建筑保留新建入口（2026-09-12 用户拍板「跃迁 = 叠加开放，绝不重置」）：
+ * 跃迁不重置旧内容，引擎的承载力/存储/产出模型也在持续计算旧建筑
+ * （见 engine.getCapacity 的 E3 分支）；如果 UI 层单方面锁死新建，
+ * E3 里田地/粮仓/畜栏/陶窑（本代无替代建筑）将无法扩张，粮食产能与存储直接卡死。
+ * 故旧时代建筑一律保持可新建，绝不退役——包括 E1 住所/火塘。
  *
  * 岗位则相反 —— 有进阶目标的岗位在其目标时代到来时**退役**（采集者→农夫，
  * 见 isJobRetired，2026-09-12 用户拍板）；无进阶关系的岗位（猎人、伐木者…）
@@ -224,24 +222,14 @@ export function isBuildingRevealed(id: BuildingId, s: E1State): boolean {
 /**
  * 该建筑在当前时代**是否还能新建**。
  *
- * 规则：所属时代已到达即可新建（跃迁不重置，旧建筑的产能必须能继续扩张），
- * 但两类数据声明的例外除外：
- *  - supersededBy：功能被后续时代的建筑取代（E1 住所 ← 村落民居），
- *    取代者所属时代到达后不再开放——防止便宜旧建筑架空昂贵新内容；
- *  - obsoleteAfterEra：依托的机制已失效（火塘——火机制只在 E1 有意义）。
- * 已建成的建筑不受影响，继续生效（K、存储、加成照算）。
+ * 规则（2026-09-12 用户拍板「跃迁 = 叠加开放，绝不重置」）：
+ * 所属时代已到达即可新建——旧时代的建筑一律保持可新建，绝不锁死，
+ * 已建成的建筑继续生效（K、存储、加成照算）。未来时代尚未到达则不可建。
  */
 export function isBuildingBuildable(id: BuildingId, s: E1State): boolean {
   const def = BUILDING_MAP[id];
   // 未来时代：不可建
   if (eraDistance(def.era, s.era) < 0) return false;
-  // 功能被取代：取代者的时代到达后退役
-  if (def.supersededBy) {
-    const succ = BUILDING_MAP[def.supersededBy];
-    if (eraDistance(succ.era, s.era) >= 0) return false;
-  }
-  // 机制失效：过了失效时代即退役
-  if (def.obsoleteAfterEra && eraDistance(def.obsoleteAfterEra, s.era) > 0) return false;
   return isBuildingUnlocked(id, s);
 }
 
