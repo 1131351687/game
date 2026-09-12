@@ -1,16 +1,32 @@
-// UI 改包：竖屏/横屏双模式 + 自由切换 + B 方案点击展开（抽屉式）
+// UI 改包：竖屏/横屏双模式 + 自由切换 + 简约左栏
 // 用法：main.tsx 里把 App 指向本文件即可。无需改动任何引擎/Store 逻辑。
-// 特点：
-//  - 布局模式「自动 / 竖屏 / 横屏」可手动切换，选择存 localStorage，刷新后保留。
-//    默认跟随窗口宽度（≤768px 竖屏，否则横屏）。
-//  - 竖屏：顶部极简状态栏 + "状态抽屉" 点击展开 + 底部粘性 Tab + 主内容全宽。
-//  - 横屏：左侧栏常驻（时代 + 资源 TopBar + 火种/季节/记录/贸易/提示 全部收进左栏），
-//    中间内容区 Tab 切换，右侧消息日志栏。
+//
+// 设计方向（极简 / 工业实用）：
+//  - 横屏左栏默认只露三样东西：时代标记、等宽数字的资源数据表、一行默认收起的「状态」抽屉。
+//  - 资源用密集数据行呈现（名称左 / 数值右 / 速率定宽），只用发丝线分行，不用卡片盒子。
+//  - 火种 / 季节 / 记录 / 贸易 / 提示全部收进「状态」抽屉，点开才占空间。
+//  - 强调色只留给时代名 —— 全栏其余内容一律灰阶。
+//  - 竖屏保持抽屉形态；布局三态（自动/竖屏/横屏）存 localStorage。
 //  - 纯 UI 层改动，原 App.tsx 保留未动，回退只需改回 main.tsx 的 import。
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useStore, toEngineState } from '../state/store';
-import { TopBar } from './components/TopBar';
+import { TopBar, E2_RESOURCE_ORDER, E3_RESOURCE_ORDER } from './components/TopBar';
+import {
+  MATERIAL_RESOURCES,
+  RESOURCE_MAP,
+  researchCurrencyName,
+  type ResourceId,
+} from '../data/resources';
+import { isResourceRevealed, isModuleUnlocked } from '../game/reveal';
+import {
+  calcResourceOutput,
+  calcExperienceOutput,
+  getResourceStorage,
+  getCapacity,
+  getPopulationGrowth,
+} from '../game/engine';
+import { formatNumber, formatRate } from '../core/format';
 import { FireDashboard } from './components/FireDashboard';
 import { SeasonBar } from './components/SeasonBar';
 import { RecordPanel } from './components/RecordPanel';
@@ -22,7 +38,6 @@ import { SettingsMenu } from './components/SettingsMenu';
 import { HintBar } from './components/HintBar';
 import { MessageLog } from './components/MessageLog';
 import { Icon } from './components/Icon';
-import { isModuleUnlocked } from '../game/reveal';
 import { ERAS } from '../data/era';
 
 type TabId = 'work' | 'buildings' | 'civilization';
@@ -73,17 +88,17 @@ function useLayout(): [boolean, LayoutPref, (p: LayoutPref) => void] {
   return [isVertical, pref, applyPref];
 }
 
-/** 竖屏用的点击展开抽屉 */
+/** 点击展开抽屉（扁平化：只用发丝线，不套卡片盒；竖横屏共用） */
 function Drawer({ title, icon, children }: { title: string; icon?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-md bg-gray-900/40">
-      <button onClick={() => setOpen(v => !v)} className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-gray-800/60">
+    <div className="border-b border-gray-800">
+      <button onClick={() => setOpen(v => !v)} className="flex w-full items-center gap-2 px-1 py-2.5 text-sm text-gray-400 transition-colors hover:text-gray-100">
         {icon && <Icon emoji={icon} className="text-sm" />}
         <span className="flex-1 text-left">{title}</span>
-        <span className="text-xs text-gray-500">{open ? '收起 ▴' : '展开 ▾'}</span>
+        <span className="text-xs text-gray-600">{open ? '收起 ▴' : '展开 ▾'}</span>
       </button>
-      {open && <div className="border-t border-gray-800 px-3 py-3">{children}</div>}
+      {open && <div className="space-y-2 px-1 py-3">{children}</div>}
     </div>
   );
 }
@@ -108,6 +123,73 @@ function LayoutToggle({ pref, onChange }: { pref: LayoutPref; onChange: (p: Layo
       <Icon emoji={t.icon} className="text-sm" />
       <span className="hidden sm:inline">{label}</span>
     </button>
+  );
+}
+
+/**
+ * 资源数据表 —— 左栏专用的极简呈现（TopBar 的竖向变体）。
+ * 与 TopBar 共享同一套资源顺序与引擎计算，只是排版改为：
+ * 名称左对齐、数值右对齐（等宽 + tabular-nums 防抖动）、速率定宽、发丝线分行。
+ * 速率正负着色沿用全局约定：正=翠绿、负=红、零=灰（70% 透明度保持灰阶主导）。
+ */
+function ResourceList() {
+  const s = useStore();
+  const view = toEngineState(s);
+
+  const order: ResourceId[] =
+    s.era === 'E3' ? E3_RESOURCE_ORDER : s.era === 'E2' ? E2_RESOURCE_ORDER : MATERIAL_RESOURCES;
+  const shown = order.filter(id => isResourceRevealed(id, view));
+  const popGrowth = getPopulationGrowth(view);
+  const capacity = getCapacity(view);
+
+  const rateColor = (r: number) =>
+    r > 0 ? 'text-emerald-400/70' : r < 0 ? 'text-red-400/70' : 'text-gray-600';
+
+  return (
+    <div>
+      {shown.map(id => {
+        const def = RESOURCE_MAP[id];
+        const rate = id === 'experience' ? calcExperienceOutput(view) : calcResourceOutput(id, view);
+        const cap = getResourceStorage(id, view);
+        const amount =
+          id === 'experience'
+            ? s.experience
+            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis'] as number);
+        const displayName = id === 'experience' ? researchCurrencyName(s.era) : def.name;
+
+        return (
+          <div key={id} className="flex items-baseline gap-2 border-b border-gray-800/60 py-2 last:border-b-0">
+            <Icon emoji={def.icon} className="text-xs text-gray-500" />
+            <span className="text-xs text-gray-500">{displayName}</span>
+            <span className="ml-auto font-mono text-xs tabular-nums text-gray-100">
+              {formatNumber(amount)}
+            </span>
+            {Number.isFinite(cap) && (
+              <span className="font-mono text-[10px] tabular-nums text-gray-600">
+                /{formatNumber(cap)}
+              </span>
+            )}
+            {/* 速率定宽右对齐：位数变化不推挤其他列 */}
+            <span className={`w-14 shrink-0 text-right font-mono text-[10px] tabular-nums ${rateColor(rate)}`}>
+              {formatRate(rate)}
+            </span>
+          </div>
+        );
+      })}
+
+      {/* 人口行：与资源行同构，保持表格节奏一致 */}
+      <div className="flex items-baseline gap-2 py-2">
+        <Icon emoji={RESOURCE_MAP.population.icon} className="text-xs text-gray-500" />
+        <span className="text-xs text-gray-500">人口</span>
+        <span className="ml-auto font-mono text-xs tabular-nums text-gray-100">
+          {Math.floor(s.population)}
+          <span className="text-[10px] text-gray-600">/{capacity}</span>
+        </span>
+        <span className={`w-14 shrink-0 text-right font-mono text-[10px] tabular-nums ${rateColor(popGrowth)}`}>
+          {formatRate(popGrowth)}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -141,15 +223,13 @@ export default function AppResponsiveB() {
         </div>
 
         {/* 状态抽屉：点击展开 */}
-        <div className="space-y-2 px-3 py-2">
+        <div className="px-3 py-2">
           <Drawer title="状态" icon="📊">
-            <div className="space-y-2">
-              {fireUnlocked && <FireDashboard />}
-              <SeasonBar />
-              <RecordPanel />
-              <TradePanel />
-              <HintBar />
-            </div>
+            {fireUnlocked && <FireDashboard />}
+            <SeasonBar />
+            <RecordPanel />
+            <TradePanel />
+            <HintBar />
           </Drawer>
         </div>
 
@@ -174,28 +254,34 @@ export default function AppResponsiveB() {
     );
   }
 
-  // 横屏：左侧资源/状态栏 + 中间内容 + 右侧消息栏
+  // 横屏：极简三栏 —— 左（数据）/ 中（内容）/ 右（消息）
   return (
     <div className="flex h-screen text-gray-200">
-      {/* ① 左侧栏：时代 / 资源 / 状态面板全部常驻于此 */}
-      <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-gray-800 bg-gray-900/20">
-        {/* 栏头：时代标识 + 布局切换 + 设置 */}
-        <div className="flex shrink-0 items-center gap-1 border-b border-gray-800 px-2 py-1.5">
-          <div className="min-w-0 flex-1 truncate font-display text-sm text-accent">{ERAS[s.era].name}</div>
+      {/* ① 左侧栏：默认视图只有 时代 + 资源表 + 状态抽屉入口 */}
+      <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-gray-800">
+        {/* 栏头：时代名是全栏唯一的强调色落点 */}
+        <div className="flex h-11 shrink-0 items-center gap-1 border-b border-gray-800 px-3">
+          <span className="min-w-0 flex-1 truncate font-display text-sm text-accent">
+            {ERAS[s.era].name}
+          </span>
           <LayoutToggle pref={pref} onChange={setPref} />
           <SettingsMenu />
         </div>
 
-        {/* 资源条：纵向栏内保留横向滚动（资源多时不出竖向断行） */}
-        <TopBar />
+        {/* 资源数据表 */}
+        <div className="px-3 pt-1">
+          <ResourceList />
+        </div>
 
-        {/* 状态面板自上而下堆叠 */}
-        <div className="space-y-2 p-2">
-          {fireUnlocked && <FireDashboard />}
-          <SeasonBar />
-          <RecordPanel />
-          <TradePanel />
-          <HintBar />
+        {/* 状态抽屉：火种/季节/记录/贸易/提示 默认收起 */}
+        <div className="px-3 pb-3">
+          <Drawer title="状态" icon="📊">
+            {fireUnlocked && <FireDashboard />}
+            <SeasonBar />
+            <RecordPanel />
+            <TradePanel />
+            <HintBar />
+          </Drawer>
         </div>
       </aside>
 

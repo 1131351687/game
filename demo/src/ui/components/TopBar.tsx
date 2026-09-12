@@ -48,7 +48,7 @@ const RATE_COL = 'min-w-[3rem] text-right';
  * 且"E2 是否还该让 food 可见可产"尚未拍板 —— 因此这里保留显示，
  * 只把它降级到末位，不做静默删除。
  */
-const E2_RESOURCE_ORDER: ResourceId[] = [
+export const E2_RESOURCE_ORDER: ResourceId[] = [
 
   'livestock',
   'fabric',
@@ -71,7 +71,7 @@ const E2_RESOURCE_ORDER: ResourceId[] = [
  * 铜 / 锡 / 青铜 / 青金石均无硬容量上限（getResourceStorage 返回 Infinity），
  * 故渲染分支天然不画 `/ 上限` 尾巴。
  */
-const E3_RESOURCE_ORDER: ResourceId[] = [
+export const E3_RESOURCE_ORDER: ResourceId[] = [
   'experience',
   'copper',
   'tin',
