@@ -77,9 +77,13 @@ export function simulate(
     for (const note of step.result.tradeNotes) {
       const reason = note.includes('书吏')
         ? 'missing_scribe'
+        : note.includes('拒')
+          ? 'low_reputation'
         : note.includes('锡')
           ? 'missing_tin'
-          : 'missing_copper';
+          : note.includes('铜')
+            ? 'missing_copper'
+            : 'missing_resource';
       if (!emittedWarnings.has(reason)) {
         events.push({ type: 'trade.warning', reason });
         emittedWarnings.add(reason);
@@ -87,6 +91,10 @@ export function simulate(
     }
     nowSec += dt;
     remaining -= dt;
+  }
+
+  if (options.mode === 'offline' && total > 0) {
+    events.push({ type: 'simulation.offline', elapsedSec, effectiveSec: total });
   }
 
   return { state, rng, events };

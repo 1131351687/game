@@ -125,7 +125,9 @@ export function getTradePrice(
 
   // 契约锁价：把价格拉回"无波动"的基值并 ±10%
   if (opts.contracted) {
-    price = base * distFactor * opts.demandShock * E3.CONTRACT_PRICE_BAND;
+    // jitter 仍由确定性 RNG 提供，但契约只保留其 10% 的偏移，避免把 ±10% 带宽误当成 0.1 倍价格。
+    const lockedJitter = 1 + (opts.jitter - 1) * E3.CONTRACT_PRICE_BAND;
+    price = base * distFactor * opts.demandShock * lockedJitter;
     if (!opts.hasMetrology) price *= 1 / (1 - E3.CONVERSION_LOSS); // 契约仍受换算损耗
     return price;
   }
@@ -190,6 +192,13 @@ export function settleTradeCycle(
       continue;
     }
 
+    const repEffect = getReputationEffect(state.reputation);
+    if (repEffect.refuseChance > 0 && rng() < repEffect.refuseChance) {
+      notes.push('交易被拒：声望过低');
+      r.cycleAccum = 0;
+      continue;
+    }
+
     // 书吏占用：每条路线需 SCRIBES_PER_ROUTE 书吏，不足则效率下滑
     const needScribes = eff.scribesPerRoute;
     const has = state.jobs.scribe ?? 0;
@@ -205,7 +214,7 @@ export function settleTradeCycle(
 
     // 本期价格（付出货物 pricing）+ 需求冲击
     const jitter = E3.PRICE_JITTER_MIN + (E3.PRICE_JITTER_MAX - E3.PRICE_JITTER_MIN) * rng();
-    const repEff = getReputationEffect(state.reputation);
+    const repEff = repEffect;
     const demandShock = 1 + E3.DEMAND_COEFF * Math.min(1, totalBought(r));
     let pricePay = getTradePrice(r.demand, r.distance, {
       jitter,
