@@ -585,7 +585,15 @@ export const useStore = create<GameState>((set, get) => ({
       recorded: data.recorded ?? [],
       recordedOnce: data.recordedOnce ?? [],
       localOre: data.localOre ?? 'alluvial',
-      tradeRoutes: data.tradeRoutes ?? [],
+      tradeRoutes: Array.isArray(data.tradeRoutes)
+        ? data.tradeRoutes
+            .filter(route => route && typeof route.partnerId === 'string')
+            .map(route => ({
+              ...route,
+              cycleAccum: Number.isFinite(route.cycleAccum) ? route.cycleAccum : 0,
+              priceHistory: Array.isArray(route.priceHistory) ? route.priceHistory : [],
+            }))
+        : [],
       reputation: data.reputation ?? 50,
     };
     set({ ...migrated, messages: [], running: false });

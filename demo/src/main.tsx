@@ -36,6 +36,9 @@ if (hasSave) {
   if (warningCount > 0) {
     store.addMessage('离线期间有 ' + warningCount + ' 条贸易告警，请检查商路与书吏配置', 'warn', true);
   }
+  if (offline?.events.some(event => event.type === 'simulation.offline')) {
+    store.addMessage('离线模拟已完成，资源与随机状态已同步', 'all');
+  }
   store.addMessage('存档已恢复，欢迎回来', 'all');
 } else {
   store.addMessage('新游戏开始 —— 先采集食物攒经验，点亮「掌握火」', 'all', true);
