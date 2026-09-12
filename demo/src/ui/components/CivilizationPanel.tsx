@@ -38,6 +38,11 @@ export function CivilizationPanel() {
   const researched = eraTechs.filter(t => s.techs[t.id]).length;
   const total = eraTechs.length;
   const expOutput = calcExperienceOutput(view);
+  const knowledgeHint = s.era === 'E3' && expOutput <= 0
+    ? s.techs.cuneiform
+      ? '知识暂无产出：请在“工作”中分配书吏。'
+      : '知识暂无产出：先研究“楔形文字”，再分配书吏。'
+    : null;
 
   // 渐进解锁：条件未达成时整块面板不渲染（避免开局信息过载）
   const showAdvance = isModuleUnlocked('advance', view);
@@ -73,6 +78,12 @@ export function CivilizationPanel() {
             </span>
           </div>
         </div>
+
+        {knowledgeHint && (
+          <div className="border-l-2 border-warn/70 pl-2 text-xs text-warn">
+            {knowledgeHint}
+          </div>
+        )}
 
         {/* 细进度条：把"已学 / 总数"视觉化。
             这是"文明推进了多少"的度量，正是余烬橙该出现的地方（强调色，非中性灰）。 */}

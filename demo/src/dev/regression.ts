@@ -1,6 +1,6 @@
 import { createRngState } from '../core/rng/seeded';
 import { E3 } from '../data/constants';
-import { canResearch, checkAdvance, tick, type E1State } from '../game/engine';
+import { calcExperienceOutput, canResearch, checkAdvance, tick, type E1State } from '../game/engine';
 import { simulate } from '../game/simulation/simulate';
 import { advancePopulation } from '../game/systems/population';
 import { getTradePrice, settleTradeCycle } from '../game/trade';
@@ -79,6 +79,16 @@ function run(): void {
   assert(canResearch('cuneiform', researchState).ok, 'E3 科技应使用同一个 experience 存量作为知识');
   assert(researchState.experience >= 800, 'E3 楔形文字研究成本应能从 experience 存量支付');
   assert(researchState.techs.writing === true, 'E3 楔形文字应以书写为研究前置');
+  const scribeState = baseState({
+    experience: 10,
+    population: 100,
+    techs: { cuneiform: true },
+    jobs: { scribe: 10 },
+  });
+  const knowledgeRate = calcExperienceOutput(scribeState);
+  assert(knowledgeRate > 0, 'E3 分配书吏后知识产出应大于 0');
+  const knowledgeTick = tick(scribeState, 10, () => 0.5, 100);
+  assert(knowledgeTick.experience > scribeState.experience, 'E3 tick 应将书吏知识写回 experience');
 
   const route = {
     partnerId: 'dilmun',
