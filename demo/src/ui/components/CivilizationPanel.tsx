@@ -45,7 +45,7 @@ export function CivilizationPanel() {
   const progress = total > 0 ? Math.min(1, researched / total) : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto min-w-0 max-w-[76rem] space-y-5 xl:space-y-6">
       {/* ── 顶栏：左侧进度 / 中间经验 / 右侧视图切换（无边框，仅极淡底色） ── */}
       <header className="space-y-2 border-b border-gray-800 px-4 pb-3">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">

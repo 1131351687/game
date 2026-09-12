@@ -258,7 +258,7 @@ export default function AppResponsiveB() {
   return (
     <div className="flex h-screen text-gray-200">
       {/* ① 左侧栏：默认视图只有 时代 + 资源表 + 状态抽屉入口 */}
-      <aside className="flex w-72 shrink-0 flex-col overflow-y-auto border-r border-gray-800">
+      <aside className="flex w-60 shrink-0 flex-col overflow-y-auto border-r border-gray-800 xl:w-72">
         {/* 栏头：时代名是全栏唯一的强调色落点 */}
         <div className="flex h-11 shrink-0 items-center gap-1 border-b border-gray-800 px-3">
           <span className="min-w-0 flex-1 truncate font-display text-sm text-accent">
@@ -286,8 +286,8 @@ export default function AppResponsiveB() {
       </aside>
 
       {/* ② 中间内容区：Tab + 面板 */}
-      <main className="min-w-0 flex-1 overflow-y-auto p-4">
-        <nav className="flex gap-6 border-b border-gray-800 px-2">
+      <main className="min-w-[24rem] flex-1 overflow-y-auto p-3 xl:p-4">
+        <nav className="flex gap-4 border-b border-gray-800 px-1 xl:gap-6 xl:px-2">
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} className={`-mb-px border-b-2 px-1 py-3 text-sm transition-colors ${tab === t.id ? 'border-accent text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-200'}`}>
               {t.icon} {t.label}
@@ -302,7 +302,7 @@ export default function AppResponsiveB() {
       </main>
 
       {/* ③ 右侧消息栏 */}
-      <aside className="w-80 shrink-0 overflow-y-auto border-l border-gray-800">
+      <aside className="w-64 shrink-0 overflow-y-auto border-l border-gray-800 xl:w-80">
         <MessageLog />
       </aside>
     </div>

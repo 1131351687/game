@@ -77,6 +77,8 @@ function run(): void {
     techs: { writing: true, cuneiform: false },
   });
   assert(canResearch('cuneiform', researchState).ok, 'E3 科技应使用同一个 experience 存量作为知识');
+  assert(researchState.experience >= 800, 'E3 楔形文字研究成本应能从 experience 存量支付');
+  assert(researchState.techs.writing === true, 'E3 楔形文字应以书写为研究前置');
 
   const route = {
     partnerId: 'dilmun',
