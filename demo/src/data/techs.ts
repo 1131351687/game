@@ -14,6 +14,11 @@ import { E2_TECHS_FARMING } from './e2-techs-farming';
 import { E2_TECHS_HERDING } from './e2-techs-herding';
 import { E2_TECHS_SETTLEMENT } from './e2-techs-settlement';
 
+// E3 城邦时代科技片段（各 6–7 项，分开维护）
+import { E3_TECHS_WRITING } from './e3-techs-writing';
+import { E3_TECHS_BRONZE } from './e3-techs-bronze';
+import { E3_TECHS_TRADE } from './e3-techs-trade';
+
 /**
  * 科技所属分支。
  *
@@ -32,6 +37,9 @@ export type TechBranch =
   | 'farming'
   | 'herding'
   | 'settlement'
+  | 'writing'
+  | 'bronze'
+  | 'trade'
   | 'gate';
 
 /** 科技类型（设计规范：解锁 ≥40% / 质变 ≥25% / 数值 ≤25%） */
@@ -135,6 +143,47 @@ export interface TechEffects {
   jobSwitchCostMul?: number;
   /** 取消 E1 承载力硬顶（定居营造） */
   removeCapacityCap?: boolean;
+
+  // ─────────────────────────────────────────────
+  // E3 城邦时代（核心科技：楔形文字）
+  //
+  // 命名沿用既有约定：*Mul 乘法键 / *Add 加法键 / 绝对设置键取最大
+  // ─────────────────────────────────────────────
+
+  /** 开启记录容量与刻录系统（楔形文字核心科技） */
+  enableRecording?: boolean;
+  /** 记录容量加成（加法键；学宫是另一条来源） */
+  recordCapacityAdd?: number;
+  /** 书吏产出乘数 */
+  scribeOutputMul?: number;
+  /** 档案库加成：已刻录科技每项提供的产出加成（绝对设置，取最大） */
+  archiveBonus?: number;
+
+  /** 每条贸易路线所需书吏数（绝对设置：40 → 账目分类后 30） */
+  scribesPerRoute?: number;
+  /** 贸易路线槽位加成（加法键） */
+  routeSlotsAdd?: number;
+  /** 换算损耗（未研究度量衡时 0.15；度量衡归零；绝对设置取最小） */
+  conversionLoss?: number;
+  /** 契约违约惩罚倍率（<1 降低，印章封泥 0.5） */
+  contractBreachPenalty?: number;
+  /** 契约时长倍率（契约刻录 5→12 分钟） */
+  contractDurationMul?: number;
+  /** 可同时锁定契约的路线数（绝对设置） */
+  contractSlots?: number;
+  /** 陆路运力乘数（轮子 1.4 / 驴队 1.3 叠加） */
+  landCaravanMul?: number;
+  /** 水路距离系数乘数（河运帆船 0.6） */
+  waterDistMul?: number;
+  /** 路线中断概率加成（<0 降低） */
+  routeBreakChance?: number;
+  /** 解锁青金石货类 */
+  enableLapis?: boolean;
+
+  /** 青铜回收率（再生冶炼 0.3） */
+  recyclingRate?: number;
+  /** 文明级损失事件减幅（青铜兵器 0.4） */
+  lossReduction?: number;
 }
 
 export interface TechDef {
@@ -503,6 +552,9 @@ export const TECHS: TechDef[] = [
   ...E2_TECHS_FARMING,
   ...E2_TECHS_HERDING,
   ...E2_TECHS_SETTLEMENT,
+  ...E3_TECHS_WRITING,
+  ...E3_TECHS_BRONZE,
+  ...E3_TECHS_TRADE,
 ];
 
 export const TECH_MAP: Record<string, TechDef> = Object.fromEntries(
@@ -517,6 +569,9 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   farming: TECHS.filter(t => t.branch === 'farming'),
   herding: TECHS.filter(t => t.branch === 'herding'),
   settlement: TECHS.filter(t => t.branch === 'settlement'),
+  writing: TECHS.filter(t => t.branch === 'writing'),
+  bronze: TECHS.filter(t => t.branch === 'bronze'),
+  trade: TECHS.filter(t => t.branch === 'trade'),
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
 
@@ -618,6 +673,31 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
     desc: '造粮仓储余粮、修房屋扩聚落',
     role: '分支 · 规模',
   },
+  // ── E3 城邦时代的三条分支 ──
+  writing: {
+    name: '书写与记录',
+    kind: 'branch',
+    order: 8,
+    color: '#a78bfa',
+    desc: '把记忆刻进泥板——记录容量是硬上限，刻录给科技第二次生命',
+    role: '分支 · 根基',
+  },
+  bronze: {
+    name: '青铜与制造',
+    kind: 'branch',
+    order: 9,
+    color: '#f97316',
+    desc: '铜锡合金链：冶炼、工具世代与兵器',
+    role: '分支 · 效率',
+  },
+  trade: {
+    name: '贸易与度量',
+    kind: 'branch',
+    order: 10,
+    color: '#38bdf8',
+    desc: '本地无锡——贸易路线是供应链的另一半',
+    role: '分支 · 规模',
+  },
   gate: {
     name: '时代之门',
     kind: 'gate',
@@ -642,6 +722,9 @@ export const BRANCH_ORDER: TechBranch[] = [
   'farming',
   'herding',
   'settlement',
+  'writing',
+  'bronze',
+  'trade',
   'gate',
 ];
 

@@ -70,6 +70,7 @@ export interface EraTransitionSource {
   buildings: Record<string, number>;
   jobs: Record<string, number>;
   techs: Record<string, boolean>;
+  localOre: 'copper' | 'tin' | 'alluvial';
 }
 
 /**
@@ -93,6 +94,7 @@ export interface EraTransitionResult {
   buildings: Record<string, number>;
   jobs: Record<string, number>;
   techs: Record<string, boolean>;
+  localOre: 'copper' | 'tin' | 'alluvial';
 }
 
 /**
@@ -107,7 +109,7 @@ export function computeEraTransition(
   s: EraTransitionSource,
   nextEraId: EraId
 ): EraTransitionResult {
-  return {
+  const result: EraTransitionResult = {
     era: nextEraId,
     // 唯一被改动的字段：新机制的计时起点（见 TRANSITION.RESET_ERA_CLOCK 注释）
     eraElapsedSec: TRANSITION.RESET_ERA_CLOCK ? 0 : s.eraElapsedSec,
@@ -132,5 +134,22 @@ export function computeEraTransition(
     // 岗位：**保留分配**。E1 的采集者/猎人会继续产食物（见 E2 §7「继承并降权」），
     // 玩家不必在跃迁后把所有岗位重新点一遍
     jobs: s.jobs,
+    localOre: s.localOre,
   };
+
+  // E2→E3 交接的特殊处理
+  if (nextEraId === 'E3') {
+    // localOre 开局随机（用户拍板）
+    const rand = Math.random();
+    const localOre: 'copper' | 'tin' | 'alluvial' =
+      rand < 1 / 3 ? 'copper' : rand < 2 / 3 ? 'tin' : 'alluvial';
+
+    // 返回时覆盖 localOre，其余照旧透传
+    return {
+      ...result,
+      localOre,
+    };
+  }
+
+  return result;
 }

@@ -5,7 +5,7 @@
 import { TECHS, TECH_MAP, type TechEffects } from '../data/techs';
 import { JOBS, JOB_MAP, type JobId } from '../data/jobs';
 import { BUILDING_MAP, type BuildingId } from '../data/buildings';
-import type { ResourceId } from '../data/resources';
+import { RESOURCE_MAP, type ResourceId } from '../data/resources';
 import { ERAS, eraDistance, eraDecay, type EraId } from '../data/era';
 import {
   getFoodFactorFromStorage,
@@ -16,6 +16,7 @@ import {
   YEAR_DURATION_SEC,
   type SeasonId,
 } from './season';
+import { settleTradeCycle } from './trade';
 import {
   FIRE,
   FIRE_TIER_INFO,
@@ -23,6 +24,7 @@ import {
   FOOD_FACTOR,
   BUILDING_EFFECTS,
   E2,
+  E3,
   HUNT,
   getFireTier,
   getToolMultiplier,
@@ -68,6 +70,56 @@ export interface EraState {
    * 跨时代跃迁时归零，所以每个时代都从春天开始。
    */
   eraElapsedSec: number;
+
+  // ─────────────────────────────────────────────
+  // E3 城邦时代（核心科技：楔形文字）
+  //
+  // ⚠️ 研究货币：用户拍板「改名即可」——E3 继续使用 experience 字段，
+  //    显示名变为「知识」（researchCurrencyName），产出通道改为书吏。
+  //    不新增独立 knowledge 字段。
+  // ─────────────────────────────────────────────
+
+  /** 铜：青铜原料之一；仅本地矿藏为铜矿时可采 */
+  copper: number;
+  /** 锡：本地产出恒为 0（设计约束），只能贸易进口 */
+  tin: number;
+  /** 青铜：冶炼工以铜+锡炼出 */
+  bronze: number;
+  /** 青金石：远方贸易品（需「青金石商路」解锁） */
+  lapis: number;
+
+  /** 已刻录科技 id（槽位占用 = recorded.length；刻录不可撤销） */
+  recorded: string[];
+  /** 历史上刻录过的科技 id（供档案库加成计数，与技术退役解耦） */
+  recordedOnce: string[];
+
+  /** 本地矿藏：决定铜/锡自给（开局随机，用户拍板） */
+  localOre: 'copper' | 'tin' | 'alluvial';
+  /** 已建立的贸易路线 */
+  tradeRoutes: TradeRoute[];
+  /** 声望 0–100，初始 50 */
+  reputation: number;
+}
+
+/**
+ * 一条贸易路线（虚拟邻邦）。
+ * 数据定义见 game/trade.ts（固定 5 个邻邦）。
+ */
+export interface TradeRoute {
+  /** 邻邦 id */
+  partnerId: string;
+  /** 我方支付的货物 */
+  demand: ResourceId;
+  /** 我方换得的货物 */
+  supply: ResourceId;
+  /** 距离（1/2/3），距离系数 = 1 + 0.15 × 距离 */
+  distance: 1 | 2 | 3;
+  /** 商队周期计时（30 秒一轮） */
+  cycleAccum: number;
+  /** 近 5 周期价格（供迷你折线图与需求冲击计算） */
+  priceHistory: number[];
+  /** 契约锁价截止时间戳（秒，绝对时间） */
+  contractUntil?: number;
 }
 
 /** @deprecated 旧名单时代命名，仅为向后兼容保留。新代码请用 EraState */
@@ -141,6 +193,45 @@ export interface AggregatedEffects {
   jobSwitchCostMul: number;
   /** 取消 E1 承载力硬顶 */
   removeCapacityCap: boolean;
+
+  // ─────────────────────────────────────────────
+  // E3 城邦时代（核心科技：楔形文字）
+  // ─────────────────────────────────────────────
+
+  /** 记录/刻录系统是否开启 */
+  recordingEnabled: boolean;
+  /** 记录容量加成（加法键：泥板制作 +2） */
+  recordCapacityAdd: number;
+  /** 书吏产出乘数 */
+  scribeOutputMul: number;
+  /** 档案库加成：每项已刻录科技的产出加成（取最大，0.03 → 扩建 0.04） */
+  archiveBonus: number;
+
+  /** 每条路线所需书吏（绝对设置：40 → 账目分类 30） */
+  scribesPerRoute: number;
+  /** 路线槽位加成（商栈 +2/座 计入独立公式） */
+  routeSlotsAdd: number;
+  /** 换算损耗（未研究度量衡 0.15；度量衡 → 0；取最小） */
+  conversionLoss: number;
+  /** 契约违约惩罚倍率（印章封泥 0.5） */
+  contractBreachPenalty: number;
+  /** 契约时长倍率（契约刻录 ×2.4） */
+  contractDurationMul: number;
+  /** 可同时锁定契约的路线数（取最大） */
+  contractSlots: number;
+  /** 陆路运力乘数（轮子 1.4 / 驴队 1.3 叠加） */
+  landCaravanMul: number;
+  /** 水路距离系数乘数（河运帆船 0.6） */
+  waterDistMul: number;
+  /** 路线中断概率加成（<0 降低） */
+  routeBreakChance: number;
+  /** 是否解锁青金石货类 */
+  lapisEnabled: boolean;
+
+  /** 青铜回收率（再生冶炼 0.3） */
+  recyclingRate: number;
+  /** 文明级损失事件减幅（青铜兵器 0.4） */
+  lossReduction: number;
 }
 
 const DEFAULT_EFFECTS: AggregatedEffects = {
@@ -182,6 +273,24 @@ const DEFAULT_EFFECTS: AggregatedEffects = {
   granaryOverflowBonus: 0,
   jobSwitchCostMul: 1,
   removeCapacityCap: false,
+
+  // ── E3 城邦时代 ──
+  recordingEnabled: false,
+  recordCapacityAdd: 0,
+  scribeOutputMul: 1,
+  archiveBonus: 0,
+  scribesPerRoute: 40,
+  routeSlotsAdd: 0,
+  conversionLoss: 0.15,
+  contractBreachPenalty: 1,
+  contractDurationMul: 1,
+  contractSlots: 1,
+  landCaravanMul: 1,
+  waterDistMul: 1,
+  routeBreakChance: 0,
+  lapisEnabled: false,
+  recyclingRate: 0,
+  lossReduction: 0,
 };
 
 export function aggregateEffects(state: E1State): AggregatedEffects {
@@ -214,6 +323,21 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     /** 加数衰减：把 v 朝基线 0 拉近 */
     const add = (v: number): number => v * k;
 
+    // ── E3 刻录口径：口头 ×50% / 已刻录 ×100% ──
+    //
+    // 记录系统开启后（E3 研究「楔形文字」），**未刻录**的科技效果打对折——
+    // 知识靠口耳相传会衰减，刻上泥板才是"文明的确定沉淀"。
+    // 只对**数值型**效果生效；解锁/布尔型不衰减（"已掌握的东西不会忘记"）。
+    //
+    // ⚠️ 时代门控：E1/E2 没有记录系统（recorded 恒空、recordingEnabled=false），
+    // 此处必须零影响，否则 E1/E2 基线（1163s/1920s）会被整体腰斩。
+    const isOral = acc.recordingEnabled && !state.recorded.includes(tech.id);
+    const oralMul = isOral ? 0.5 : 1;
+    /** 乘数衰减 × 刻录口径：口头再 ×0.5 */
+    const mulR = (m: number): number => mul(m) * oralMul;
+    /** 加数衰减 × 刻录口径 */
+    const addR = (v: number): number => add(v) * oralMul;
+
     // — 解锁/布尔型：不衰减 —
     if (e.enableFire) acc.fireEnabled = true;
     if (e.activeFireRestore) acc.activeFireRestore = true;
@@ -223,16 +347,16 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     if (e.enableAdvance) acc.enableAdvance = true;
 
     // — 数值型：按时代衰减 —
-    if (e.fireDecayMultiplier !== undefined) acc.fireDecayMultiplier *= mul(e.fireDecayMultiplier);
-    if (e.fireMaxBonus) acc.fireMaxBonus += add(e.fireMaxBonus);
-    if (e.foodMultiplier) acc.foodMultiplier *= mul(e.foodMultiplier);
-    if (e.stoneMultiplier) acc.stoneMultiplier *= mul(e.stoneMultiplier);
-    if (e.expMultiplier) acc.expMultiplier *= mul(e.expMultiplier);
-    if (e.gathererMultiplier) acc.gathererMultiplier *= mul(e.gathererMultiplier);
-    if (e.buildingCostMultiplier) acc.buildingCostMultiplier *= mul(e.buildingCostMultiplier);
-    if (e.stabilityBonus) acc.stabilityBonus += add(e.stabilityBonus);
-    if (e.huntPartyBonus) acc.huntPartyBonus = add(e.huntPartyBonus);
-    if (e.foodStorageMultiplier) acc.foodStorageMultiplier *= mul(e.foodStorageMultiplier);
+    if (e.fireDecayMultiplier !== undefined) acc.fireDecayMultiplier *= mulR(e.fireDecayMultiplier);
+    if (e.fireMaxBonus) acc.fireMaxBonus += addR(e.fireMaxBonus);
+    if (e.foodMultiplier) acc.foodMultiplier *= mulR(e.foodMultiplier);
+    if (e.stoneMultiplier) acc.stoneMultiplier *= mulR(e.stoneMultiplier);
+    if (e.expMultiplier) acc.expMultiplier *= mulR(e.expMultiplier);
+    if (e.gathererMultiplier) acc.gathererMultiplier *= mulR(e.gathererMultiplier);
+    if (e.buildingCostMultiplier) acc.buildingCostMultiplier *= mulR(e.buildingCostMultiplier);
+    if (e.stabilityBonus) acc.stabilityBonus += addR(e.stabilityBonus);
+    if (e.huntPartyBonus) acc.huntPartyBonus = addR(e.huntPartyBonus);
+    if (e.foodStorageMultiplier) acc.foodStorageMultiplier *= mulR(e.foodStorageMultiplier);
 
     // — E2 布尔/解锁型：不衰减 —
     if (e.enableSeasons) acc.seasonsEnabled = true;
@@ -261,39 +385,75 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     }
 
     // — E2 季节倍率加成：加法键，按时代衰减 —
-    if (e.springAgriMul) acc.seasonAgriBonus.spring += add(e.springAgriMul);
-    if (e.summerAgriMul) acc.seasonAgriBonus.summer += add(e.summerAgriMul);
-    if (e.autumnAgriMul) acc.seasonAgriBonus.autumn += add(e.autumnAgriMul);
-    if (e.winterAgriMul) acc.seasonAgriBonus.winter += add(e.winterAgriMul);
+    if (e.springAgriMul) acc.seasonAgriBonus.spring += addR(e.springAgriMul);
+    if (e.summerAgriMul) acc.seasonAgriBonus.summer += addR(e.summerAgriMul);
+    if (e.autumnAgriMul) acc.seasonAgriBonus.autumn += addR(e.autumnAgriMul);
+    if (e.winterAgriMul) acc.seasonAgriBonus.winter += addR(e.winterAgriMul);
 
     // — E2 乘法键：按时代衰减 —
-    if (e.grainMultiplier) acc.grainMultiplier *= mul(e.grainMultiplier);
-    if (e.livestockFoodMul) acc.livestockFoodMul *= mul(e.livestockFoodMul);
-    if (e.summerHerderMul) acc.summerHerderMul *= mul(e.summerHerderMul);
-    if (e.fieldYieldMul) acc.fieldYieldMul *= mul(e.fieldYieldMul);
-    if (e.feedCostMultiplier) acc.feedCostMultiplier *= mul(e.feedCostMultiplier);
-    if (e.villageHouseCostMul) acc.villageHouseCostMul *= mul(e.villageHouseCostMul);
-    if (e.granaryCapacityMul) acc.granaryCapacityMul *= mul(e.granaryCapacityMul);
-    if (e.jobSwitchCostMul) acc.jobSwitchCostMul *= mul(e.jobSwitchCostMul);
+    if (e.grainMultiplier) acc.grainMultiplier *= mulR(e.grainMultiplier);
+    if (e.livestockFoodMul) acc.livestockFoodMul *= mulR(e.livestockFoodMul);
+    if (e.summerHerderMul) acc.summerHerderMul *= mulR(e.summerHerderMul);
+    if (e.fieldYieldMul) acc.fieldYieldMul *= mulR(e.fieldYieldMul);
+    if (e.feedCostMultiplier) acc.feedCostMultiplier *= mulR(e.feedCostMultiplier);
+    if (e.villageHouseCostMul) acc.villageHouseCostMul *= mulR(e.villageHouseCostMul);
+    if (e.granaryCapacityMul) acc.granaryCapacityMul *= mulR(e.granaryCapacityMul);
+    if (e.jobSwitchCostMul) acc.jobSwitchCostMul *= mulR(e.jobSwitchCostMul);
 
     // — E2 加法键：按时代衰减 —
-    if (e.penCapacityAdd) acc.penCapacityAdd += add(e.penCapacityAdd);
-    if (e.granaryOverflowBonus) acc.granaryOverflowBonus += add(e.granaryOverflowBonus);
+    if (e.penCapacityAdd) acc.penCapacityAdd += addR(e.penCapacityAdd);
+    if (e.granaryOverflowBonus) acc.granaryOverflowBonus += addR(e.granaryOverflowBonus);
 
     // — E2 按岗位 / 按资源的乘数 —
     if (e.jobMultiplier) {
       for (const [job, m] of Object.entries(e.jobMultiplier)) {
         if (m === undefined) continue;
         const id = job as JobId;
-        acc.jobMultiplier[id] = (acc.jobMultiplier[id] ?? 1) * mul(m);
+        acc.jobMultiplier[id] = (acc.jobMultiplier[id] ?? 1) * mulR(m);
       }
     }
     if (e.resourceMultiplier) {
       for (const [res, m] of Object.entries(e.resourceMultiplier)) {
         if (m === undefined) continue;
         const id = res as ResourceId;
-        acc.resourceMultiplier[id] = (acc.resourceMultiplier[id] ?? 1) * mul(m);
+        acc.resourceMultiplier[id] = (acc.resourceMultiplier[id] ?? 1) * mulR(m);
       }
+    }
+
+    // ── E3 布尔/解锁型：不衰减 ──
+    if (e.enableRecording) acc.recordingEnabled = true;
+    if (e.enableLapis) acc.lapisEnabled = true;
+
+    // ── E3 乘法键：按时代衰减 ──
+    if (e.scribeOutputMul) acc.scribeOutputMul *= mulR(e.scribeOutputMul);
+    if (e.contractBreachPenalty) acc.contractBreachPenalty *= mulR(e.contractBreachPenalty);
+    if (e.contractDurationMul) acc.contractDurationMul *= mulR(e.contractDurationMul);
+    if (e.landCaravanMul) acc.landCaravanMul *= mulR(e.landCaravanMul);
+    if (e.waterDistMul) acc.waterDistMul *= mulR(e.waterDistMul);
+
+    // ── E3 加法键：按时代衰减 ──
+    if (e.recordCapacityAdd) acc.recordCapacityAdd += addR(e.recordCapacityAdd);
+    if (e.routeSlotsAdd) acc.routeSlotsAdd += addR(e.routeSlotsAdd);
+    if (e.routeBreakChance) acc.routeBreakChance += addR(e.routeBreakChance);
+
+    // ── E3 绝对设置型：取最大 / 最小，不衰减 ──
+    //   能力上限（档案加成 / 契约槽 / 回收率）取最大；
+    //   换算损耗是"缺陷消除"，取最小（度量衡把它压到 0）。
+    if (e.archiveBonus !== undefined) acc.archiveBonus = Math.max(acc.archiveBonus, e.archiveBonus);
+    if (e.scribesPerRoute !== undefined) {
+      acc.scribesPerRoute = Math.min(acc.scribesPerRoute, e.scribesPerRoute);
+    }
+    if (e.contractSlots !== undefined) {
+      acc.contractSlots = Math.max(acc.contractSlots, e.contractSlots);
+    }
+    if (e.recyclingRate !== undefined) {
+      acc.recyclingRate = Math.max(acc.recyclingRate, e.recyclingRate);
+    }
+    if (e.lossReduction !== undefined) {
+      acc.lossReduction = Math.max(acc.lossReduction, e.lossReduction);
+    }
+    if (e.conversionLoss !== undefined) {
+      acc.conversionLoss = Math.min(acc.conversionLoss, e.conversionLoss);
     }
   }
 
@@ -407,6 +567,20 @@ export function getCapacity(state: E1State): number {
   const fields = state.buildings.field ?? 0;
   const farmers = state.jobs.farmer ?? 0;
 
+  // ── E3 城邦时代：人口模型切换 ──
+  // K = 320 基础 + 民居×130（E3-citystate.md §11.3）。
+  // 旧时代住所/田地在此之上继续叠加——跃迁不重置，K 必须连续。
+  if (state.era === 'E3') {
+    const cityHouses = state.buildings.city_house ?? 0;
+    return (
+      E3.POP_BASE_CAPACITY +
+      cityHouses * E3.POP_PER_CITY_HOUSE +
+      houses * POPULATION.CAPACITY_PER_HOUSE +
+      villageHouses * E2.CAPACITY_PER_VILLAGE_HOUSE +
+      Math.min(fields, Math.floor(farmers / E2.FIELD_MIN_FARMERS)) * E2.CAPACITY_PER_FIELD
+    );
+  }
+
   // 只有「已耕作」的田地才算承载力：田地必须凑够最低农夫数才在种。
   const cultivatedFields = Math.min(
     fields,
@@ -425,7 +599,9 @@ export function getCapacity(state: E1State): number {
 }
 
 export function getFoodConsumption(state: E1State): number {
-  return state.population * POPULATION.FOOD_CONSUMPTION_PER_PERSON;
+  // E3 人口消耗 0.2/秒/人（与 E1 相同；E2 为 0.25 因定居后更集中）
+  const perPerson = state.era === 'E3' ? E3.POP_FOOD_PER_PERSON : POPULATION.FOOD_CONSUMPTION_PER_PERSON;
+  return state.population * perPerson;
 }
 
 export function getFoodProduction(state: E1State): number {
@@ -483,6 +659,16 @@ export function getPopulationGrowth(state: E1State): number {
 
   // 火种已开启但熄灭了 → 生存惩罚（仅远古时代）
   if (fireFactor === 0) return -POPULATION.STARVATION_DECAY;
+
+  // ── E3 城邦时代：人口模型切换 ──
+  // E3 基础增长率从 0.03 下调到 0.003（更慢的增长配合更低的资源门槛）。
+  // 贸易繁荣 / 农业底线三因子首版留为 TODO(balance)：先用 1.0。
+  if (state.era === 'E3') {
+    const r0 = E3.POP_GROWTH_RATE * fireFactor * seasonR;
+    const foodFactor = getFoodFactor(state);
+    if (foodFactor < 0) return -POPULATION.STARVATION_DECAY;
+    return r0 * P * (1 - P / K) * foodFactor;
+  }
 
   const r = POPULATION.BASE_GROWTH_RATE * fireFactor * seasonR;
   const foodFactor = getFoodFactor(state);
@@ -546,6 +732,19 @@ export function calcJobOutput(jobId: JobId, state: E1State): number {
     }
   }
 
+  // ── E3 城邦时代：规模递减（N^0.9）──
+  //
+  // 设计文档 §11：E3 起「实际产能 = 单位产出 × N^0.9」。
+  // 直觉：同一种岗位堆得越多，人均产出越低（组织/土地/原料的边际递减）。
+  // 必须**时代门控**——E1/E2 的产出公式字面上不变（回归基线 1163s/1920s 依赖它）。
+  // ⚠️ 猎人已有饱和曲线（HUNT.CAP），此处不再叠加 N^0.9（双重非线性失真）。
+  // ⚠️ 2026-09-12 修正：设计公式是「实际产能 = 单位产出 × N^0.9」（次线性），
+  // 原实现 rate = outputRate × count 之后再 ×count^0.9 = outputRate × N^1.9（超线性），
+  // 产能随人数爆炸（百人规模虚高约百倍）。此处**替换**线性基数，而不是叠加。
+  if (state.era === 'E3' && jobId !== 'hunter') {
+    rate = def.outputRate * Math.pow(count, E3.SCALING_EXP);
+  }
+
   return rate;
 }
 
@@ -581,10 +780,34 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
 }
 
 // ─────────────────────────────────────────────
-// T2.4 经验产出
+// T2.4 研究货币产出（经验 ⚡ / 知识 📜 同一字段）
 // ─────────────────────────────────────────────
+/**
+ * 研究货币（experience 字段）的产出速率。
+ *
+ * - E1/E2：人口 × EXP_PER_PERSON（0.08/人/秒）—— **逐字节不变**
+ * - E3 起：由**书吏**产出（0.15/秒/人 × 书吏训练/六十进制加成 × 档案库加成）。
+ *   设计明确 E3 关闭"人口生经验"通道（用户拍板：字段改名「知识」，不新增字段）。
+ *
+ * 按时代门控：E1/E2 走旧路径，E3 走书吏路径。
+ */
 export function calcExperienceOutput(state: E1State): number {
   const eff = aggregateEffects(state);
+
+  if (state.era === 'E3') {
+    const scribes = state.jobs.scribe ?? 0;
+    if (scribes <= 0) return 0;
+    // 书吏其实力受「记录容量」约束：无空槽则无产出（尚未拍板，先不实现）
+    // 档案库加成：已刻录科技每项 +0.03（扩建后 0.04），与刻录本身解耦
+    const archiveBonus = 1 + eff.archiveBonus * state.recordedOnce.length;
+    // 规模递减（E3-citystate.md §11.6）：知识同样吃 N^0.9 ——
+    //   305 人书吏 → 305^0.9 ≈ 172 等效 → 25.8 知识/秒
+    //   425 人书吏 → 425^0.9 ≈ 238 等效 → 35.7 知识/秒
+    // 之前漏算这条（纯线性），导致后期知识通胀、E3 科技成本形同虚设。
+    const effective = Math.pow(scribes, E3.SCALING_EXP);
+    return effective * 0.15 * eff.scribeOutputMul * archiveBonus;
+  }
+
   return state.population * POPULATION.EXP_PER_PERSON * eff.expMultiplier;
 }
 
@@ -881,6 +1104,44 @@ export function checkAdvance(state: E1State): AdvanceCheck {
     });
   }
 
+  // ── E3 已刻录科技门槛（记录系统）──
+  //
+  // 「已刻录」是 E3 的核心矛盾：研究可以靠知识，但刻录要占槽位、
+  // 付刻录费，且不可撤销。用「刻了多少」而不是「研究了多少」做毕业条件，
+  // 逼玩家为知识做"确定性沉淀"——这正是"文明"的题中之义。
+  if (cond.minRecorded !== undefined) {
+    const recorded = state.recorded.length;
+    items.push({
+      label: `已刻录科技 ≥ ${cond.minRecorded} 项`,
+      done: recorded >= cond.minRecorded,
+      detail: `${recorded} / ${cond.minRecorded}`,
+    });
+  }
+
+  // ── 资源存量门槛（E3：青铜 ≥ 2000）──
+  // 通用字段：资源 id → 最低存量。E3 用它表达"青铜库存证明工业能力"。
+  for (const [resId, amount] of Object.entries(cond.minResources ?? {})) {
+    const value = state[resId as keyof E1State];
+    const numeric = typeof value === 'number' ? value : 0;
+    const resName = (RESOURCE_MAP as Record<string, { name: string } | undefined>)[resId]?.name ?? resId;
+    items.push({
+      label: `${resName} ≥ ${amount}`,
+      done: numeric >= amount,
+      detail: `${Math.floor(numeric)} / ${amount}`,
+    });
+  }
+
+  // ── E3 特殊条件：钢铁必须已刻录 ──
+  // devplan §7.2：跃迁六项条件中的第一项是「研究「钢铁」并完成刻录」。
+  // 刻录是刻录系统本身的要求（铁门槛刻录需 1 槽），这里额外校验以防漏刻。
+  if (state.era === 'E3' && state.techs.iron && !state.recorded.includes('iron')) {
+    items.push({
+      label: '钢铁刻录',
+      done: false,
+      detail: '已研究钢铁，但尚未刻录到泥板上',
+    });
+  }
+
   return { ok: items.every(i => i.done), items };
 }
 
@@ -918,6 +1179,12 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
       return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_WOOD_BONUS;
     case 'stone':
       return 500 + (state.buildings.granary ?? 0) * E2.GRANARY_STONE_BONUS;
+    // E3 金属：共用建材仓储体系（铜/锡/青铜，无独立仓库建筑——学宫/商栈时代扩容靠 city_house）
+    case 'copper':
+    case 'tin':
+    case 'bronze':
+      if (state.era !== 'E3') return Number.POSITIVE_INFINITY;
+      return 500 + (state.buildings.city_house ?? 0) * 150;
     // 牲畜是活体储备，不占粮仓容量；织物同理
     default:
       return Number.POSITIVE_INFINITY;
@@ -976,6 +1243,14 @@ export interface TickResult {
   livestock: number;
   fabric: number;
   eraElapsedSec: number;
+  // ── E3 城邦时代 ──
+  copper: number;
+  tin: number;
+  bronze: number;
+  lapis: number;
+  tradeRoutes: TradeRoute[];
+  reputation: number;
+  tradeNotes: string[];
 }
 
 export function tick(state: E1State, dt: number): TickResult {
@@ -991,7 +1266,7 @@ export function tick(state: E1State, dt: number): TickResult {
   const expGain = calcExperienceOutput(state) * dt;
 
   let wood = Math.min(state.wood + woodGain, getResourceStorage('wood', state));
-  const stone = Math.min(state.stone + stoneGain, getResourceStorage('stone', state));
+  let stone = Math.min(state.stone + stoneGain, getResourceStorage('stone', state));
   const experience = state.experience + expGain;
 
   // 2) 火种（自动维持消耗木材）
@@ -1083,6 +1358,115 @@ export function tick(state: E1State, dt: number): TickResult {
 
   food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
 
+  // ─────────────────────────────────────────────
+  // 5) E3 城邦时代：铜锡青铜链 + 贸易
+  // ─────────────────────────────────────────────
+  //
+  // 执行顺序（devplan §7.3）：资源产出 → 消耗 → **贸易** → 人口增长。
+  // 贸易换回的粮食必须计入本 tick 的食物池**之后**再结算人口——
+  // 否则"粮食断供 → 贸易救回来"会晚一拍体现（E2 踩过顺序失真的坑）。
+  //
+  // 但注意：E3 的人口增长已在本函数上方用「tick 前的 state」算完，
+  // 此处只在末尾返回增量。真正的顺序约束体现在 store 的 doTick 里
+  // （先 tick 资源含贸易 → 再调人口）。这里只负责算 E3 资源增量。
+  let copper = state.copper ?? 0;
+  let tin = state.tin ?? 0;
+  let bronze = state.bronze ?? 0;
+  let lapis = state.lapis ?? 0;
+  let tradeRoutes = state.tradeRoutes ?? [];
+  let reputation = state.reputation ?? 50;
+  const tradeNotes: string[] = [];
+
+  if (state.era === 'E3') {
+    // 5a) 铜/锡/青铜产出
+    const copperGain = calcResourceOutput('copper', state) * dt;
+    copper += copperGain;
+    // 锡矿带开局：采矿工转采锡，本地可自给"少量"锡（设计 §2.2「锡自给 ✅ 少量」）。
+    // ⚠️ 此前实现为"锡本地产出恒为 0"，与设计表冲突——锡矿带开局名存实亡。
+    // 产量按铜矿工产出的一半折算（"少量"），本地无铜 → copperGain 本来就是 0。
+    if (state.localOre === 'tin') {
+      tin = Math.min(tin + copperGain * 0.5, getResourceStorage('tin', state));
+    }
+
+    // 铜矿工仅当本地有铜矿时有效（开局随机，用户拍板）
+    // 已集成在 calcResourceOutput（job.output === 'copper'）里，
+    // 但铜矿 gating 在 isJobUnlocked（jobs.ts requires）通过 localOre 处理——
+    // 这里无需额外 gate，因为 job 本身不会有人分配给 copper_miner 当 localOre !== 'copper'。
+
+    // 5b) 冶炼：每名冶炼工需 0.045 铜 + 0.005 锡，产出 0.05 青铜/秒（×熔炉加成）
+    //     缺料按比例降速（"缺料停工"而不是报错）
+    const smelters = state.jobs.smelter ?? 0;
+    if (smelters > 0 && state.techs.bronze_smelting) {
+      const needCopper = smelters * E3.SMELT_COPPER_IN * dt;
+      const needTin = smelters * E3.SMELT_TIN_IN * dt;
+      const copperRatio = needCopper > 0 ? Math.min(1, copper / needCopper) : 1;
+      const tinRatio = needTin > 0 ? Math.min(1, tin / needTin) : 1;
+      const ratio = Math.min(copperRatio, tinRatio);
+      if (ratio > 0) {
+        copper -= needCopper * ratio;
+        tin -= needTin * ratio;
+        const furnaceBonus = 1 + (state.buildings.furnace ?? 0) * E3.FURNACE_BONUS;
+        bronze += smelters * E3.SMELT_BRONZE_OUT * ratio * furnaceBonus * dt;
+      } else if (tin <= 0) {
+        tradeNotes.push('缺锡 —— 需与迪尔蒙建立贸易路线');
+      } else if (copper <= 0) {
+        tradeNotes.push('缺铜 —— 需开矿或与埃兰/玛甘贸易');
+      }
+    }
+
+    // 5c) 贸易结算（30 秒一轮，按需补跑——dt 通常为 0.25s，用累积器）
+    //     简单实现：每周期检查一次（cycleAccum 累积到 CYCLE_SEC 则结算）
+    const cycleSec = E3.TRADE_CYCLE_SEC;
+    let needCycle = false;
+    for (const r of tradeRoutes) {
+      if (r.cycleAccum >= cycleSec) { needCycle = true; break; }
+    }
+    if (needCycle && tradeRoutes.length > 0) {
+      const result = settleTradeCycle(state, cycleSec, Math.random);
+      // 应用货物增量（付出侧做库存下限保护，不透支为负）
+      const apply = (res: string, amount: number) => {
+        switch (res) {
+          case 'copper': copper = Math.max(0, copper + amount); break;
+          case 'tin': tin = Math.max(0, tin + amount); break;
+          case 'bronze': bronze = Math.max(0, bronze + amount); break;
+          case 'food': food = Math.max(0, food + amount); break;
+          case 'wood': wood = Math.max(0, wood + amount); break;
+          case 'stone': stone = Math.max(0, stone + amount); break;
+          case 'lapis': lapis = Math.max(0, lapis + amount); break;
+        }
+      };
+      for (const [res, amount] of Object.entries(result.delta)) {
+        if (amount === undefined) continue;
+        apply(res, amount);
+      }
+      tradeRoutes = result.routes;
+      tradeNotes.push(...result.notes);
+      // 重置周期计时：结算完成的路线**归零**。
+      //
+      // ⚠️ 曾是 E3 最大恶性 bug（2026-09-12 定位）：settleTradeCycle 内部对每条
+      // 路线 `cycleAccum += cycleSec`，此处若只 `-= cycleSec`，净变化为 0——
+      // 累积值停在 ≥30 永远满足结算条件，此后**每个 tick（0.25s）都重复结算**
+      // （应每 30s 一次），每 tick 掏走全额运力（数百单位支付货物），
+      // 木材/食物产出被瞬间抽干 → 一切建设停摆。
+      for (const r of tradeRoutes) {
+        r.cycleAccum = 0;
+      }
+    } else {
+      // 未到周期：推进计时
+      for (const r of tradeRoutes) r.cycleAccum += dt;
+    }
+  }
+
+  // E3 资源仓储上限（food/wood/stone 与铜锡青铜共用 GetCapacity 体系）
+  if (state.era === 'E3') {
+    food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
+    wood = Math.max(0, Math.min(wood, getResourceStorage('wood', state)));
+    stone = Math.max(0, Math.min(stone, getResourceStorage('stone', state)));
+    copper = Math.max(0, Math.min(copper, getResourceStorage('copper', state)));
+    tin = Math.max(0, Math.min(tin, getResourceStorage('tin', state)));
+    bronze = Math.max(0, Math.min(bronze, getResourceStorage('bronze', state)));
+  }
+
   return {
     food,
     wood,
@@ -1094,6 +1478,13 @@ export function tick(state: E1State, dt: number): TickResult {
     livestock,
     fabric,
     eraElapsedSec,
+    copper,
+    tin,
+    bronze,
+    lapis,
+    tradeRoutes,
+    reputation,
+    tradeNotes,
   };
 }
 

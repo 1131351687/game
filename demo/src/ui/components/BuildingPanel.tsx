@@ -35,6 +35,8 @@ const LIMIT_LABEL: Record<BuildingDef['limit'], string> = {
   population: '提升人口上限',
   environment: '强化火源',
   output: '提升产出',
+  record: '记录容量',
+  trade: '贸易路线',
 };
 
 /**
@@ -48,6 +50,8 @@ const LIMIT_ICON: Record<BuildingDef['limit'], string> = {
   population: '👥',
   environment: '🔥',
   output: '⚙️',
+  record: '📜',
+  trade: '🐴',
 };
 
 /** 小号区块标题：小号化 + 灰淡化 */

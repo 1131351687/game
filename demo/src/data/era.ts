@@ -4,7 +4,7 @@
 // 本文件只维护"时代"这一层，不做引擎与 UI 逻辑。
 
 /** 时代标识符 */
-export type EraId = 'E1' | 'E2';
+export type EraId = 'E1' | 'E2' | 'E3';
 
 /** 单个时代的元数据 */
 export interface EraMeta {
@@ -38,9 +38,14 @@ export interface EraMeta {
      * 其他建筑门槛：建筑 id → 最低座数。
      *
      * 通用字段，避免为每个时代新增一个专用数值。
-     * E2 用它表达文档 §11.8 的「粮仓 ≥3 座、田地 ≥8 块」。
+     * E2 用它表达文档 §11.8 的「粮仓 ≥3 座、田地 ≥8 块」；
+     * E3 用它表达「学宫 ≥3 座、商栈 ≥2 座」（E3-citystate.md §11.8）。
      */
     minBuildings?: Record<string, number>;
+    /** 已刻录科技数门槛（E3 独有：刻录 ≥12 项） */
+    minRecorded?: number;
+    /** 资源存量门槛：资源 id → 最低值（E3：青铜 ≥2000） */
+    minResources?: Record<string, number>;
   };
 }
 
@@ -78,6 +83,23 @@ export const ERAS: Record<EraId, EraMeta> = {
       minYears: 8,
       /** 粮仓 ≥3 座、田地 ≥8 块（文档 §11.8） */
       minBuildings: { granary: 3, field: 8 },
+    },
+  },
+  E3: {
+    id: 'E3',
+    name: '城邦时代',
+    index: 2,
+    gateTech: 'iron', // 钢铁，通往 E4（方案 B 门槛链：书写 → 钢铁 → 印刷术）
+    advanceConditions: {
+      // ── 按 E3-citystate.md §11.8 的六项条件 ──
+      /** 人口 ≥ 1800 */
+      minPopulation: 1800,
+      /** 青铜库存 ≥ 2000 */
+      minResources: { bronze: 2000 },
+      /** 已刻录科技 ≥ 12 项（含门槛「钢铁」自身的刻录） */
+      minRecorded: 12,
+      /** 学宫 ≥3 座（记录容量 ≥18）、商栈 ≥2 座 */
+      minBuildings: { academy: 3, trading_post: 2 },
     },
   },
 };

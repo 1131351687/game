@@ -9,9 +9,11 @@ import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
 import { INITIAL_STATE, LOOP, E2 } from '../data/constants';
 import * as engine from '../game/engine';
+import * as engineRecord from '../game/record';
 import { isJobRetired } from '../game/reveal';
 import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
+import { NEIGHBOR_MAP } from '../game/trade';
 
 // ─────────────────────────────────────────────
 // 类型
@@ -92,6 +94,31 @@ export interface GameState {
    */
   eraElapsedSec: number;
 
+  // ── E3 城邦时代资源 ──
+  // 研究货币：用户拍板「改名即可」——E3 继续用 experience 字段，显示名变「知识」
+  /** 铜：青铜原料之一；仅本地矿藏为铜矿时可开采 */
+  copper: number;
+  /** 锡：本地产出恒为 0，只能贸易进口 */
+  tin: number;
+  /** 青铜：冶炼工以铜+锡炼出 */
+  bronze: number;
+  /** 青金石：远方贸易品（需「青金石商路」解锁） */
+  lapis: number;
+
+  // ── E3 记录系统 ──
+  /** 已刻录科技 id（槽位占用 = recorded.length；刻录不可撤销） */
+  recorded: string[];
+  /** 历史上刻录过的科技 id（供档案库加成计数） */
+  recordedOnce: string[];
+
+  // ── E3 贸易系统 ──
+  /** 本地矿藏（开局随机，用户拍板：铜矿/锡矿/冲积平原） */
+  localOre: 'copper' | 'tin' | 'alluvial';
+  /** 已建立的贸易路线 */
+  tradeRoutes: engine.TradeRoute[];
+  /** 声望 0–100，初始 50 */
+  reputation: number;
+
   // 人口与火种
   /** 人口：始终为整数 */
   population: number;
@@ -128,6 +155,12 @@ export interface GameState {
   build: (buildingId: BuildingId) => boolean;
   research: (techId: string) => boolean;
   /**
+   * 刻录一项已研究的科技到泥板。
+   * 不可撤销；调用方应先以 canRecord 校验。返回是否成功。
+   * 扣知识 cost×10%，占用一个记录槽位。
+   */
+  recordTech: (techId: string) => boolean;
+  /**
    * 宰杀牲畜换粮。
    * 每头按牲畜世代给 30（世代 ≥3 为 38）食物，受食物储存上限约束。
    * 返回实际宰杀头数（0 = 参数非法或牲畜不足）。
@@ -147,6 +180,16 @@ export interface GameState {
   resetGame: () => void;
   /** 跃迁到下一个时代。返回是否成功 */
   advanceEra: () => boolean;
+  /**
+   * 开通/关闭与某邻邦的贸易路线。
+   *
+   * 不动引擎结算逻辑：仅改 tradeRoutes 切片——
+   *   · 已存在该邻邦的路线 → 移除（关闭）
+   *   · 不存在 → 按 NEIGHBOR_MAP 定义新增一条（distance/demand/supply 全部从数据定义来，
+   *     公式与价格由 trade.ts 在结算时算，不在 store 里重复实现）
+   * 青金石路线需 lapis_route 科技；未研究时拒绝开通。
+   */
+  toggleRoute: (neighborId: string) => void;
 }
 
 const SAVE_VERSION = 6;
@@ -162,6 +205,16 @@ const initialState = () => ({
   livestock: 0,
   fabric: 0,
   eraElapsedSec: 0,
+  // ── E3 城邦时代 ──
+  copper: 0,
+  tin: 0,
+  bronze: 0,
+  lapis: 0,
+  recorded: [] as string[],
+  recordedOnce: [] as string[],
+  localOre: 'alluvial' as 'copper' | 'tin' | 'alluvial',
+  tradeRoutes: [] as engine.TradeRoute[],
+  reputation: 50,
   population: INITIAL_STATE.population,
   populationProgress: 0,
   fire: INITIAL_STATE.fire,
@@ -186,6 +239,15 @@ function engineView(s: GameState): engine.EraState {
     livestock: s.livestock,
     fabric: s.fabric,
     eraElapsedSec: s.eraElapsedSec,
+    copper: s.copper,
+    tin: s.tin,
+    bronze: s.bronze,
+    lapis: s.lapis,
+    recorded: s.recorded,
+    recordedOnce: s.recordedOnce,
+    localOre: s.localOre,
+    tradeRoutes: s.tradeRoutes,
+    reputation: s.reputation,
     population: s.population,
     populationProgress: s.populationProgress,
     fire: s.fire,
@@ -280,6 +342,27 @@ export const useStore = create<GameState>((set, get) => ({
     return true;
   },
 
+  recordTech: (techId) => {
+    const s = get();
+    const view = engineView(s);
+    // record.ts 的 recordTech 做纯计算 + canRecord 校验，返回状态切片或 null
+    const slice = engineRecord.recordTech(techId, view);
+    if (!slice) {
+      // 校验失败：把原因报给玩家（canRecord 已给出可读 reason）
+      const check = engineRecord.canRecord(techId, view);
+      get().addMessage(`刻录失败：${check.reason ?? '未知原因'}`, 'warn');
+      return false;
+    }
+    const def = TECH_MAP[techId];
+    set({
+      experience: slice.experience,
+      recorded: slice.recorded,
+      recordedOnce: slice.recordedOnce,
+    });
+    get().addMessage(`刻录完成：${def.name} 永载泥板`, 'event');
+    return true;
+  },
+
   slaughter: (count) => {
     const s = get();
     const n = Math.floor(count);
@@ -326,6 +409,12 @@ export const useStore = create<GameState>((set, get) => ({
       population: r.population,
       populationProgress: r.populationProgress,
       fire: r.fire,
+      copper: r.copper,
+      tin: r.tin,
+      bronze: r.bronze,
+      lapis: r.lapis,
+      tradeRoutes: r.tradeRoutes,
+      reputation: r.reputation,
     });
 
     // ── 岗位进阶（采集者 → 农夫 等）──
@@ -404,6 +493,15 @@ export const useStore = create<GameState>((set, get) => ({
       lastActiveAt: Date.now(),
       // 设置随存档保存（图标开关等偏好跟着玩家走）
       settings: s.settings,
+      copper: s.copper,
+      tin: s.tin,
+      bronze: s.bronze,
+      lapis: s.lapis,
+      recorded: s.recorded,
+      recordedOnce: s.recordedOnce,
+      localOre: s.localOre,
+      tradeRoutes: s.tradeRoutes,
+      reputation: s.reputation,
     };
   },
 
@@ -413,6 +511,7 @@ export const useStore = create<GameState>((set, get) => ({
     //   v2 及更早 —— 没有 E2 的牲畜/织物，也没有季节计时，一律补 0
     //   v4 及更早 —— 有独立的「谷物」资源；v5 起谷物并入食物，
     //                迁移时把存档里的 grain **折算进 food**，不让玩家的存粮凭空消失
+    //   v6 起 —— 新增 E3 状态字段（copper/tin/bronze/lapis/recorded/recordedOnce/localOre/tradeRoutes/reputation），一律补默认值
     const oldVersion = data.version ?? 0;
 
     // settings 是嵌套对象，且 loadSnapshot 走的是 set({ ...migrated }) 浅合并——
@@ -463,6 +562,15 @@ export const useStore = create<GameState>((set, get) => ({
       eraElapsedSec: data.eraElapsedSec ?? 0,
       version: SAVE_VERSION,
       settings,
+      copper: data.copper ?? 0,
+      tin: data.tin ?? 0,
+      bronze: data.bronze ?? 0,
+      lapis: data.lapis ?? 0,
+      recorded: data.recorded ?? [],
+      recordedOnce: data.recordedOnce ?? [],
+      localOre: data.localOre ?? 'alluvial',
+      tradeRoutes: data.tradeRoutes ?? [],
+      reputation: data.reputation ?? 50,
     };
     set({ ...migrated, messages: [], running: false });
   },
@@ -516,6 +624,7 @@ export const useStore = create<GameState>((set, get) => ({
         buildings: s.buildings,
         jobs: s.jobs,
         techs: s.techs,
+        localOre: s.localOre,
       },
       nextEraId
     );
@@ -536,6 +645,16 @@ export const useStore = create<GameState>((set, get) => ({
       populationProgress: t.populationProgress,
       // 以下字段不经 transition，直接保持原值：
       // techs / stats / settings / fire / autoMaintainFire
+      // E3 字段重置（E1→E2 交接时置空；E2→E3 交接由 transition 处理 localOre 等）
+      copper: 0,
+      tin: 0,
+      bronze: 0,
+      lapis: 0,
+      recorded: [],
+      recordedOnce: [],
+      localOre: 'alluvial',
+      tradeRoutes: [],
+      reputation: 50,
     });
 
     // 5. 发送时代跃迁消息（重要，置顶显示）
@@ -579,6 +698,39 @@ export const useStore = create<GameState>((set, get) => ({
     saveGame();
 
     return true;
+  },
+
+  toggleRoute: (neighborId) => {
+    const s = get();
+    const def = NEIGHBOR_MAP[neighborId];
+    if (!def) return; // 未知邻邦 id：静默拒绝
+
+    const existing = s.tradeRoutes.find(r => r.partnerId === neighborId);
+    if (existing) {
+      // 已存在 → 关闭（移除该路线）
+      set({ tradeRoutes: s.tradeRoutes.filter(r => r.partnerId !== neighborId) });
+      get().addMessage(`关闭与「${def.name}」的贸易路线`, 'event');
+      return;
+    }
+
+    // 不存在 → 开通。
+    // 青金石路线需 lapis_route 科技（与 settleTradeCycle 的 gating 一致）。
+    if (def.sell === 'lapis' && !s.techs['lapis_route']) {
+      get().addMessage(`开通失败：与「${def.name}」的青金石商路需先研究「青金石商路」`, 'warn');
+      return;
+    }
+
+    // 新增路线：distance/demand/supply 全部来自数据定义，价格/运力由 trade.ts 结算时算。
+    const route: engine.TradeRoute = {
+      partnerId: def.id,
+      demand: def.accept,
+      supply: def.sell,
+      distance: def.distance,
+      cycleAccum: 0,
+      priceHistory: [],
+    };
+    set({ tradeRoutes: [...s.tradeRoutes, route] });
+    get().addMessage(`开通与「${def.name}」的贸易路线`, 'event');
   },
 }));
 
