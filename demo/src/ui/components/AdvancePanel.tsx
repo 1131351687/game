@@ -13,6 +13,7 @@ import { Icon } from './Icon';
 /** 尚未实装的下一代表名（目前只有 E1 / E2 落地） */
 const UNIMPLEMENTED_NEXT: Partial<Record<EraId, string>> = {
   E2: '城邦时代', // E3，设计文档已撰写但未实装
+  E3: '铁器时代', // E4 尚未开放，只展示交接边界与 E3 完成状态
 };
 
 export function AdvancePanel() {
@@ -84,7 +85,9 @@ export function AdvancePanel() {
         }`}
       >
         {!nextMeta ? (
-          `${target} · 尚未实装`
+          check.ok
+            ? `${target} · 交接待开放`
+            : `${target} · 尚未开放`
         ) : check.ok ? (
           <>
             <Icon emoji="🌾" className="text-base mr-1" />

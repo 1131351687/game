@@ -1,9 +1,10 @@
 import { createRngState } from '../core/rng/seeded';
 import { E3 } from '../data/constants';
-import { canResearch, tick, type E1State } from '../game/engine';
+import { canResearch, checkAdvance, tick, type E1State } from '../game/engine';
 import { simulate } from '../game/simulation/simulate';
 import { advancePopulation } from '../game/systems/population';
 import { getTradePrice, settleTradeCycle } from '../game/trade';
+import { isResourceRevealed } from '../game/reveal';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error('回归失败：' + message);
@@ -51,6 +52,26 @@ function run(): void {
   const high = getTradePrice('food', 1, { ...common, jitter: 1.2 });
   assert(high / low < 1.05, '契约价格应压缩随机波动');
   assert(low > 1 && high < 2, '契约价格应保持在基准价附近');
+  const waterPrice = getTradePrice('food', 3, { ...common, jitter: 1, distanceMultiplier: 1.5 });
+  const landPrice = getTradePrice('food', 3, { ...common, jitter: 1, distanceMultiplier: 1 });
+  assert(waterPrice > landPrice, '水路距离修正应同时影响展示价格');
+
+  const e1Visibility = baseState({ era: 'E1', techs: { fire: true, stone_knapping: true } });
+  assert(!isResourceRevealed('copper', e1Visibility), 'E1 不应显示铜');
+  assert(!isResourceRevealed('bronze', e1Visibility), 'E1 不应显示青铜');
+  const e3Visibility = baseState({ era: 'E3', techs: { cuneiform: true } });
+  assert(isResourceRevealed('copper', e3Visibility), 'E3 书写后应显示铜');
+  assert(!isResourceRevealed('bronze', e3Visibility), '未研究冶炼前不应显示青铜');
+
+  const reachableE3 = baseState({
+    era: 'E3',
+    population: 1800,
+    bronze: 2000,
+    recorded: ['iron', 'writing', 'cuneiform', 'bronze_smelting', 'bronze_tools', 'wheel', 'caravan_org', 'metrology', 'lapis_route', 'textile', 'city_planning', 'law'],
+    techs: { iron: true },
+    buildings: { academy: 3, trading_post: 2 },
+  });
+  assert(checkAdvance(reachableE3).ok, 'E3 的全部条件应可达并允许进入交接状态');
   const researchState = baseState({
     experience: 900,
     techs: { writing: true, cuneiform: false },
@@ -88,6 +109,19 @@ function run(): void {
     100,
   );
   assert(refused.notes.some(note => note.includes('拒')), '低声望应可能拒交');
+
+  const interrupted = settleTradeCycle(
+    baseState({
+      jobs: { merchant: 10, scribe: 40 },
+      techs: { cuneiform: true },
+      tradeRoutes: [route],
+    }),
+    E3.TRADE_CYCLE_SEC,
+    () => 0.01,
+    100,
+  );
+  assert(interrupted.routes[0].lastStatus === 'break', '确定性中断应更新路线状态');
+  assert(interrupted.notes.some(note => note.includes('中断')), '商路中断应写入反馈');
 
   const tinState = baseState({
     localOre: 'tin',

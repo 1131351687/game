@@ -125,8 +125,18 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
       // 未解锁前产不出也存不住，不显示
       return !!s.techs['textile'];
 
+    // ── E3 城邦时代 ──
+    // 金属资源只在进入 E3 且研究对应技术后出现，避免资源栏提前出现一排 0。
+    case 'copper':
+    case 'tin':
+      return eraDistance('E3', s.era) >= 0 && !!s.techs['cuneiform'];
+    case 'bronze':
+      return eraDistance('E3', s.era) >= 0 && !!s.techs['bronze_smelting'];
+    case 'lapis':
+      return eraDistance('E3', s.era) >= 0 && !!s.techs['lapis_route'];
+
     default:
-      return true;
+      return false;
   }
 }
 

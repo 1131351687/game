@@ -16,6 +16,7 @@ import { saveGame } from '../core/clock/scheduler';
 import { NEIGHBOR_MAP } from '../game/trade';
 import { createRngState, nextRandom, type RngState } from '../core/rng/seeded';
 import { simulateStep } from '../game/simulation/simulate';
+import type { GameEvent } from '../game/model/events';
 
 // ─────────────────────────────────────────────
 // 类型
@@ -26,6 +27,20 @@ export interface Message {
   category: 'all' | 'tech' | 'event' | 'warn';
   timestamp: number;
   important: boolean;
+}
+
+/** 将规则事件翻译为玩家可读消息；规则层不依赖 UI 文案。 */
+function eventMessage(event: GameEvent): { text: string; category: Message['category']; important?: boolean } | null {
+  switch (event.type) {
+    case 'era.advanced':
+      return { text: `进入${ERAS[event.to].name}`, category: 'event', important: true };
+    case 'simulation.offline':
+      return { text: '离线模拟已完成，资源与随机状态已同步', category: 'all' };
+    case 'trade.warning':
+      return { text: '贸易告警：请检查商路与书吏配置', category: 'warn', important: true };
+    default:
+      return null;
+  }
 }
 
 /** 玩家设置 */
@@ -627,8 +642,6 @@ export const useStore = create<GameState>((set, get) => ({
     const nextEraId = (Object.keys(ERAS) as EraId[]).find(id => ERAS[id].index === nextIndex);
     if (!nextEraId) return false;
 
-    const nextMeta = ERAS[nextEraId];
-
     // 3. 交接规则统一由 game/transition.ts 的纯函数计算
     //
     //    **时代分界线只决定"新增什么内容"，不改动其它任何状态。**
@@ -700,10 +713,12 @@ export const useStore = create<GameState>((set, get) => ({
       reputation: 50,
     });
 
-    // 5. 发送时代跃迁消息（重要，置顶显示）
+    // 5. 先产生结构化事件，再由消息层翻译（重要，置顶显示）
     //
     //    先报"进入了哪个时代"，再报时代带来的岗位变化 —— 因果顺序读起来才对。
-    get().addMessage(`进入${nextMeta.name}`, 'event', true);
+    const eraEvent: GameEvent = { type: 'era.advanced', from: s.era, to: nextEraId };
+    const eraMessage = eventMessage(eraEvent);
+    if (eraMessage) get().addMessage(eraMessage.text, eraMessage.category, eraMessage.important);
 
     // 6. 时代入口的**岗位进阶**：进入农耕（定居）时代时，采集者自动专职为农夫
     //

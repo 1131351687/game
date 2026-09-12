@@ -112,6 +112,7 @@ export function getReputationEffect(rep: number): { priceMul: number; refuseChan
  * @param repEff    声望效果
  * @param conversionLoss 换算损耗（0.15 → 度量衡 0）
  * @param contracted 是否处于契约锁定期
+ * @param distanceMultiplier 水路等运输修正；省略时为 1，兼容旧调用方
  */
 export function getTradePrice(
   good: ResourceId,
@@ -123,10 +124,11 @@ export function getTradePrice(
     conversionLoss: number;
     contracted: boolean;
     hasMetrology: boolean;
+    distanceMultiplier?: number;
   }
 ): number {
   const base = (E3.BASE_PRICES as Record<string, number>)[good] ?? 1;
-  const distFactor = 1 + E3.DISTANCE_COEFF * distance;
+  const distFactor = 1 + E3.DISTANCE_COEFF * distance * (opts.distanceMultiplier ?? 1);
   let price = base * distFactor * opts.demandShock * opts.jitter * opts.repEff.priceMul;
 
   // 契约锁价：把价格拉回"无波动"的基值并 ±10%
@@ -240,6 +242,7 @@ export function settleTradeCycle(
       conversionLoss: eff.conversionLoss,
       contracted,
       hasMetrology: eff.conversionLoss === 0,
+      distanceMultiplier: waterFactor,
     });
     if (r.breachPenaltyUntil !== undefined && nowSec < r.breachPenaltyUntil) {
       pricePay *= 1 + E3.BREACH_PRICE_PENALTY;
@@ -251,6 +254,7 @@ export function settleTradeCycle(
       conversionLoss: eff.conversionLoss,
       contracted,
       hasMetrology: eff.conversionLoss === 0,
+      distanceMultiplier: waterFactor,
     });
 
     // 付出货物量（按付出货单价折算运力）：effectiveCap 是本周期运力（以食物当量计）
