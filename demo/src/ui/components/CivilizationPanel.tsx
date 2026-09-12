@@ -39,10 +39,10 @@ export function CivilizationPanel() {
   const total = eraTechs.length;
   const expOutput = calcExperienceOutput(view);
   const knowledgeHint = s.era === 'E3' && expOutput <= 0
-    ? s.techs.cuneiform
-      ? '知识暂无产出：请在“工作”中分配书吏。'
-      : '知识暂无产出：先研究“楔形文字”，再分配书吏。'
-    : null;
+    ? '知识暂无产出：请在“工作”中分配书吏。'
+    : s.era === 'E3' && !s.techs.cuneiform
+      ? '楔形文字完成前，知识由文明积累缓慢增长；研究后请分配书吏。'
+      : null;
 
   // 渐进解锁：条件未达成时整块面板不渲染（避免开局信息过载）
   const showAdvance = isModuleUnlocked('advance', view);

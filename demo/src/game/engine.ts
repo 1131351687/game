@@ -801,6 +801,12 @@ export function calcExperienceOutput(state: E1State): number {
   const eff = aggregateEffects(state);
 
   if (state.era === 'E3') {
+    // E3 起点保护：楔形文字是书吏的前置，而书吏又是正式知识产出的来源。
+    // 若严格关闭人口经验通道，E2 末尾刚好花光经验的存档会形成无法研究首项科技的死锁。
+    // 在楔形文字完成前保留一段较慢的文明积累；研究完成后立即切换为书吏产出。
+    if (!state.techs.cuneiform) {
+      return state.population * POPULATION.EXP_PER_PERSON * E3.BOOTSTRAP_EXP_MULTIPLIER;
+    }
     const scribes = state.jobs.scribe ?? 0;
     if (scribes <= 0) return 0;
     // 书吏其实力受「记录容量」约束：无空槽则无产出（尚未拍板，先不实现）

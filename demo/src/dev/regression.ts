@@ -79,6 +79,15 @@ function run(): void {
   assert(canResearch('cuneiform', researchState).ok, 'E3 科技应使用同一个 experience 存量作为知识');
   assert(researchState.experience >= 800, 'E3 楔形文字研究成本应能从 experience 存量支付');
   assert(researchState.techs.writing === true, 'E3 楔形文字应以书写为研究前置');
+  const bootstrapState = baseState({
+    experience: 0,
+    population: 100,
+    techs: { writing: true },
+    jobs: {},
+  });
+  assert(calcExperienceOutput(bootstrapState) > 0, 'E3 楔形文字研究前应保留过渡经验产出');
+  const bootstrapTick = tick(bootstrapState, 10, () => 0.5, 100);
+  assert(bootstrapTick.experience > 0, 'E3 入口应能积累足够经验研究楔形文字');
   const scribeState = baseState({
     experience: 10,
     population: 100,

@@ -267,6 +267,8 @@ export const HUNT = {
 // E3 城邦时代常量（数值源：E3-citystate.md §11）
 // ─────────────────────────────────────────────
 export const E3 = {
+  /** 楔形文字研究前的过渡经验倍率，避免 E2→E3 入口出现研究死锁 */
+  BOOTSTRAP_EXP_MULTIPLIER: 0.35,
   /** 记录容量基础（槽位） */
   RECORD_BASE: 3,
   /** 每座学宫提供的记录容量 */
