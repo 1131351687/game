@@ -17,6 +17,7 @@ import {
   type SeasonId,
 } from './season';
 import { settleTradeCycle } from './trade';
+import { advancePopulation } from './systems/population';
 import {
   FIRE,
   FIRE_TIER_INFO,
@@ -1287,26 +1288,15 @@ export function tick(state: E1State, dt: number, rng: () => number = Math.random
   const growth = getPopulationGrowth(state);
   // Math.floor 兜底：旧存档可能存了小数人口（修复前遗留），
   // 这里强制归整，保证人口始终是整数
-  let population = Math.floor(state.population);
-  let progress = state.populationProgress ?? 0;
-
-  progress += growth * dt;
-
-  if (growth >= 0) {
-    while (progress >= 1 && population < K) {
-      population += 1;
-      progress -= 1;
-    }
-    // 已满员：不再累积（否则进度会虚假增长）
-    if (population >= K) progress = 0;
-  } else {
-    // 负增长（饥荒/火灭）：进度向负方向累积，满 −1 减 1 人
-    while (progress <= -1 && population > 0) {
-      population -= 1;
-      progress += 1;
-    }
-    if (population <= 0) progress = 0;
-  }
+  const populationStep = advancePopulation({
+    population: state.population,
+    progress: state.populationProgress ?? 0,
+    capacity: K,
+    growthPerSec: growth,
+    dt,
+  });
+  const population = populationStep.population;
+  const progress = populationStep.progress;
 
   // ── 3.5) 吃粮：单一「食物」池 ──
   //

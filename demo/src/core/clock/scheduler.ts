@@ -3,8 +3,10 @@
 // midLoop  : 1s     生产结算
 // longLoop : 5s     统计 + 自动存档
 
-import { useStore, type GameState } from '../../state/store';
+import { useStore, toEngineState, type GameState } from '../../state/store';
 import { LOOP, OFFLINE } from '../../data/constants';
+import { simulate } from '../../game/simulation/simulate';
+import type { GameEvent } from '../../game/model/events';
 
 const MID_RATIO = LOOP.MID_RATIO;   // 4
 const LONG_RATIO = LOOP.LONG_RATIO; // 20
@@ -137,6 +139,7 @@ export interface OfflineResult {
   elapsedSec: number;
   effectiveSec: number;
   researches: string[];
+  events: GameEvent[];
 }
 
 export function applyOfflineProgress(): OfflineResult | null {
@@ -147,24 +150,21 @@ export function applyOfflineProgress(): OfflineResult | null {
   const capped = Math.min(elapsed, OFFLINE.OFFLINE_CAP_SEC);
   const effective = capped * OFFLINE.OFFLINE_EFFICIENCY;
 
-  // 以 1 秒为步长模拟推进（上限 8 小时 → 最多 14400 步，可接受）
-  const step = 1;
-  let remaining = effective;
-  const researches: string[] = [];
-
-  // 记录研究前状态，便于统计完成了哪些
+  // 离线收益与在线循环共用同一个 simulation 入口。
   const before = { ...s.techs };
+  const result = simulate(
+    toEngineState(s),
+    effective,
+    s.rng,
+    { mode: 'offline', efficiency: 1, maxStepSec: 1 },
+  );
+  useStore.setState({ ...result.state, rng: result.rng });
 
-  while (remaining > 0) {
-    const dt = Math.min(step, remaining);
-    useStore.getState().doTick(dt);
-    remaining -= dt;
-  }
-
-  const after = useStore.getState().techs;
+  const after = result.state.techs;
+  const researches: string[] = [];
   for (const id of Object.keys(after)) {
     if (after[id] && !before[id]) researches.push(id);
   }
 
-  return { elapsedSec: elapsed, effectiveSec: effective, researches };
+  return { elapsedSec: elapsed, effectiveSec: effective, researches, events: result.events };
 }

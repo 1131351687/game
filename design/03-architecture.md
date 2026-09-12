@@ -95,6 +95,13 @@ UI 读取 selector，提交命令，展示 GameEvent。UI 不负责计算资源�
 
 当前项目可以继续使用 demo/src/game/engine.ts 和 demo/src/state/store.ts，但新增系统应按上述边界实现；拆分旧文件时保持行为不变。
 
+当前迁移状态：
+
+- 已完成 game/simulation/simulate.ts，在线单步和离线结算共用模拟入口。
+- 已完成 game/systems/population.ts，人口离散增长从总引擎中抽出。
+- 贸易规则已位于 game/trade.ts，总引擎只负责在周期到达时编排结算。
+- GameEvent 已作为模拟结果的一部分返回；后续继续把时代、科技和建筑消息迁移为结构化事件。
+
 ## 4. 状态、命令和事件
 
 ### 4.1 GameState 是唯一模拟输入

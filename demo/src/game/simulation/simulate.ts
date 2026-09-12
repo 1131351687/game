@@ -1,9 +1,11 @@
 import { nextRandom, type RngState } from '../../core/rng/seeded';
-import { tick, type E1State, type TickResult } from '../engine';
+import { applyJobUpgrade, tick, type E1State, type TickResult } from '../engine';
+import type { GameEvent } from '../model/events';
 
 export interface SimulationStepResult {
   result: TickResult;
   rng: RngState;
+  events: GameEvent[];
 }
 
 export interface SimulationOptions {
@@ -15,6 +17,7 @@ export interface SimulationOptions {
 export interface SimulationResult {
   state: E1State;
   rng: RngState;
+  events: GameEvent[];
 }
 
 const DEFAULT_MAX_STEP_SEC = 0.25;
@@ -36,6 +39,7 @@ export function simulateStep(
   return {
     result: tick(state, dt, random),
     rng,
+    events: [],
   };
 }
 
@@ -53,6 +57,7 @@ export function simulate(
   let remaining = total;
   let state = initial;
   let rng = rngState;
+  const events: GameEvent[] = [];
 
   while (remaining > 0) {
     const dt = Math.min(remaining, maxStep);
@@ -61,9 +66,24 @@ export function simulate(
       ...state,
       ...step.result,
     };
+    const upgraded = applyJobUpgrade(state);
+    if (upgraded) state = { ...state, jobs: upgraded.jobs };
     rng = step.rng;
+    events.push(...step.events);
+    const emittedWarnings = new Set<string>();
+    for (const note of step.result.tradeNotes) {
+      const reason = note.includes('书吏')
+        ? 'missing_scribe'
+        : note.includes('锡')
+          ? 'missing_tin'
+          : 'missing_copper';
+      if (!emittedWarnings.has(reason)) {
+        events.push({ type: 'trade.warning', reason });
+        emittedWarnings.add(reason);
+      }
+    }
     remaining -= dt;
   }
 
-  return { state, rng };
+  return { state, rng, events };
 }

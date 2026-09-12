@@ -32,6 +32,10 @@ if (hasSave) {
       store.addMessage(`离线期间完成研究：${names.join('、')}`, 'tech', true);
     }
   }
+  const warningCount = offline?.events.filter(event => event.type === 'trade.warning').length ?? 0;
+  if (warningCount > 0) {
+    store.addMessage('离线期间有 ' + warningCount + ' 条贸易告警，请检查商路与书吏配置', 'warn', true);
+  }
   store.addMessage('存档已恢复，欢迎回来', 'all');
 } else {
   store.addMessage('新游戏开始 —— 先采集食物攒经验，点亮「掌握火」', 'all', true);
