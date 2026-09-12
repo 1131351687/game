@@ -1253,7 +1253,7 @@ export interface TickResult {
   tradeNotes: string[];
 }
 
-export function tick(state: E1State, dt: number): TickResult {
+export function tick(state: E1State, dt: number, rng: () => number = Math.random): TickResult {
   const eff = aggregateEffects(state);
 
   // 本时代已经过的秒数——季节循环的驱动源
@@ -1422,7 +1422,7 @@ export function tick(state: E1State, dt: number): TickResult {
       if (r.cycleAccum >= cycleSec) { needCycle = true; break; }
     }
     if (needCycle && tradeRoutes.length > 0) {
-      const result = settleTradeCycle(state, cycleSec, Math.random);
+      const result = settleTradeCycle(state, cycleSec, rng);
       // 应用货物增量（付出侧做库存下限保护，不透支为负）
       const apply = (res: string, amount: number) => {
         switch (res) {
@@ -1448,12 +1448,10 @@ export function tick(state: E1State, dt: number): TickResult {
       // 累积值停在 ≥30 永远满足结算条件，此后**每个 tick（0.25s）都重复结算**
       // （应每 30s 一次），每 tick 掏走全额运力（数百单位支付货物），
       // 木材/食物产出被瞬间抽干 → 一切建设停摆。
-      for (const r of tradeRoutes) {
-        r.cycleAccum = 0;
-      }
+      tradeRoutes = tradeRoutes.map(r => ({ ...r, cycleAccum: 0 }));
     } else {
       // 未到周期：推进计时
-      for (const r of tradeRoutes) r.cycleAccum += dt;
+      tradeRoutes = tradeRoutes.map(r => ({ ...r, cycleAccum: r.cycleAccum + dt }));
     }
   }
 

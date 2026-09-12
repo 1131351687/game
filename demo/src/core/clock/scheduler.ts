@@ -34,7 +34,10 @@ export function startClock(): void {
 export function stopClock(): void {
   if (worker) {
     worker.postMessage({ loop: 'clear' });
+    worker.terminate();
+    worker = null;
   }
+  loopTick = 0;
 }
 
 export function execGameLoops(periods = 1): void {

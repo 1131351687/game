@@ -1,319 +1,223 @@
 # 03 · 架构设计
 
-## 1. 四层分层架构
+## 1. 架构目标
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  UI 层 (ui/)                                                │
-│  React 组件、Tabs、渲染函数、交互处理                          │
-├─────────────────────────────────────────────────────────────┤
-│  状态层 (state/)                                            │
-│  Zustand Store、派生量缓存、快照                              │
-├─────────────────────────────────────────────────────────────┤
-│  玩法层 (game/)                                             │
-│  资源 / 岗位 / 科技 / 政府 / 太空 / 重置 / 成就 等业务逻辑    │
-├─────────────────────────────────────────────────────────────┤
-│  核心层 (core/)                                             │
-│  时钟 / 存档 / 随机数 / 消息 / 本地化 / 格式化                 │
-└─────────────────────────────────────────────────────────────┘
-                          ↕
-                 ┌─────────────────┐
-                 │  数据层 (data/) │
-                 │  纯 JSON/TS 常量 │
-                 └─────────────────┘
-```
+Civilis 是单机、纯前端、长时间运行的放置游戏。架构优先保证以下性质：
 
-### 调用方向规则
+1. 模拟核心可脱离 React 和浏览器运行，便于自动试玩、离线收益、回放和测试。
+2. 玩法规则可复现，随机结果由存档中的随机源决定，而不是直接调用 Math.random。
+3. 状态变化有单一入口，UI 不直接改状态，玩法层不依赖 Zustand。
+4. 存档格式可演进，每个版本都有明确的迁移和校验。
+5. 新内容优先通过数据表扩展，只有真正新增机制时才增加代码系统。
 
-- **核心层 (core)**：不依赖任何其他层
-- **数据层 (data)**：不依赖任何其他层
-- **玩法层 (game)**：可依赖 core + data，**不可依赖 state 或 ui**
-- **状态层 (state)**：可依赖 core + data + game
-- **UI 层 (ui)**：可依赖所有其他层
+这是一份面向当前项目的渐进式架构。不要为了完整架构一次性引入所有未来模块。
 
-**禁止**：玩法层直接操作 DOM，UI 层直接修改状态（必须通过 action）
+## 2. 分层与依赖方向
 
-## 2. 目录结构
+    React UI
+       ↓ commands / selectors
+    State adapter (Zustand)
+       ↓ calls
+    Simulation facade
+       ↓
+    Pure game systems + data definitions
+       ↓
+    Core services (clock / save / rng / format)
 
-```
-civilis/
-├── public/
-│   ├── icons/                  # 图标资源
-│   └── fonts/                  # 字体
-├── src/
-│   ├── core/                   # 核心基础设施
-│   │   ├── clock/              # 游戏时钟
-│   │   │   ├── worker.ts       # Web Worker 入口
-│   │   │   ├── scheduler.ts    # 三级循环调度
-│   │   │   └── types.ts
-│   │   ├── save/               # 存档系统
-│   │   │   ├── db.ts           # Dexie 数据库定义
-│   │   │   ├── migration.ts    # 版本迁移
-│   │   │   ├── serializer.ts   # JSON + 压缩
-│   │   │   └── index.ts
-│   │   ├── rng/                # 随机数
-│   │   │   ├── lcg.ts          # 线性同余
-│   │   │   └── index.ts
-│   │   ├── message/            # 消息队列
-│   │   │   ├── queue.ts
-│   │   │   └── filters.ts
-│   │   ├── i18n/               # 本地化
-│   │   │   ├── init.ts
-│   │   │   └── locales/
-│   │   ├── format/             # 数字格式化
-│   │   │   └── number.ts
-│   │   └── logger.ts           # 日志
-│   │
-│   ├── game/                   # 玩法系统
-│   │   ├── resources/          # 资源系统
-│   │   │   ├── types.ts
-│   │   │   ├── engine.ts       # 产出计算
-│   │   │   └── actions.ts
-│   │   ├── jobs/               # 岗位系统
-│   │   │   ├── types.ts
-│   │   │   ├── engine.ts
-│   │   │   └── actions.ts
-│   │   ├── tech/               # 科技系统
-│   │   │   ├── types.ts
-│   │   │   ├── tree.ts         # 科技树
-│   │   │   └── actions.ts
-│   │   ├── civics/             # 政府系统
-│   │   │   ├── types.ts
-│   │   │   ├── engine.ts
-│   │   │   └── actions.ts
-│   │   ├── space/              # 太空探索
-│   │   │   ├── types.ts
-│   │   │   ├── planets.ts
-│   │   │   └── actions.ts
-│   │   ├── gene/               # 基因/种族
-│   │   ├── events/             # 随机事件
-│   │   ├── season/             # 季节
-│   │   ├── prestige/           # 重置系统
-│   │   └── achieve/            # 成就系统
-│   │
-│   ├── state/                  # 状态管理
-│   │   ├── store.ts            # 主 Store
-│   │   ├── selectors.ts        # 选择器
-│   │   ├── derivations.ts      # 派生量缓存
-│   │   ├── snapshots.ts        # 快照
-│   │   └── actions/            # 业务 actions
-│   │       └── index.ts
-│   │
-│   ├── ui/                     # UI 层
-│   │   ├── app/
-│   │   │   ├── App.tsx         # 根组件
-│   │   │   └── layout/
-│   │   ├── tabs/               # 主 Tabs
-│   │   │   ├── CivilTab.tsx
-│   │   │   ├── CivicTab.tsx
-│   │   │   ├── ResearchTab.tsx
-│   │   │   ├── SpaceTab.tsx
-│   │   │   ├── StatsTab.tsx
-│   │   │   └── SettingsTab.tsx
-│   │   ├── components/         # 通用组件
-│   │   │   ├── Tooltip.tsx
-│   │   │   ├── Queue.tsx
-│   │   │   ├── NumberInput.tsx
-│   │   │   ├── Chart.tsx
-│   │   │   └── MessageLog.tsx
-│   │   └── renderers/          # 子系统渲染器
-│   │       ├── ResourcePanel.tsx
-│   │       ├── TechTree.tsx
-│   │       └── SpaceMap.tsx
-│   │
-│   ├── data/                   # 纯数据表
-│   │   ├── resources.ts        # 资源定义
-│   │   ├── jobs.ts             # 岗位定义
-│   │   ├── tech.ts             # 科技定义（500+ 条）
-│   │   ├── events.ts           # 事件定义（20+ 条）
-│   │   ├── seasons.ts          # 季节定义
-│   │   ├── civilizations.ts    # 文明定义
-│   │   └── achievements.ts     # 成就定义
-│   │
-│   ├── hooks/                  # React Hooks
-│   │   ├── useGameClock.ts
-│   │   ├── useResource.ts
-│   │   └── useSave.ts
-│   │
-│   ├── styles/                 # 全局样式
-│   │   ├── index.css           # Tailwind 入口
-│   │   └── themes.ts           # 主题定义
-│   │
-│   └── main.tsx                # 应用入口
-│
-├── index.html
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-├── tailwind.config.js
-├── .eslintrc.cjs
-├── .prettierrc
-└── README.md
-```
+推荐依赖方向：
 
-## 3. 模块边界规则
+    ui → state → game → data
+                  ↘ core
+    core 不依赖 ui、state、game
+    data 不依赖 ui、state、game
 
-### 3.1 core/ 规则
-- **不依赖任何其他层**
-- 不允许 import game / state / ui / data
-- 函数必须是纯函数（无副作用，除存档写入）
-- 测试覆盖率必须 100%
+### 2.1 data：定义，不计算
 
-### 3.2 data/ 规则
-- **纯数据，零逻辑**
-- 不允许 import 任何业务代码
-- 只允许 export 常量
-- 类型定义集中在 `types.ts`
+存放资源、岗位、建筑、科技、时代、事件等静态定义。数据表可以引用 ID，但不应调用 Store 或产生副作用。
 
-### 3.3 game/ 规则
-- 可 import core + data
-- **不允许 import state 或 ui**
-- 每个子系统内部结构一致：`types.ts / engine.ts / actions.ts`
-- `engine.ts` 是纯函数（计算产出、消耗等）
-- `actions.ts` 修改状态（调用 store action）
+### 2.2 game：规则和模拟
 
-### 3.4 state/ 规则
-- 可 import core + data + game
-- **不允许 import ui**
-- Zustand store 集中在此
-- 派生量必须有缓存策略
+存放纯函数、命令和模拟系统。它只接收状态、命令、时间和服务接口，返回新状态与结构化事件。禁止导入 React、Zustand、localStorage 和 DOM API。
 
-### 3.5 ui/ 规则
-- 可 import 所有层
-- **不允许直接修改状态**（必须调用 store action）
-- 组件尽量无状态（props 驱动）
-- 渲染器只读 state，不写 state
+### 2.3 state：应用状态适配器
 
-## 4. 数据流（单向）
+Zustand 只负责保存当前状态、向 UI 提供 selector，以及把 UI 命令转交给 game 层。它不应成为玩法规则的唯一存放位置。
 
-```
-用户操作 (UI)
-    ↓
-store action (state/)
-    ↓
-业务逻辑 (game/)
-    ↓
-状态更新 (state/)
-    ↓
-UI 重绘 (ui/)
-```
+### 2.4 core：可替换基础设施
 
-**禁止**：
-- UI 直接改 state（`store.setState(...)` 在组件里）
-- game 层直接操作 DOM
-- 跨层调用（UI 直接调 game）
+提供时钟、存档仓库、序列化、迁移、随机源和数字格式化。业务层依赖接口，不依赖具体的 localStorage 或 Worker 实现。
 
-## 5. 主循环与数据流集成
+### 2.5 ui：展示与交互
 
-```
-Worker 时钟 (core/clock/)
-    ↓ postMessage {loop: 'main', periods}
-scheduler (core/clock/scheduler.ts)
-    ↓
-execGameLoops(periods)
-    ├─ fastLoop()    → state.derivations 更新
-    ├─ midLoop()     → game/events 触发
-    ├─ doCallbacks() → game/prestige 存档
-    └─ longLoop()    → core/save 写盘 + game/achieve 检查
-```
+UI 读取 selector，提交命令，展示 GameEvent。UI 不负责计算资源产出，不直接调用 setState。
 
-详见 04-core-systems.md。
+## 3. 推荐目录
 
-## 6. 子系统模块模板
+    src/
+    ├── core/
+    │   ├── clock/
+    │   │   ├── worker.ts             # Worker 定时器
+    │   │   └── gameClock.ts          # elapsed time 调度
+    │   ├── save/
+    │   │   ├── repository.ts         # 存档读写接口
+    │   │   ├── localStorageRepo.ts   # 当前实现
+    │   │   ├── migrations.ts         # 版本迁移
+    │   │   └── codec.ts              # 序列化与校验
+    │   ├── rng/
+    │   │   ├── types.ts
+    │   │   └── seeded.ts
+    │   └── format/
+    ├── data/                         # 纯定义
+    ├── game/
+    │   ├── model/
+    │   │   ├── state.ts              # GameState / Snapshot
+    │   │   └── events.ts             # GameEvent
+    │   ├── systems/
+    │   │   ├── production.ts
+    │   │   ├── population.ts
+    │   │   ├── jobs.ts
+    │   │   ├── buildings.ts
+    │   │   ├── technology.ts
+    │   │   ├── trade.ts
+    │   │   └── transition.ts
+    │   ├── commands/
+    │   │   ├── researchTech.ts
+    │   │   ├── build.ts
+    │   │   └── advanceEra.ts
+    │   └── simulation/
+    │       ├── simulate.ts            # 统一模拟入口
+    │       └── offline.ts
+    ├── state/
+    │   ├── store.ts
+    │   ├── selectors.ts
+    │   └── adapter.ts
+    └── ui/
 
-每个子系统都遵循统一结构：
+当前项目可以继续使用 demo/src/game/engine.ts 和 demo/src/state/store.ts，但新增系统应按上述边界实现；拆分旧文件时保持行为不变。
 
-```
-game/{system}/
-├── types.ts         # 类型定义
-├── engine.ts        # 纯函数（计算、判断）
-├── actions.ts       # 状态修改（调用 store）
-├── index.ts         # 导出
-└── README.md        # 子系统说明（可选）
-```
+## 4. 状态、命令和事件
 
-### types.ts 示例（resources）
-```ts
-export interface ResourceDef {
-  id: string;
-  name: string;
-  icon: string;
-  baseValue: number;
-  baseCost: number;
-  costMultiplier: number;
-  unlock: UnlockCondition;
-  category: 'basic' | 'industrial' | 'space' | 'special';
-}
+### 4.1 GameState 是唯一模拟输入
 
-export interface ResourceState {
-  id: string;
-  count: number;
-  storage: number;
-  unlocked: boolean;
-}
-```
-
-### engine.ts 示例
-```ts
-export function resourceOutput(def: ResourceDef, state: ResourceState, context: GameContext): number {
-  const base = def.baseValue * state.count;
-  const techBonus = context.techs['production_boost'] ? 1.5 : 1;
-  return base * techBonus;
-}
-```
-
-### actions.ts 示例
-```ts
-export function addResource(id: string, amount: number): void {
-  useStore.setState(state => ({
-    resources: {
-      ...state.resources,
-      [id]: { ...state.resources[id], count: state.resources[id].count + amount }
+    export interface GameState {
+      era: EraId;
+      food: number;
+      population: number;
+      jobs: Record<JobId, number>;
+      buildings: Record<BuildingId, number>;
+      techs: Record<TechId, boolean>;
+      rng: RngState;
+      stats: GameStats;
     }
-  }));
-}
-```
 
-## 7. 关键文件清单（MVP 必须实现）
+游戏层不得原地修改输入对象。所有修改都返回新的切片或新的状态。
 
-| 文件 | 职责 | 优先级 |
-|---|---|---|
-| `core/clock/worker.ts` | Web Worker 定时器 | P0 |
-| `core/clock/scheduler.ts` | 三级循环调度 | P0 |
-| `core/save/db.ts` | IndexedDB 数据库 | P0 |
-| `core/save/migration.ts` | 版本迁移 | P0 |
-| `core/rng/lcg.ts` | 种子随机 | P0 |
-| `core/format/number.ts` | 数字格式化 | P0 |
-| `game/resources/engine.ts` | 资源产出 | P0 |
-| `game/jobs/engine.ts` | 岗位产出 | P0 |
-| `game/tech/tree.ts` | 科技树 | P0 |
-| `game/prestige/engine.ts` | 重置逻辑 | P0 |
-| `state/store.ts` | Zustand 主 Store | P0 |
-| `ui/app/App.tsx` | 根组件 | P0 |
-| `data/resources.ts` | 资源定义 | P0 |
-| `data/jobs.ts` | 岗位定义 | P0 |
-| `data/tech.ts` | 科技定义 | P0 |
+### 4.2 命令表达玩家意图
 
-详见 10-roadmap.md 的"里程碑"部分。
+    type GameCommand =
+      | { type: 'job.set'; jobId: JobId; count: number }
+      | { type: 'building.buy'; buildingId: BuildingId }
+      | { type: 'tech.research'; techId: TechId }
+      | { type: 'era.advance' };
 
-## 8. 功能模块与代码位置映射
+命令处理器负责校验条件、计算结果和生成事件。UI 只提交命令，不重复实现校验。
 
-| 功能模块 | 本项目实现位置 |
-|---|---|
-| 全局状态变量 | `state/store.ts` + `game/*/types.ts` |
-| 主循环与应用入口 | `ui/app/App.tsx` + `core/clock/scheduler.ts` |
-| 页面布局与 Tab 渲染 | `ui/app/layout/` + `ui/tabs/` |
-| 通用工具（格式化 / 消息 / 随机 / 时钟） | 拆为 `core/format` + `core/message` + `core/rng` + `core/clock` |
-| 资源定义与产出逻辑 | `game/resources/` + `data/resources.ts` |
-| 岗位与工人分配 | `game/jobs/` + `data/jobs.ts` |
-| 科技树 | `game/tech/` + `data/tech.ts` |
-| 太空探索 | `game/space/` + `data/civilizations.ts` |
-| 随机事件 | `game/events/` + `data/events.ts` |
-| 季节 / 周期性玩法 | `game/season/` + `data/seasons.ts` |
-| 多级重置 | `game/prestige/` |
-| 成就系统 | `game/achieve/` + `data/achievements.ts` |
-| 本地化 | `core/i18n/` |
-| 样式 | `styles/index.css` + Tailwind |
+### 4.3 事件是规则层与 UI 层的边界
+
+    type GameEvent =
+      | { type: 'tech.completed'; techId: TechId }
+      | { type: 'building.completed'; buildingId: BuildingId }
+      | { type: 'era.advanced'; from: EraId; to: EraId }
+      | { type: 'action.rejected'; action: string; reason: string };
+
+游戏层返回事件 ID 和参数，不拼接中文 UI 文案。消息组件负责本地化和展示。
+
+## 5. 统一数据流
+
+    用户操作
+      ↓
+    state.dispatch(command)
+      ↓
+    game command handler
+      ↓
+    { state, events }
+      ↓
+    Zustand 更新
+      ↓
+    UI selector 重绘
+
+时钟和离线收益也必须进入同一个模拟入口：
+
+    Worker / 页面恢复 / 离线结算
+      ↓ elapsed seconds
+    simulate(state, options)
+      ↓
+    GameState + GameEvent[]
+
+这样在线、加速和离线模式使用同一套规则，只改变时间步长和效率参数。
+
+## 6. 纯函数和服务边界
+
+    export interface SimulationContext {
+      rng: RandomSource;
+      mode: 'online' | 'offline' | 'test';
+    }
+
+    export interface RandomSource {
+      next(): number;
+      pick<T>(items: readonly T[]): T;
+    }
+
+规则：
+
+- 不在 game 中调用 Math.random。
+- 不在 game 中调用 localStorage。
+- 不在 game 中调用 useStore.getState。
+- 不修改传入的 GameState、数组或嵌套对象。
+- 结果中明确返回资源变化、状态变化和事件。
+
+## 7. 主循环
+
+时钟只报告经过的真实时间，游戏模拟负责限制步长和补算量。不要把玩法正确性绑定到 250ms 的 tick 计数。
+
+    export function advanceBy(elapsedSec: number): SimulationResult {
+      const capped = Math.min(elapsedSec, MAX_CATCH_UP_SEC);
+      let remaining = capped;
+      let state = currentState;
+      const events: GameEvent[] = [];
+
+      while (remaining > 0) {
+        const dt = Math.min(remaining, MAX_STEP_SEC);
+        const result = simulateStep(state, dt, context);
+        state = result.state;
+        events.push(...result.events);
+        remaining -= dt;
+      }
+
+      return { state, events };
+    }
+
+250ms / 1s / 5s 仍可作为性能调度策略，但不是业务层的状态模型。
+
+## 8. 渐进式迁移
+
+1. 先为现有 engine.tick、transition、trade 增加纯函数测试。
+2. 把 Math.random 替换为注入的 RandomSource。
+3. 从 engine.ts 拆出贸易、人口、生产和时代跃迁系统。
+4. 把 store.ts 中的研究、建造、跃迁逻辑迁移为 command handler。
+5. 引入 GameEvent，将中文文案移到 UI presenter。
+6. 将时钟、离线收益和存档拆为独立适配器。
+
+每一步都应保持现有 demo 可运行，不进行一次性大重构。
+
+## 9. 架构验收标准
+
+- game 可以在没有 React、Zustand、DOM 的环境中执行。
+- 同一个初始状态、时间和 RNG 种子得到相同结果。
+- 在线和离线模拟使用同一个 simulate 入口。
+- 存档损坏或字段缺失时不会让应用崩溃。
+- UI 组件不出现 store.setState。
+- 每个新增系统至少有规则测试和一个跨系统集成测试。
 
 ---
 

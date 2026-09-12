@@ -156,7 +156,7 @@ export interface TradeCycleResult {
 export function settleTradeCycle(
   state: E1State,
   cycleSec: number,
-  rng: () => number
+  rng: () => number = Math.random,
 ): TradeCycleResult {
   const eff = aggregateEffects(state);
   const merchants = state.jobs.merchant ?? 0;

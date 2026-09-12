@@ -14,6 +14,7 @@ import { isJobRetired } from '../game/reveal';
 import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
 import { NEIGHBOR_MAP } from '../game/trade';
+import { createRngState, nextRandom, type RngState } from '../core/rng/seeded';
 
 // ─────────────────────────────────────────────
 // 类型
@@ -71,6 +72,8 @@ export function applyTheme(theme: GameSettings['theme']): void {
 export interface GameState {
   running: boolean;
   version: number;
+  /** 随机源状态，随存档保存以保证玩法结果可复现 */
+  rng: RngState;
   /** 当前所处时代 */
   era: EraId;
 
@@ -197,6 +200,7 @@ const SAVE_VERSION = 6;
 const initialState = () => ({
   running: false,
   version: SAVE_VERSION,
+  rng: createRngState(),
   era: 'E1' as EraId,
   food: INITIAL_STATE.food,
   wood: INITIAL_STATE.wood,
@@ -397,7 +401,13 @@ export const useStore = create<GameState>((set, get) => ({
     const s = get();
     if (!s.running) return;
 
-    const r = engine.tick(engineView(s), dt);
+    let rng = s.rng;
+    const random = (): number => {
+      const result = nextRandom(rng);
+      rng = result.state;
+      return result.value;
+    };
+    const r = engine.tick(engineView(s), dt, random);
     set({
       food: r.food,
       wood: r.wood,
@@ -415,6 +425,7 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: r.lapis,
       tradeRoutes: r.tradeRoutes,
       reputation: r.reputation,
+      rng,
     });
 
     // ── 岗位进阶（采集者 → 农夫 等）──
@@ -472,8 +483,9 @@ export const useStore = create<GameState>((set, get) => ({
   // ── 存档 ──
   takeSnapshot: () => {
     const s = get();
-    return {
+      return {
       version: SAVE_VERSION,
+      rng: s.rng,
       era: s.era,
       food: s.food,
       wood: s.wood,
@@ -513,6 +525,11 @@ export const useStore = create<GameState>((set, get) => ({
     //                迁移时把存档里的 grain **折算进 food**，不让玩家的存粮凭空消失
     //   v6 起 —— 新增 E3 状态字段（copper/tin/bronze/lapis/recorded/recordedOnce/localOre/tradeRoutes/reputation），一律补默认值
     const oldVersion = data.version ?? 0;
+    const savedRng = data.rng as Partial<RngState> | undefined;
+    const rng: RngState = {
+      seed: savedRng?.seed ?? createRngState().seed,
+      cursor: savedRng?.cursor ?? 0,
+    };
 
     // settings 是嵌套对象，且 loadSnapshot 走的是 set({ ...migrated }) 浅合并——
     // 旧存档的 settings 会整体覆盖默认值，并不会逐字段补全。
@@ -561,6 +578,7 @@ export const useStore = create<GameState>((set, get) => ({
       fabric: data.fabric ?? 0,
       eraElapsedSec: data.eraElapsedSec ?? 0,
       version: SAVE_VERSION,
+      rng,
       settings,
       copper: data.copper ?? 0,
       tin: data.tin ?? 0,
@@ -609,6 +627,12 @@ export const useStore = create<GameState>((set, get) => ({
     //    入参用完整 state 而不是 engineView：engineView 是"引擎只读切片"
     //    （只含引擎计算需要的字段），而跃迁要带着**队列**过河，
     //    所以这里显式构造交接切片。
+    let rng = s.rng;
+    const random = (): number => {
+      const result = nextRandom(rng);
+      rng = result.state;
+      return result.value;
+    };
     const t = computeEraTransition(
       {
         era: s.era,
@@ -626,7 +650,8 @@ export const useStore = create<GameState>((set, get) => ({
         techs: s.techs,
         localOre: s.localOre,
       },
-      nextEraId
+      nextEraId,
+      random
     );
 
     set({
@@ -652,7 +677,8 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: 0,
       recorded: [],
       recordedOnce: [],
-      localOre: 'alluvial',
+      localOre: t.localOre,
+      rng,
       tradeRoutes: [],
       reputation: 50,
     });

@@ -1,6 +1,6 @@
 # 放置 + 文明进化游戏 · 详细设计方案
 
-> 这是一份**完整设计与实施方案**，目标是做一个纯前端、放置 + 文明进化类游戏。
+> 这是一份面向当前实现的**设计与渐进式演进方案**，目标是做一个纯前端、放置 + 文明进化类游戏。
 >
 > 文档共 11 份，按编号顺序阅读即可。**核心设计**：三级循环时钟 + 种子随机 + 多级重置 + 阶段化解锁。
 
@@ -35,7 +35,7 @@
 
 ## 一句话方案
 
-**玩法骨架：三级时钟（250ms / 1s / 5s）+ 种子随机 + 多级重置 + 消息过滤 + 阶段化解锁；技术栈：Vite + React 18 / Vue 3 + Zustand/Pinia + TypeScript + IndexedDB + Tailwind，四层分层架构，8 周出 MVP。放弃 jQuery 时代的老架构（可变全局对象 + 巨型单文件 main.js + localStorage），因为它改数据要手动重绘、首屏全量加载、存档上限 5MB，撑不起 200 资源 / 500 科技的性能目标与响应式状态管理。**
+**玩法骨架：Worker 提供 elapsed time，统一模拟入口驱动在线、加速和离线收益；随机源可复现；GameState 与 GameEvent 组成纯模拟核心；Zustand 作为 UI 适配器；存档通过 Repository 与迁移链隔离。技术栈：Vite + React 18 + Zustand + TypeScript + Tailwind。当前使用 localStorage，未来按存档体积和多存档需求再切换 IndexedDB。**
 
 ---
 

@@ -107,7 +107,8 @@ export interface EraTransitionResult {
  */
 export function computeEraTransition(
   s: EraTransitionSource,
-  nextEraId: EraId
+  nextEraId: EraId,
+  rng: () => number = Math.random,
 ): EraTransitionResult {
   const result: EraTransitionResult = {
     era: nextEraId,
@@ -141,7 +142,7 @@ export function computeEraTransition(
   // E2→E3 交接的特殊处理
   if (nextEraId === 'E3') {
     // localOre 开局随机（用户拍板）
-    const rand = Math.random();
+    const rand = rng();
     const localOre: 'copper' | 'tin' | 'alluvial' =
       rand < 1 / 3 ? 'copper' : rand < 2 / 3 ? 'tin' : 'alluvial';
 
