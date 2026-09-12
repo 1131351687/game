@@ -192,8 +192,9 @@ export function getRevealedJobs(s: E1State) {
  * 例外由数据声明：`supersededBy`（功能被后续建筑取代）与 `obsoleteAfterEra`
  * （机制已失效），见 isBuildingBuildable——E1 住所/火塘仍按设计退役。
  *
- * 岗位则相反 —— 设计文档 §7 明确要求采集者 / 猎人**继承并降权**，
- * 且 E2 建筑仍消耗木材与石头，所以 JobPanel 不做时代过滤。
+ * 岗位则相反 —— 有进阶目标的岗位在其目标时代到来时**退役**（采集者→农夫，
+ * 见 isJobRetired，2026-09-12 用户拍板）；无进阶关系的岗位（猎人、伐木者…）
+ * 跨时代保留。E2 建筑仍消耗木材与石头，所以 JobPanel 不做时代过滤。
  */
 export function eraBuildings(s: E1State) {
   return BUILDINGS.filter(

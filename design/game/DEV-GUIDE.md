@@ -152,6 +152,20 @@ npx tsx src/dev/tmp-render.tsx > /tmp/now.html
 # 与基线比对（见 ssr-byte-diff-regression skill）
 ```
 
+### 4.4 反向铁律：新时代是"叠加开放"，不是换版本（用户拍板 2026-09-12）
+
+时代门控只拦"新机制漏进旧时代"，**绝不反过来把旧内容从新时代剥离**。
+进 E2 后玩家必须仍能看到/使用 E1 的一切：已学科技、漏学科技（仍可研究）、
+建筑（可继续新建，除非数据声明 supersededBy/obsoleteAfterEra）、
+无进阶关系的岗位、资源与产出。
+
+- 跃迁交接：`game/transition.ts` 只新增（唯一副作用 = 新时代时钟归零）。
+- 科技 UI 数据源必须用 `techsUpToEra(era)`（当前+以前所有时代），
+  **不是** `techsOfEra(era)` —— 后者会让已学/漏学的旧科技"消失"（踩过：TechGrid）。
+- 建筑用 `eraBuildings` / `isBuildingBuildable`（所属时代已到达即可建）。
+- 例外必须**数据声明**（`supersededBy` / `obsoleteAfterEra` / `JobDef.upgradesTo`），
+  不许在 UI/引擎里写死时代过滤。
+
 ---
 
 ## 五、存档迁移（SAVE_VERSION 每代 +1）

@@ -18,7 +18,7 @@
 import { useStore, toEngineState } from '../../state/store';
 import { calcExperienceOutput } from '../../game/engine';
 import { isModuleUnlocked } from '../../game/reveal';
-import { techsOfEra } from '../../data/techs';
+import { techsUpToEra } from '../../data/techs';
 import { formatNumber, formatRate } from '../../core/format';
 
 import { Icon } from './Icon';
@@ -29,11 +29,11 @@ export function CivilizationPanel() {
   const s = useStore();
   const view = toEngineState(s);
 
-  // 已学 / 总数都按**当前时代**统计。
-  // 若沿用全局 TECHS.length，加入 E2 的 30 项科技后，
-  // 远古时代的顶栏会从「已学 0 / 20」变成「已学 0 / 50」——
-  // 玩家的文明进度读数被稀释（E1 的 20 项占不到一半），远古时代的界面也被无端改动。
-  const eraTechs = techsOfEra(s.era);
+  // 已学 / 总数按**当前及以前所有时代**统计（techsUpToEra）。
+  // 跃迁原则：新时代是叠加开放，不是换版本——E1 的知识积累是 E2 进度的一部分。
+  // 进 E2 时读数从「12 / 20」变为「12 / 50」而不是归零重计；
+  // 与 TechGrid 已学区的口径保持一致。
+  const eraTechs = techsUpToEra(s.era);
   const researched = eraTechs.filter(t => s.techs[t.id]).length;
   const total = eraTechs.length;
   const expOutput = calcExperienceOutput(view);

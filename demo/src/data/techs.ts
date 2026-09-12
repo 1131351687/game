@@ -5,6 +5,7 @@
 // position 供科技树界面直接使用，无需运行时计算布局
 
 import type { EraId } from './era';
+import { eraDistance } from './era';
 import type { JobId } from './jobs';
 import type { BuildingId } from './buildings';
 import type { ResourceId } from './resources';
@@ -597,6 +598,19 @@ export function branchesOfEra(era: EraId): TechBranch[] {
  */
 export function techsOfEra(era: EraId): TechDef[] {
   return TECHS.filter(t => t.era === era);
+}
+
+/**
+ * 返回**当前及以前所有时代**的科技。
+ *
+ * 跃迁原则（用户拍板 2026-09-12）：新时代是**叠加开放**，不是换版本——
+ * 旧时代漏学的科技在新时代仍然可见、可研究（引擎 canResearch 本就无时代限制），
+ * 已学科技也继续计入文明积累。UI 若只列 `techsOfEra(当前)`，
+ * 玩家进 E2 后会发现：已学的 E1 科技从"已学"区消失、漏学的 E1 科技永远点不到。
+ * 因此科技区的数据源必须用本函数，而不是 techsOfEra。
+ */
+export function techsUpToEra(era: EraId): TechDef[] {
+  return TECHS.filter(t => eraDistance(t.era, era) >= 0);
 }
 
 /** 科技类别在「文明」模块中的元数据 */

@@ -131,8 +131,9 @@ export function computeEraTransition(
     // 建筑：**全数保留**（住所/火塘/作坊继续生效、继续贡献承载力与加成），
     // 不再做"升级映射"式的替换——那等于把玩家的建筑换成另一种东西
     buildings: s.buildings,
-    // 岗位：**保留分配**。E1 的采集者/猎人会继续产食物（见 E2 §7「继承并降权」），
-    // 玩家不必在跃迁后把所有岗位重新点一遍
+    // 岗位：**保留分配**。猎人/伐木者等无进阶关系的岗位原样继续；
+    // 采集者的"进阶为农夫"发生在跃迁**之后**（store.advanceEra 第 6 步的事件，
+    // 见 applyJobUpgradeAll）——那是新时代带来的内容，不是本函数的职责
     jobs: s.jobs,
     localOre: s.localOre,
   };

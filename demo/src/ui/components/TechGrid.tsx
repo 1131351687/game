@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, toEngineState } from '../../state/store';
 import { isTechRevealed } from '../../game/reveal';
-import { techsOfEra, BRANCH_INFO, type TechDef } from '../../data/techs';
+import { techsUpToEra, BRANCH_INFO, type TechDef } from '../../data/techs';
 import { describeEffects, TECH_TYPE_LABEL } from './techEffectsText';
 import { Icon } from './Icon';
 import { formatNumber } from '../../core/format';
@@ -119,17 +119,21 @@ export function TechGrid() {
 
   // ── 主区：只收「前置已满足且尚未学」的科技 ──
   // 已学的**刻意排除**：它们进下方的分类区，主区保持"待办清单"的语义。
+  // 数据源用 techsUpToEra（当前及以前所有时代）：跃迁是叠加开放不是换版本，
+  // 旧时代漏学的科技在新时代仍要可见、可研究。
   const available: { def: TechDef; status: Status }[] = [];
-  for (const def of techsOfEra(s.era)) {
+  for (const def of techsUpToEra(s.era)) {
     if (s.techs[def.id]) continue; // 已学 → 归分类区
     if (!isTechRevealed(def.id, view)) continue; // 前置未满足 → 还不到登场的时候
     available.push({ def, status: view.experience >= def.cost ? 'ready' : 'short' });
   }
 
   // ── 分类区：已学科技按分支归组，按 BRANCH_INFO.order 排序 ──
+  // 跨代累计（techsUpToEra）：进 E2 后 E1 的已学科技不能"消失"——
+  // 它们仍是玩家文明的一部分。各时代分支名不同，同名分支（core/gate）自然归并。
   const learnedGroups = useMemo(() => {
     const groups = new Map<string, TechDef[]>();
-    for (const def of techsOfEra(s.era)) {
+    for (const def of techsUpToEra(s.era)) {
       if (!s.techs[def.id]) continue;
       const list = groups.get(def.branch) ?? [];
       list.push(def);
@@ -302,7 +306,7 @@ export function TechGrid() {
             <span className="text-[10px]">{showLearned ? '▼' : '▶'}</span>
             <span>已学科技</span>
             <span className="tabular-nums text-gray-500">
-              {learnedCount} / {techsOfEra(s.era).length}
+              {learnedCount} / {techsUpToEra(s.era).length}
             </span>
           </button>
 
