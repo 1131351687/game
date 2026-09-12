@@ -2,7 +2,7 @@
 
 import type { EraId } from './era';
 
-export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric';
+export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin';
 
 export interface ResourceDef {
   id: ResourceId;
@@ -52,7 +52,7 @@ export const RESOURCES: ResourceDef[] = [
     icon: '💡',
     category: 'abstract',
     era: 'E1',
-    desc: '由族人世代积累。本时代尚无文字，知识只能口耳相传——人口越多，积累越快。',
+    desc: '由族人世代积累。本时代尚无文字，知识只能口耳相传——人口越多，积累越快。E3 起更名「知识」，由书吏产出。',
   },
   {
     id: 'population',
@@ -78,6 +78,38 @@ export const RESOURCES: ResourceDef[] = [
     era: 'E2',
     desc: '舒适度因子=火源×(1+0.25×织物覆盖度)，覆盖度由织工产出累计，取值 0→1.0。',
   },
+  {
+    id: 'copper',
+    name: '铜',
+    icon: '🟠',
+    category: 'material',
+    era: 'E3',
+    desc: '青铜的原料。地壳丰度约 70ppm；仅当本地有铜矿时才能开采（开局随机矿藏）。',
+  },
+  {
+    id: 'tin',
+    name: '锡',
+    icon: '⚪',
+    category: 'material',
+    era: 'E3',
+    desc: '青铜的另一半。本地**永不产出**（丰度仅为铜的 1/35），只能通过贸易进口——这是本代"必须贸易"的核心约束。',
+  },
+  {
+    id: 'bronze',
+    name: '青铜',
+    icon: '🥉',
+    category: 'material',
+    era: 'E3',
+    desc: '由冶炼工以铜+锡炼成（每 0.9 铜 + 0.1 锡 → 0.05 青铜/秒）。用于工具世代、建筑与跃迁。',
+  },
+  {
+    id: 'lapis',
+    name: '青金石',
+    icon: '🔷',
+    category: 'material',
+    era: 'E3',
+    desc: '远方美鲁哈的珍宝，单价 200。需「青金石商路」科技解锁路线；用于声望与奢侈储备。',
+  },
 ];
 
 export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
@@ -85,7 +117,7 @@ export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
 ) as Record<ResourceId, ResourceDef>;
 
 /** 可在 UI 资源栏显示的实体资源（排除人口，人口单独显示） */
-export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'livestock', 'fabric'];
+export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'livestock', 'fabric', 'copper', 'tin', 'bronze', 'lapis', 'iron', 'coin'];
 
 /**
  * 返回指定时代的全部资源
@@ -93,4 +125,12 @@ export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'exper
  */
 export function resourcesOfEra(era: EraId): ResourceDef[] {
   return RESOURCES.filter(r => r.era === era);
+}
+
+/**
+ * 研究货币的显示名。
+ * E1/E2 叫「经验」，E3 起叫「知识」（用户拍板：改名即可，同一字段）。
+ */
+export function researchCurrencyName(era: EraId): string {
+  return era === 'E3' ? '知识' : '经验';
 }

@@ -1,0 +1,196 @@
+// E4 帝国时代 · 科技集（24 项）
+//
+// 结构：核心 1（法典）+ 支撑 6 + 效率 16 + 门槛 1（印刷术）
+// 货币：学识（承接 E3 的研究货币链；字段沿用 experience，见 resources.ts 注释）
+// 数值全部为**首轮配平草案**，标 TODO(balance) 处待实机调优。
+//
+// 设计要点（E4-empire.md §9）：
+//  - 核心科技「法典」解锁本代全部机制：法典条款、版图系统、治理覆盖率、秩序
+//  - 门槛科技「印刷术」（2,600,000）推开 E5 —— 时代跨度声明见设计文档（机制优先取舍）
+
+import type { EraId } from './era';
+import type { TechDef } from './techs';
+
+export const E4_TECHS_CORE: TechDef[] = [
+  {
+    id: 'law_code',
+    name: '法典',
+    icon: '⚖️',
+    branch: 'core',
+    cost: 6000,
+    era: 'E4' as EraId,
+    short: '法典',
+    type: 'unlock',
+    requires: [],
+    effects: {
+      // 解锁本代全部机制：法典条款、版图系统、治理覆盖率 κ、秩序仪表盘
+      enableEmpire: true,
+    },
+    position: { x: 0, y: 0 },
+    desc: '成文法典让"规则脱离人而存在"。解锁版图扩张、治理覆盖率与秩序系统。',
+  },
+];
+
+export const E4_TECHS_SUPPORT: TechDef[] = [
+  {
+    id: 'written_law',
+    name: '成文法',
+    icon: '📖',
+    branch: 'support',
+    cost: 10000,
+    type: 'unlock',
+    era: 'E4' as EraId,
+    short: '成文',
+    requires: ['law_code'],
+    effects: { unlockLawClauses: true },
+    position: { x: 1, y: 0 },
+    desc: '解锁法典条款系统——"若……则……"式的判例让治理可以被调整。',
+  },
+  {
+    id: 'household_reg',
+    name: '编户齐民',
+    icon: '🧾',
+    branch: 'support',
+    cost: 18000,
+    type: 'unlock',
+    era: 'E4' as EraId,
+    short: '编户',
+    requires: ['law_code'],
+    effects: { unlockHousehold: true },
+    position: { x: 1, y: 1 },
+    desc: '户籍登记让领土承载力真正生效（K 项生效的前提）。',
+  },
+  {
+    id: 'road_building',
+    name: '驰道营造',
+    icon: '🛣️',
+    branch: 'support',
+    cost: 30000,
+    type: 'unlock',
+    era: 'E4' as EraId,
+    short: '驰道',
+    requires: ['written_law'],
+    effects: { unlockRoads: true },
+    position: { x: 2, y: 1 },
+    desc: '解锁驰道建筑——用基础设施购买行政半径。',
+  },
+  {
+    id: 'coinage',
+    name: '铸币',
+    icon: '🪙',
+    branch: 'support',
+    cost: 50000,
+    type: 'unlock',
+    era: 'E4' as EraId,
+    short: '铸币',
+    requires: ['written_law'],
+    effects: { unlockMint: true },
+    position: { x: 2, y: 2 },
+    desc: '解锁铸币厂与铸币工——标准化支付让官吏与军团可以被"发工资"。',
+  },
+  {
+    id: 'legion_org',
+    name: '军团编制',
+    icon: '⚔️',
+    branch: 'support',
+    cost: 85000,
+    type: 'unlock',
+    era: 'E4' as EraId,
+    short: '军团',
+    requires: ['coinage'],
+    effects: { unlockLegion: true },
+    position: { x: 3, y: 2 },
+    desc: '解锁军团与军团营垒——"10 大队"UI 结构下的常备武力。',
+  },
+  {
+    id: 'commandery',
+    name: '郡县制',
+    icon: '🏛️',
+    branch: 'support',
+    cost: 150000,
+    type: 'unlock',
+    era: 'E4' as EraId,
+    short: '郡县',
+    requires: ['legion_org'],
+    effects: { unlockGovernment: true },
+    position: { x: 4, y: 2 },
+    desc: '解锁政体系统与官署——治理不再依赖分封的忠诚。',
+  },
+];
+
+export const E4_TECHS_EFFICIENCY: TechDef[] = [
+  { id: 'iron_plow', name: '铁制农具', icon: '🌾', branch: 'efficiency', cost: 25000,
+    era: 'E4' as EraId,
+    short: '铁犁', type: 'numeric', requires: ['law_code'], effects: { grainMultiplier: 1.25 }, position: { x: 0, y: 3 }, desc: '粮食总产出 +25%。铁犁让深耕成为常态。' },
+  { id: 'blast_furnace', name: '冶铁高炉', icon: '🔥', branch: 'efficiency', cost: 40000,
+    era: 'E4' as EraId,
+    short: '高炉', type: 'numeric', requires: ['law_code'], effects: { ironOutputMul: 1.3 }, position: { x: 0, y: 4 }, desc: '铁总产出 +30%。' },
+  { id: 'postal_relay', name: '驿传系统', icon: '🐴', branch: 'efficiency', cost: 90000,
+    era: 'E4' as EraId,
+    short: '驿传', type: 'numeric', requires: ['road_building'], effects: { expansionFlatPeriodMul: 0.7 }, position: { x: 1, y: 4 }, desc: '扩张后的"平定期"缩短 30%。' },
+  { id: 'roman_road', name: '罗马式道路', icon: '🛣️', branch: 'efficiency', cost: 120000,
+    era: 'E4' as EraId,
+    short: '罗马道', type: 'numeric', requires: ['road_building'], effects: { roadEffectMul: 1.25 }, position: { x: 1, y: 5 }, desc: '驰道效果 +25%。' },
+  { id: 'sea_grain', name: '海运粮道', icon: '⚓', branch: 'efficiency', cost: 150000,
+    era: 'E4' as EraId,
+    short: '海运', type: 'numeric', requires: ['coinage'], effects: { seaGrainBonus: 0.2 }, position: { x: 2, y: 5 }, desc: '远距离领土的物产惩罚 −20%。' },
+  { id: 'standing_army', name: '常备军制', icon: '⚔️', branch: 'efficiency', cost: 180000,
+    era: 'E4' as EraId,
+    short: '常备', type: 'numeric', requires: ['legion_org'], effects: { legionPayMul: 0.85 }, position: { x: 2, y: 6 }, desc: '军团军饷 −15%。' },
+  { id: 'merit_rank', name: '军功爵', icon: '🎖️', branch: 'efficiency', cost: 220000,
+    era: 'E4' as EraId,
+    short: '军爵', type: 'numeric', requires: ['legion_org'], effects: { quotaMul: 1.3 }, position: { x: 3, y: 6 }, desc: '兵员配额 +30%。军功换爵位，秦制的引擎。' },
+  { id: 'salt_iron', name: '盐铁专营', icon: '🧂', branch: 'efficiency', cost: 260000,
+    era: 'E4' as EraId,
+    short: '盐铁', type: 'numeric', requires: ['coinage'], effects: { coinOutputMul: 1.15, orderPressureAdd: -1.0 }, position: { x: 3, y: 7 }, desc: '铸币 +15%；秩序压力 −1.0/秒。国家垄断的起点。' },
+  { id: 'census', name: '户籍普查', icon: '🧾', branch: 'efficiency', cost: 300000,
+    era: 'E4' as EraId,
+    short: '普查', type: 'numeric', requires: ['household_reg'], effects: { capacityMul: 1.1 }, position: { x: 4, y: 7 }, desc: '人口上限 K +10%。知道你有多少人，才能治理他们。' },
+  { id: 'building_code', name: '营造法式', icon: '🏗️', branch: 'efficiency', cost: 340000,
+    era: 'E4' as EraId,
+    short: '法式', type: 'numeric', requires: ['road_building'], effects: { buildCostMul: 0.85 }, position: { x: 4, y: 8 }, desc: '全部建筑成本 −15%。' },
+  { id: 'bread_circus', name: '面包与马戏', icon: '🎪', branch: 'efficiency', cost: 380000,
+    era: 'E4' as EraId,
+    short: '马戏', type: 'numeric', requires: ['coinage'], effects: { orderRecoveryMul: 1.25 }, position: { x: 5, y: 8 }, desc: '秩序恢复 +25%。' },
+  { id: 'trade_treaty', name: '通商条约', icon: '🤝', branch: 'efficiency', cost: 420000,
+    era: 'E4' as EraId,
+    short: '条约', type: 'numeric', requires: ['coinage'], effects: { coinOutputMul: 1.2 }, position: { x: 5, y: 9 }, desc: '铸币 +20%。' },
+  { id: 'tuntian', name: '屯田制', icon: '🌾', branch: 'efficiency', cost: 470000,
+    era: 'E4' as EraId,
+    short: '屯田', type: 'numeric', requires: ['legion_org'], effects: { legionGrainSelfSufficiency: 1.3 }, position: { x: 6, y: 9 }, desc: '军团粮食自给 +30%。' },
+  { id: 'secretary', name: '秘书官制', icon: '📜', branch: 'efficiency', cost: 520000,
+    era: 'E4' as EraId,
+    short: '秘书', type: 'numeric', requires: ['commandery'], effects: { governanceMul: 1.15 }, position: { x: 6, y: 10 }, desc: '官吏治理力 +15%。' },
+  { id: 'jus_gentium', name: '万民法', icon: '⚖️', branch: 'efficiency', cost: 580000,
+    era: 'E4' as EraId,
+    short: '万法', type: 'numeric', requires: ['commandery'], effects: { kappaStableLine: 0.75 }, position: { x: 7, y: 10 }, desc: 'κ 稳定线 0.80 → 0.75。' },
+  { id: 'imperial_roads', name: '御道网', icon: '🛣️', branch: 'efficiency', cost: 650000,
+    era: 'E4' as EraId,
+    short: '御道', type: 'numeric', requires: ['roman_road'], effects: { roadLevelMax: 5 }, position: { x: 7, y: 11 }, desc: '驰道等级上限 4 → 5。' },
+];
+
+export const E4_TECHS_GATE: TechDef[] = [
+  {
+    id: 'printing_press',
+    name: '印刷术',
+    icon: '📖',
+    branch: 'gate',
+    cost: 2600000,
+    era: 'E4' as EraId,
+    short: '印刷',
+    type: 'unlock',
+    requires: [],
+    requiresAny: ['iron_plow', 'blast_furnace', 'postal_relay'],
+    effects: { enableAdvance: true },
+    position: { x: 0, y: 12 },
+    // 时代跨度声明见 E4-empire.md §9：机制优先取舍，技术胚芽作叙事桥梁
+    desc: '解锁时代跃迁 —— 知识的批量复制让"研究"从攒变滚。',
+  },
+];
+
+export const E4_TECHS: TechDef[] = [
+  ...E4_TECHS_CORE,
+  ...E4_TECHS_SUPPORT,
+  ...E4_TECHS_EFFICIENCY,
+  ...E4_TECHS_GATE,
+];

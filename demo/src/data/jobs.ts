@@ -5,7 +5,7 @@ import type { EraId } from './era';
 import type { ResourceId } from './resources';
 import type { BuildingId } from './buildings';
 
-export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver';
+export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'copper_miner' | 'smelter' | 'scribe' | 'merchant' | 'tenant_farmer' | 'iron_miner' | 'mint_worker' | 'official' | 'legionary';
 
 export interface JobDef {
   id: JobId;
@@ -53,11 +53,98 @@ export interface JobDef {
   };
   /** 所属时代（标记数据归属，不改变运行时行为） */
   era: EraId;
+  /** 指定时代的单位产出覆盖（如 E3 农夫 3.0/s；缺省用 outputRate） */
+  outputRateByEra?: Partial<Record<EraId, number>>;
+  /**
+   * 特殊岗位：不产出资源，而是提供一种"系统能力"。
+   *  - governance：官吏——产出治理力（压低规模不经济 ρ）
+   *  - legion：军团兵——提供军团建制（解锁扩张资格 + 武力压制）
+   * 这两类岗位占用大量人力并持续消耗铸币/粮食，是"投入治理 vs 投入武力"
+   * 核心取舍的载体。产出计算在 game/empire.ts（E4 PR-2），不走资源产出管线。
+   */
+  special?: 'governance' | 'legion';
+  /** 每单位岗位占用的人力（官吏 9 人、军团兵 480 人；缺省 1 人 = 1 岗位） */
+  peoplePerUnit?: number;
+  /** 该岗位的工位来自哪座建筑（如铸币工 ← 铸币厂）；缺省不限工位 */
+  slotBuilding?: BuildingId;
+  /** 每座建筑提供的工位数 */
+  slotsPerBuilding?: number;
   /** 一句话说明 */
   desc: string;
 }
 
 export const JOBS: JobDef[] = [
+  // ── E4 帝国时代（新增 5 岗位；数值来自 E4-empire.md §7） ──
+  {
+    id: 'tenant_farmer',
+    name: '农庄佃农',
+    icon: '🧑🌾',
+    output: 'food',
+    outputRate: 0.5,
+    requires: {},
+    scaledByTool: false,
+    era: 'E4',
+    desc: '在帝国的庄园里耕作的佃农。人均产出低于自耕农，但庄园规模使总产出可观。',
+  },
+  {
+    id: 'iron_miner',
+    name: '铁矿工',
+    icon: '⛏️',
+    output: 'iron',
+    outputRate: 0.4,
+    requires: {},
+    scaledByTool: false,
+    era: 'E4',
+    // 设计文档要求"铁器世代 ≥1"门控；铁器世代机制待 E4 引擎扩展（TODO(E4)）
+    desc: '开采铁矿。铁远比铜锡常见——它让金属工具第一次"廉价到人人可得"。',
+  },
+  {
+    id: 'mint_worker',
+    name: '铸币工',
+    icon: '🪙',
+    output: 'coin',
+    outputRate: 0.5,
+    requires: { tech: 'coinage' },
+    scaledByTool: false,
+    era: 'E4',
+    slotBuilding: 'mint',
+    slotsPerBuilding: 20,
+    desc: '在铸币厂铸造标准铸币。官吏与军团的俸禄都从这里支付。',
+  },
+  {
+    id: 'official',
+    name: '官吏',
+    icon: '📜',
+    output: 'food',
+    // 官吏不产出资源：产出的是治理力（压低规模不经济 ρ），由 game/empire.ts 计算。
+    // output 仅为满足类型；实际产出管线会跳过该岗位。
+    outputRate: 0,
+    special: 'governance',
+    peoplePerUnit: 9,
+    requires: { tech: 'law_code' },
+    scaledByTool: false,
+    era: 'E4',
+    slotBuilding: 'chancery',
+    slotsPerBuilding: 12,
+    desc: '帝国的官僚。每 9 人一个编制，产出治理力压低维稳成本——但不产一粒粮食。',
+  },
+  {
+    id: 'legionary',
+    name: '军团兵',
+    icon: '⚔️',
+    output: 'food',
+    // 军团兵同理：产出的是"军团建制"（扩张资格 + 武力压制），非资源。
+    outputRate: 0,
+    special: 'legion',
+    peoplePerUnit: 480,
+    requires: { tech: 'legion_org' },
+    scaledByTool: false,
+    era: 'E4',
+    slotBuilding: 'fort',
+    slotsPerBuilding: 2,
+    desc: '常备军团。每 480 人一个建制，提供武力压制与扩张资格。',
+  },
+  // ── E1/E2 继承岗位 ──
   {
     id: 'gatherer',
     name: '采集者',
@@ -84,6 +171,7 @@ export const JOBS: JobDef[] = [
     requires: {},
     scaledByTool: false,
     era: 'E1',
+    outputRateByEra: { E3: 0.4 },
     desc: '收集木柴。火种会持续衰减，伐木者不足则火将熄灭。',
   },
   {
@@ -95,6 +183,7 @@ export const JOBS: JobDef[] = [
     requires: { tech: 'stone_knapping' },
     scaledByTool: false,
     era: 'E1',
+    outputRateByEra: { E3: 0.3 },
     desc: '打制石器与建造材料。',
   },
   {
@@ -118,6 +207,7 @@ export const JOBS: JobDef[] = [
     requires: { tech: 'agriculture' },
     scaledByTool: false,
     era: 'E2',
+    outputRateByEra: { E3: 3.0 },
     desc: '在田地上耕作，产出受季节倍率与田地效率（min(1.0, 农夫数/(田数×3))）影响。',
   },
   {
@@ -129,6 +219,7 @@ export const JOBS: JobDef[] = [
     requires: { tech: 'animal_domestication' },
     scaledByTool: false,
     era: 'E2',
+    outputRateByEra: { E3: 1.2 },
     desc: '在畜栏旁放牧，无季节波动；每座畜栏提供 3 个工作位，上限 +20 牲畜。',
   },
   {
@@ -140,7 +231,52 @@ export const JOBS: JobDef[] = [
     requires: { tech: 'textile' },
     scaledByTool: false,
     era: 'E2',
-    desc: '纺织织物提升舒适度；覆盖度计入火源舒适度因子。',
+    desc: '纺织织物提升舒适度；覆盖度计入火源舒适度因子。E3 起退役：织物转为贸易出口品，不再需要岗位产出。',
+  },
+  // ── E3 城邦时代 · 岗位定义（4 项）──
+  {
+    id: 'copper_miner',
+    name: '铜矿工',
+    icon: '🟠',
+    output: 'copper',
+    outputRate: 0.06,
+    requires: { tech: 'cuneiform' },
+    scaledByTool: false,
+    era: 'E3',
+    desc: '在本地铜矿开采铜。**仅当本地矿藏为铜矿时可用**；否则岗位不可派。',
+  },
+  {
+    id: 'smelter',
+    name: '冶炼工',
+    icon: '🥉',
+    output: 'bronze',
+    outputRate: 0.05,
+    requires: { tech: 'bronze_smelting' },
+    scaledByTool: false,
+    era: 'E3',
+    desc: '以铜（0.045/秒）+ 锡（0.005/秒）炼出青铜 0.05/秒。缺料按比例降速。',
+  },
+  {
+    id: 'scribe',
+    name: '书吏',
+    icon: '✍️',
+    output: 'experience',
+    outputRate: 0.15,
+    requires: { tech: 'cuneiform' },
+    scaledByTool: false,
+    era: 'E3',
+    desc: '在泥板上记账与誊刻，产出知识。**不产出任何物资**——这是本代的核心矛盾。',
+  },
+  {
+    id: 'merchant',
+    name: '商人',
+    icon: '🐴',
+    output: 'food',
+    outputRate: 1.2,
+    requires: { tech: 'caravan_org' },
+    scaledByTool: false,
+    era: 'E3',
+    desc: '运力 1.2/秒（除以路线距离系数后换得货物）。贸易系统的运力来源。',
   },
 ];
 

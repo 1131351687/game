@@ -100,6 +100,11 @@ export const TOOL_TIERS: ToolTier[] = [
   { level: 2, name: '装柄石矛', multiplier: 1.4, anchor: '树脂黏合剂，6–3.5 万年前' },
   { level: 3, name: '投矛器', multiplier: 1.96, anchor: '约 2.1–1.7 万年前' },
   { level: 4, name: '弓箭', multiplier: 3.14, anchor: '⚠️ 起源争议（8 万–1.7 万年）' },
+  // ── E3 城邦时代：青铜工具世代（见 E3-citystate.md §11.4）──
+  { level: 5, name: '红铜', multiplier: 1.25, anchor: '天然红铜锤锻，约 6000 BCE' },
+  { level: 6, name: '砷青铜', multiplier: 1.3, anchor: '砷青铜较硬但有毒，约 3500 BCE' },
+  { level: 7, name: '锡青铜', multiplier: 1.6, anchor: '锡青铜：合适的锡含量（约 10%）' },
+  { level: 8, name: '青铜兵器', multiplier: 1.6, anchor: '武器级装备；其价值在损失事件减免' },
 ];
 
 export function getToolMultiplier(level: number, workshopBonus = 0): number {
@@ -256,4 +261,158 @@ export const HUNT = {
   CAP: 6.0,
   /** 饱和常数：TAU 越小，越早进入边际递减 */
   TAU: 4.5,
+} as const;
+
+// ─────────────────────────────────────────────
+// E3 城邦时代常量（数值源：E3-citystate.md §11）
+// ─────────────────────────────────────────────
+export const E3 = {
+  /** 记录容量基础（槽位） */
+  RECORD_BASE: 3,
+  /** 每座学宫提供的记录容量 */
+  RECORD_PER_ACADEMY: 5,
+
+  /** 每条贸易路线所需书吏数（「账目分类」→ 30） */
+  SCRIBES_PER_ROUTE: 40,
+  /** 商队结算周期（秒） */
+  TRADE_CYCLE_SEC: 30,
+  /** 距离系数：1 + 0.15 × 距离 */
+  DISTANCE_COEFF: 0.15,
+  /** 需求冲击：1 + 0.15 × (近 5 周期累计买入 / 基准供应量) */
+  DEMAND_COEFF: 0.15,
+  /** 需求冲击观察周期数 */
+  DEMAND_WINDOW: 5,
+  /** 价格随机波动区间 */
+  PRICE_JITTER_MIN: 0.8,
+  PRICE_JITTER_MAX: 1.2,
+  /** 未研究度量衡时的换算损耗 */
+  CONVERSION_LOSS: 0.15,
+  /** 每座商栈提供的路线槽位 */
+  SLOTS_PER_TRADING_POST: 2,
+
+  /** 契约锁价时长（秒；「契约刻录」×2.4 → 12 分钟） */
+  CONTRACT_BASE_SEC: 300,
+  /** 契约锁价幅度（±10%） */
+  CONTRACT_PRICE_BAND: 0.1,
+  /** 契约运力加成 */
+  CONTRACT_CAPACITY_BONUS: 0.2,
+  /** 契约声望收益 */
+  CONTRACT_REP_GAIN: 2,
+  /** 毁约声望惩罚 */
+  BREACH_REP_LOSS: 15,
+  /** 毁约后该邦报价加成（持续 3 分钟） */
+  BREACH_PRICE_PENALTY: 0.25,
+  BREACH_PENALTY_SEC: 180,
+
+  /** 声望阈值：≥70 全线 −10%；≤20 全线 +25% 且 20% 概率拒交 */
+  REP_HIGH: 70,
+  REP_HIGH_DISCOUNT: 0.9,
+  REP_LOW: 20,
+  REP_LOW_PENALTY: 1.25,
+  REP_LOW_REFUSE_CHANCE: 0.2,
+
+  /** 规模递减指数（实际产能 = 单位产出 × N^0.9，E3 起） */
+  SCALING_EXP: 0.9,
+
+  /** 冶炼投料比：0.045 铜 + 0.005 锡 → 0.05 青铜/秒 */
+  SMELT_COPPER_IN: 0.045,
+  SMELT_TIN_IN: 0.005,
+  SMELT_BRONZE_OUT: 0.05,
+  /** 再生冶炼：青铜回收率 */
+  RECYCLE_RATE: 0.3,
+  /** 熔炉：冶炼工效率加成 */
+  FURNACE_BONUS: 0.25,
+
+  /** E3 人口参数（§11.3：r=0.003，K 基础 320，民居 +130） */
+  POP_GROWTH_RATE: 0.003,
+  POP_BASE_CAPACITY: 320,
+  POP_PER_CITY_HOUSE: 130,
+
+  /** 贸易基准价（食物=1，价值尺度） */
+  BASE_PRICES: {
+    food: 1,
+    wood: 2,
+    stone: 3,
+    copper: 12,
+    tin: 150,
+    bronze: 30,
+    lapis: 200,
+  } as const,
+
+  /** E3 起始状态（§11.1） */
+  START: {
+    population: 260,
+    food: 2000,
+    wood: 800,
+    stone: 600,
+    reputation: 50,
+  } as const,
+} as const;
+
+export const E4 = {
+  /** 人口模型（§11.3：r 基础 0.004，K 基础 200，民居四级 100/400/1600/6400） */
+  POP_GROWTH_RATE: 0.004,
+  POP_BASE_CAPACITY: 200,
+  /** 领土承载力：60 × n^0.85 */
+  TERRITORY_CAPACITY_BASE: 60,
+  TERRITORY_CAPACITY_EXP: 0.85,
+  /** 粮食消耗（0.20/秒/人，沿用 E1 口径；E2 的 0.25 为定居特化） */
+  FOOD_CONSUMPTION: 0.2,
+  /** 学识产出：人口 × 0.012/秒（= 0.02 × 文字遗产斜率 0.6） */
+  KNOWLEDGE_PER_PERSON: 0.012,
+
+  /** 安定因子 = 0.50 + 0.50 × κ */
+  STABILITY_BASE: 0.5,
+  /** 政体系数：君主 0.90 / 共和 1.10 / 神权 0.85 */
+  GOV_MONARCHY: 0.9,
+  GOV_REPUBLIC: 1.1,
+  GOV_THEOCRACY: 0.85,
+
+  /** 规模不经济（§1.2）：维稳成本的超线性函数 */
+  UPKEEP_BASE: 0.8,
+  UPKEEP_SCALE: 240,
+  /** 行政半径惩罚系数（驰道每级 −0.006） */
+  ROAD_RADIUS_BONUS: 0.006,
+
+  /** 官吏：每单位占 9 人，耗粮 1.2/秒、铸币 0.15/秒 */
+  OFFICIAL_PEOPLE: 9,
+  OFFICIAL_FOOD: 1.2,
+  OFFICIAL_COIN: 0.15,
+  /** 军团：每建制耗铸币 0.8/秒、粮 2.0/秒；武力压制 −2%/军团（上限 −30%） */
+  LEGION_COIN: 0.8,
+  LEGION_FOOD: 2.0,
+  LEGION_SUPPRESSION: 0.02,
+  LEGION_SUPPRESSION_CAP: 0.3,
+
+  /** 兵员配额：每座营垒 +0.3% */
+  QUOTA_PER_FORT: 0.003,
+  /** 法典条款槽：初始 2，上限 8 */
+  CLAUSE_SLOTS_BASE: 2,
+  CLAUSE_SLOTS_MAX: 8,
+
+  /** 政体切换：冷却 15 分钟，铸币 −200,000，秩序 −25 */
+  GOV_SWITCH_COOLDOWN_SEC: 900,
+  GOV_SWITCH_COIN_COST: 200000,
+  GOV_SWITCH_ORDER_COST: 25,
+  /** 继承危机（君主制）：每 1500 秒触发，秩序 −15 */
+  SUCCESSION_CRISIS_SEC: 1500,
+  SUCCESSION_ORDER_LOSS: 15,
+
+  /** 秩序档位（0–100）：≥80 太平 / ≥70 安定 / ≥40 紧张 / <40 动荡 */
+  ORDER_TIERS: { peaceful: 80, stable: 70, tense: 40 },
+
+  /** E4 起始状态（§11.1 旧口径：人口 1,000 等） */
+  START: {
+    food: 5000,
+    wood: 3000,
+    iron: 0,
+    coin: 0,
+    knowledge: 2000,
+    territory: 1,
+    order: 70,
+    officials: 0,
+    legions: 0,
+  } as const,
+  // ⚠️ 口径待对齐：§11.1 的人口 1,000 与"跃迁只新增不重置"冲突（E3 末态约 2,160）。
+  // 实装取 E3 末态继承，本表数值仅用于验算（E4-devplan §四·1）。
 } as const;

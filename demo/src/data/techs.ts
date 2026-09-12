@@ -14,6 +14,12 @@ import { E2_TECHS_FARMING } from './e2-techs-farming';
 import { E2_TECHS_HERDING } from './e2-techs-herding';
 import { E2_TECHS_SETTLEMENT } from './e2-techs-settlement';
 
+// E3 城邦时代科技片段（各 6–7 项，分开维护）
+import { E3_TECHS_WRITING } from './e3-techs-writing';
+import { E3_TECHS_BRONZE } from './e3-techs-bronze';
+import { E3_TECHS_TRADE } from './e3-techs-trade';
+import { E4_TECHS } from './e4-techs';
+
 /**
  * 科技所属分支。
  *
@@ -32,6 +38,12 @@ export type TechBranch =
   | 'farming'
   | 'herding'
   | 'settlement'
+  | 'writing'
+  | 'bronze'
+  | 'trade'
+  | 'empire'
+  | 'support'
+  | 'efficiency'
   | 'gate';
 
 /** 科技类型（设计规范：解锁 ≥40% / 质变 ≥25% / 数值 ≤25%） */
@@ -135,6 +147,97 @@ export interface TechEffects {
   jobSwitchCostMul?: number;
   /** 取消 E1 承载力硬顶（定居营造） */
   removeCapacityCap?: boolean;
+
+  // ─────────────────────────────────────────────
+  // E3 城邦时代（核心科技：楔形文字）
+  //
+  // 命名沿用既有约定：*Mul 乘法键 / *Add 加法键 / 绝对设置键取最大
+  // ─────────────────────────────────────────────
+
+  /** 开启记录容量与刻录系统（楔形文字核心科技） */
+  enableRecording?: boolean;
+  /** 记录容量加成（加法键；学宫是另一条来源） */
+  recordCapacityAdd?: number;
+  /** 书吏产出乘数 */
+  scribeOutputMul?: number;
+  /** 档案库加成：已刻录科技每项提供的产出加成（绝对设置，取最大） */
+  archiveBonus?: number;
+
+  /** 每条贸易路线所需书吏数（绝对设置：40 → 账目分类后 30） */
+  scribesPerRoute?: number;
+  /** 贸易路线槽位加成（加法键） */
+  routeSlotsAdd?: number;
+  /** 换算损耗（未研究度量衡时 0.15；度量衡归零；绝对设置取最小） */
+  conversionLoss?: number;
+  /** 契约违约惩罚倍率（<1 降低，印章封泥 0.5） */
+  contractBreachPenalty?: number;
+  /** 契约时长倍率（契约刻录 5→12 分钟） */
+  contractDurationMul?: number;
+  /** 可同时锁定契约的路线数（绝对设置） */
+  contractSlots?: number;
+  /** 陆路运力乘数（轮子 1.4 / 驴队 1.3 叠加） */
+  landCaravanMul?: number;
+  /** 水路距离系数乘数（河运帆船 0.6） */
+  waterDistMul?: number;
+  /** 路线中断概率加成（<0 降低） */
+  routeBreakChance?: number;
+  /** 解锁青金石货类 */
+  enableLapis?: boolean;
+
+  /** 青铜回收率（再生冶炼 0.3） */
+  recyclingRate?: number;
+  /** 文明级损失事件减幅（青铜兵器 0.4） */
+  lossReduction?: number;
+
+  // ─────────────────────────────────────────────
+  // E4 帝国时代（核心科技：钢铁）
+  // 数值为首轮草案；引擎实装见 game/empire.ts（E4-devplan PR-2）
+  // ─────────────────────────────────────────────
+
+  /** 开启帝国机制：版图扩张 / 治理覆盖率 / 秩序 / 政体（法典核心科技） */
+  enableEmpire?: boolean;
+  /** 解锁法典条款系统（成文法） */
+  unlockLawClauses?: boolean;
+  /** 解锁户籍系统——领土承载力 K 项生效的前提（编户齐民） */
+  unlockHousehold?: boolean;
+  /** 解锁驰道建筑（驰道营造） */
+  unlockRoads?: boolean;
+  /** 解锁铸币厂与铸币工（铸币） */
+  unlockMint?: boolean;
+  /** 解锁军团与军团营垒（军团编制） */
+  unlockLegion?: boolean;
+  /** 解锁政体系统与官署（郡县制） */
+  unlockGovernment?: boolean;
+  /** 铁总产出乘数（冶铁高炉） */
+  ironOutputMul?: number;
+  /** 扩张平定期乘数（驿传系统 0.7） */
+  expansionFlatPeriodMul?: number;
+  /** 驰道效果乘数（罗马式道路 1.25） */
+  roadEffectMul?: number;
+  /** 远距离领土物产惩罚减免（海运粮道 0.2） */
+  seaGrainBonus?: number;
+  /** 军团军饷乘数（常备军制 0.85） */
+  legionPayMul?: number;
+  /** 兵员配额乘数（军功爵 1.3） */
+  quotaMul?: number;
+  /** 铸币产出乘数（盐铁专营 / 通商条约） */
+  coinOutputMul?: number;
+  /** 秩序压力加成（盐铁专营 −1.0/秒） */
+  orderPressureAdd?: number;
+  /** 人口上限乘数（户籍普查 1.1） */
+  capacityMul?: number;
+  /** 全部建筑成本乘数（营造法式 0.85） */
+  buildCostMul?: number;
+  /** 秩序恢复乘数（面包与马戏 1.25） */
+  orderRecoveryMul?: number;
+  /** 军团粮食自给加成（屯田制 1.3） */
+  legionGrainSelfSufficiency?: number;
+  /** 官吏治理力乘数（秘书官制 1.15） */
+  governanceMul?: number;
+  /** κ 稳定线（万民法 0.75） */
+  kappaStableLine?: number;
+  /** 驰道等级上限（御道网 5） */
+  roadLevelMax?: number;
 }
 
 export interface TechDef {
@@ -503,6 +606,10 @@ export const TECHS: TechDef[] = [
   ...E2_TECHS_FARMING,
   ...E2_TECHS_HERDING,
   ...E2_TECHS_SETTLEMENT,
+  ...E3_TECHS_WRITING,
+  ...E3_TECHS_BRONZE,
+  ...E3_TECHS_TRADE,
+  ...E4_TECHS,
 ];
 
 export const TECH_MAP: Record<string, TechDef> = Object.fromEntries(
@@ -517,6 +624,12 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   farming: TECHS.filter(t => t.branch === 'farming'),
   herding: TECHS.filter(t => t.branch === 'herding'),
   settlement: TECHS.filter(t => t.branch === 'settlement'),
+  writing: TECHS.filter(t => t.branch === 'writing'),
+  bronze: TECHS.filter(t => t.branch === 'bronze'),
+  trade: TECHS.filter(t => t.branch === 'trade'),
+  empire: TECHS.filter(t => t.branch === 'empire'),
+  support: TECHS.filter(t => t.branch === 'support'),
+  efficiency: TECHS.filter(t => t.branch === 'efficiency'),
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
 
@@ -618,6 +731,55 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
     desc: '造粮仓储余粮、修房屋扩聚落',
     role: '分支 · 规模',
   },
+  // ── E3 城邦时代的三条分支 ──
+  writing: {
+    name: '书写与记录',
+    kind: 'branch',
+    order: 8,
+    color: '#a78bfa',
+    desc: '把记忆刻进泥板——记录容量是硬上限，刻录给科技第二次生命',
+    role: '分支 · 根基',
+  },
+  bronze: {
+    name: '青铜与制造',
+    kind: 'branch',
+    order: 9,
+    color: '#f97316',
+    desc: '铜锡合金链：冶炼、工具世代与兵器',
+    role: '分支 · 效率',
+  },
+  trade: {
+    name: '贸易与度量',
+    kind: 'branch',
+    order: 10,
+    color: '#38bdf8',
+    desc: '本地无锡——贸易路线是供应链的另一半',
+    role: '分支 · 规模',
+  },
+  empire: {
+    name: '帝国之治',
+    kind: 'branch',
+    order: 5,
+    color: '#a78bfa',
+    desc: '治理与扩张的取舍',
+    role: 'E4 分支',
+  },
+  support: {
+    name: '帝国基建',
+    kind: 'branch',
+    order: 6,
+    color: '#a78bfa',
+    desc: '治理与扩张的前提',
+    role: 'E4 支撑',
+  },
+  efficiency: {
+    name: '帝国效率',
+    kind: 'branch',
+    order: 7,
+    color: '#a78bfa',
+    desc: '可选的强化路线',
+    role: 'E4 效率',
+  },
   gate: {
     name: '时代之门',
     kind: 'gate',
@@ -642,6 +804,12 @@ export const BRANCH_ORDER: TechBranch[] = [
   'farming',
   'herding',
   'settlement',
+  'writing',
+  'bronze',
+  'trade',
+  'empire',
+  'support',
+  'efficiency',
   'gate',
 ];
 
