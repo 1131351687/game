@@ -68,8 +68,8 @@ export const E2_RESOURCE_ORDER: ResourceId[] = [
  * 仍消耗它们，因此继续显示。
  *
  * 锡：普通地形只能贸易进口；锡矿带可少量本地开采。
- * 铜 / 锡 / 青铜 / 青金石均无硬容量上限（getResourceStorage 返回 Infinity），
- * 故渲染分支天然不画 `/ 上限` 尾巴。
+ * 铜 / 锡 / 青铜使用 E3 城市仓储容量；青金石仍是无限的远方贸易品。
+ * 因此资源是否显示与容量是否存在分别由 reveal.ts 和引擎决定。
  */
 export const E3_RESOURCE_ORDER: ResourceId[] = [
   'experience',

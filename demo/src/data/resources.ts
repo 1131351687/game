@@ -92,7 +92,7 @@ export const RESOURCES: ResourceDef[] = [
     icon: '⚪',
     category: 'material',
     era: 'E3',
-    desc: '青铜的另一半。本地**永不产出**（丰度仅为铜的 1/35），只能通过贸易进口——这是本代"必须贸易"的核心约束。',
+    desc: '青铜的另一半。普通冲积平原不能产出；锡矿带可少量开采，但稳定供应仍依赖贸易。',
   },
   {
     id: 'bronze',
