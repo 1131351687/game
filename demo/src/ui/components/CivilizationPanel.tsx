@@ -20,6 +20,7 @@ import { calcExperienceOutput } from '../../game/engine';
 import { isModuleUnlocked } from '../../game/reveal';
 import { techsUpToEra } from '../../data/techs';
 import { formatNumber, formatRate } from '../../core/format';
+import { researchCurrencyName } from '../../data/resources';
 
 import { Icon } from './Icon';
 import { TechGrid } from './TechGrid';
@@ -57,7 +58,7 @@ export function CivilizationPanel() {
           {/* 中：经验存量 + 每秒产出（数字等宽对齐） */}
           <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-gray-400">
             <span className="inline-flex items-center gap-1">
-              经验{' '}
+              {researchCurrencyName(s.era)}{' '}
               <span className="text-sm font-semibold text-gray-100">
                 {formatNumber(view.experience, 0)}
               </span>
@@ -65,7 +66,7 @@ export function CivilizationPanel() {
             </span>
             {/* 产出速率 > 0 时给一点点颜色（关键状态），否则纯灰 */}
             <span
-              title="经验产出速率"
+              title={researchCurrencyName(s.era) + '产出速率'}
               className={expOutput > 0 ? 'text-ok' : 'text-gray-600'}
             >
               {formatRate(expOutput)}/秒

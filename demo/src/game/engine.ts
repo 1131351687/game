@@ -5,7 +5,7 @@
 import { TECHS, TECH_MAP, type TechEffects } from '../data/techs';
 import { JOBS, JOB_MAP, type JobId } from '../data/jobs';
 import { BUILDING_MAP, type BuildingId } from '../data/buildings';
-import { RESOURCE_MAP, type ResourceId } from '../data/resources';
+import { RESOURCE_MAP, researchCurrencyName, type ResourceId } from '../data/resources';
 import { ERAS, eraDistance, eraDecay, type EraId } from '../data/era';
 import {
   getFoodFactorFromStorage,
@@ -115,6 +115,10 @@ export interface TradeRoute {
   supply: ResourceId;
   /** 距离（1/2/3），距离系数 = 1 + 0.15 × 距离 */
   distance: 1 | 2 | 3;
+  /** 运输方式；旧存档缺失时由邻邦数据迁移补齐 */
+  transport?: 'land' | 'water';
+  /** 最近一次结算状态，用于贸易面板反馈 */
+  lastStatus?: 'ok' | 'break' | 'refused' | 'blocked';
   /** 商队周期计时（30 秒一轮） */
   cycleAccum: number;
   /** 近 5 周期价格（供迷你折线图与需求冲击计算） */
@@ -989,7 +993,7 @@ export function canResearch(techId: string, state: E1State): ResearchCheck {
   }
 
   if (state.experience < def.cost) {
-    return { ok: false, reason: `经验不足（还差 ${Math.ceil(def.cost - state.experience)}）` };
+    return { ok: false, reason: `${researchCurrencyName(state.era)}不足（还差 ${Math.ceil(def.cost - state.experience)}）` };
   }
 
   return { ok: true };

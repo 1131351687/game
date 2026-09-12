@@ -278,6 +278,8 @@ export const E3 = {
   TRADE_CYCLE_SEC: 30,
   /** 距离系数：1 + 0.15 × 距离 */
   DISTANCE_COEFF: 0.15,
+  /** 没有驴队等护运技术时的单周期基础中断概率 */
+  ROUTE_BASE_BREAK_CHANCE: 0.08,
   /** 需求冲击：1 + 0.15 × (近 5 周期累计买入 / 基准供应量) */
   DEMAND_COEFF: 0.15,
   /** 需求冲击观察周期数 */

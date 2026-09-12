@@ -152,7 +152,23 @@ export function TradePanel() {
           const blocked = lapisGated || noSlot;
 
           // 距离系数（从 trade.ts 的公式：1 + DISTANCE_COEFF × distance）
-          const distFactor = 1 + E3.DISTANCE_COEFF * n.distance;
+          const transport = route?.transport ?? n.transport;
+          const distFactor = 1 + E3.DISTANCE_COEFF * n.distance * (transport === 'water' ? eff.waterDistMul : 1);
+          const history = route?.priceHistory ?? [];
+          const latestPrice = history.length > 0 ? history[history.length - 1] : null;
+          const previousPrice = history.length > 1 ? history[history.length - 2] : null;
+          const trend = latestPrice === null || previousPrice === null
+            ? '—'
+            : latestPrice > previousPrice ? '↑' : latestPrice < previousPrice ? '↓' : '→';
+          const statusLabel = route?.lastStatus === 'break'
+            ? '商路中断'
+            : route?.lastStatus === 'refused'
+              ? '对方拒交'
+              : route?.lastStatus === 'blocked'
+                ? '等待条件'
+                : route?.lastStatus === 'ok'
+                  ? '本期完成'
+                  : null;
 
           return (
             <div
@@ -189,6 +205,11 @@ export function TradePanel() {
                         违约惩罚 {Math.ceil(route.breachPenaltyUntil - nowSec)}s
                       </span>
                     )}
+                    {statusLabel && (
+                      <span className="rounded-md bg-gray-800/60 px-1.5 py-0.5 text-xs text-gray-400">
+                        {statusLabel}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs leading-relaxed text-gray-400">
                     {n.desc}
@@ -197,6 +218,10 @@ export function TradePanel() {
                   <p className="text-xs text-gray-600">
                     付出 <span className="text-gray-300">{resName(n.accept)}</span>
                     {' → '}换得 <span className="text-gray-300">{resName(n.sell)}</span>
+                  </p>
+                  <p className="font-mono text-xs tabular-nums text-gray-500">
+                    近价 {latestPrice === null ? '—' : latestPrice.toFixed(1)} {trend}
+                    {' · '}运输 {transport === 'water' ? '水路' : '陆路'}
                   </p>
                 </div>
               </div>

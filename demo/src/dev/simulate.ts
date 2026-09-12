@@ -768,6 +768,7 @@ function autoplayE3(): void {
         demand: def.accept,
         supply: def.sell,
         distance: def.distance,
+        transport: def.transport,
         cycleAccum: 0,
         priceHistory: [],
       });

@@ -23,6 +23,8 @@ import { techsUpToEra, BRANCH_INFO, type TechDef } from '../../data/techs';
 import { describeEffects, TECH_TYPE_LABEL } from './techEffectsText';
 import { Icon } from './Icon';
 import { formatNumber } from '../../core/format';
+import { researchCurrencyName } from '../../data/resources';
+import { canResearch } from '../../game/engine';
 
 /** 浮层在屏幕上的固定坐标（已做过视口边界收拢） */
 interface OverlayPos {
@@ -30,7 +32,7 @@ interface OverlayPos {
   left: number;
 }
 
-/** ready = 经验够，点了就研究；short = 前置满足但经验不够，点了只看详情 */
+/** ready = 当前研究货币足够，点了就研究；short = 前置满足但货币不够 */
 type Status = 'researched' | 'ready' | 'short';
 
 // 触屏长按触发浮层的阈值（毫秒）。太短会和点击混淆，太长用户没耐心。
@@ -125,7 +127,7 @@ export function TechGrid() {
   for (const def of techsUpToEra(s.era)) {
     if (s.techs[def.id]) continue; // 已学 → 归分类区
     if (!isTechRevealed(def.id, view)) continue; // 前置未满足 → 还不到登场的时候
-    available.push({ def, status: view.experience >= def.cost ? 'ready' : 'short' });
+    available.push({ def, status: canResearch(def.id, view).ok ? 'ready' : 'short' });
   }
 
   // ── 分类区：已学科技按分支归组，按 BRANCH_INFO.order 排序 ──
@@ -397,10 +399,10 @@ export function TechGrid() {
             {/* 成本 / 当前经验：数字加 font-mono + tabular-nums，等宽对齐像测量记录 */}
             <div className="mt-2 flex items-center justify-between font-mono text-xs tabular-nums text-gray-500">
               <span>
-                成本 <span className="font-mono text-gray-200">{formatNumber(overlay.def.cost, 0)}</span> 经验
+                成本 <span className="font-mono text-gray-200">{formatNumber(overlay.def.cost, 0)}</span> {researchCurrencyName(s.era)}
               </span>
               <span>
-                存量 <span className="font-mono text-gray-200">{formatNumber(view.experience, 0)}</span>
+                存量 <span className="font-mono text-gray-200">{formatNumber(view.experience, 0)}</span> {researchCurrencyName(s.era)}
               </span>
             </div>
 

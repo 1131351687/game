@@ -27,6 +27,7 @@ export interface NeighborDef {
   name: string;
   icon: string;
   distance: 1 | 2 | 3;
+  transport: 'land' | 'water';
   /** 我方支付的货物 */
   accept: ResourceId;
   /** 我方换得的货物 */
@@ -41,6 +42,7 @@ export const NEIGHBORS: NeighborDef[] = [
     name: '迪尔蒙',
     icon: '🏝️',
     distance: 1,
+    transport: 'water',
     accept: 'food',
     sell: 'tin',
     desc: '波斯湾的中转站，距此最近。用食物换锡——锡的唯一进口来源。',
@@ -50,6 +52,7 @@ export const NEIGHBORS: NeighborDef[] = [
     name: '南方城邦',
     icon: '🏛️',
     distance: 1,
+    transport: 'land',
     accept: 'food',
     sell: 'stone',
     desc: '两河南部的兄弟城邦。用大麦换石头——本地冲积平原缺石。',
@@ -59,6 +62,7 @@ export const NEIGHBORS: NeighborDef[] = [
     name: '埃兰',
     icon: '⛰️',
     distance: 2,
+    transport: 'land',
     accept: 'wood',
     sell: 'copper',
     desc: '东部山地的埃兰人。用木材换红铜——铜的第二来源。',
@@ -68,6 +72,7 @@ export const NEIGHBORS: NeighborDef[] = [
     name: '玛甘',
     icon: '⛵',
     distance: 3,
+    transport: 'water',
     accept: 'fabric',
     sell: 'copper',
     desc: '隔海相望的阿曼铜产地。用织物换铜——路途最远，代价高。',
@@ -77,6 +82,7 @@ export const NEIGHBORS: NeighborDef[] = [
     name: '美鲁哈',
     icon: '🧿',
     distance: 3,
+    transport: 'water',
     accept: 'wood',
     sell: 'lapis',
     desc: '印度河流域的远方国度。用木材换青金石——需「青金石商路」科技解锁。',
@@ -176,6 +182,7 @@ export function settleTradeCycle(
       r.cycleAccum += cycleSec;
       const jitter = E3.PRICE_JITTER_MIN + (E3.PRICE_JITTER_MAX - E3.PRICE_JITTER_MIN) * rng();
       r.priceHistory.push(round3(basePrice(r.supply) * jitter));
+      r.lastStatus = 'blocked';
       if (r.priceHistory.length > E3.DEMAND_WINDOW) r.priceHistory.shift();
     }
     return { delta, routes, notes };
@@ -189,13 +196,22 @@ export function settleTradeCycle(
     // 青金石未解锁 → 路线空转
     if (r.supply === 'lapis' && !state.techs.lapis_route) {
       r.cycleAccum = 0;
+      r.lastStatus = 'blocked';
       continue;
     }
 
     const repEffect = getReputationEffect(state.reputation);
+    const breakChance = Math.max(0, E3.ROUTE_BASE_BREAK_CHANCE + eff.routeBreakChance);
+    if (breakChance > 0 && rng() < breakChance) {
+      notes.push('商路中断：本周期未完成交付');
+      r.cycleAccum = 0;
+      r.lastStatus = 'break';
+      continue;
+    }
     if (repEffect.refuseChance > 0 && rng() < repEffect.refuseChance) {
       notes.push('交易被拒：声望过低');
       r.cycleAccum = 0;
+      r.lastStatus = 'refused';
       continue;
     }
 
@@ -209,7 +225,8 @@ export function settleTradeCycle(
     const contractCapMul = contracted ? 1 + E3.CONTRACT_CAPACITY_BONUS : 1;
 
     // 距离系数损耗
-    const distFactor = 1 + E3.DISTANCE_COEFF * r.distance;
+    const waterFactor = r.transport === 'water' ? eff.waterDistMul : 1;
+    const distFactor = 1 + E3.DISTANCE_COEFF * r.distance * waterFactor;
     const effectiveCap = (capPerRoute / distFactor) * contractCapMul * scribeFactor;
 
     // 本期价格（付出货物 pricing）+ 需求冲击
@@ -242,6 +259,7 @@ export function settleTradeCycle(
     const payAmount = Math.min(effectiveCap, Math.max(0, available + alreadyCommitted));
     if (payAmount <= 0) {
       if (!notes.includes('缺' + r.demand)) notes.push('缺' + r.demand);
+      r.lastStatus = 'blocked';
       continue;
     }
     const getAmount = (payAmount * pricePay) / priceGet; // 换得量 = 付出食物当量 ÷ 换得单价
@@ -255,6 +273,7 @@ export function settleTradeCycle(
     if (r.priceHistory.length > E3.DEMAND_WINDOW) r.priceHistory.shift();
 
     if (has < needScribes && !notes.includes('缺书吏')) notes.push('缺书吏');
+    r.lastStatus = 'ok';
   }
 
   return { delta, routes, notes };

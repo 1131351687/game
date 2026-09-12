@@ -426,6 +426,15 @@ export const useStore = create<GameState>((set, get) => ({
       rng: step.rng,
     });
 
+    for (const note of r.tradeNotes) {
+      const text = '贸易：' + note;
+      const messages = get().messages;
+      const latest = messages[messages.length - 1];
+      if (!latest || latest.text !== text) {
+        get().addMessage(text, note.includes('中断') || note.includes('拒') ? 'warn' : 'event');
+      }
+    }
+
     // ── 岗位进阶（采集者 → 农夫 等）──
     //
     // 放在 tick 里逐人推进（每次 1 人），而不是跃迁时一次性转换：
@@ -592,6 +601,8 @@ export const useStore = create<GameState>((set, get) => ({
               ...route,
               cycleAccum: Number.isFinite(route.cycleAccum) ? route.cycleAccum : 0,
               priceHistory: Array.isArray(route.priceHistory) ? route.priceHistory : [],
+              transport: route.transport ?? (route.distance >= 3 ? 'water' : 'land'),
+              lastStatus: route.lastStatus,
             }))
         : [],
       reputation: data.reputation ?? 50,
@@ -763,6 +774,7 @@ export const useStore = create<GameState>((set, get) => ({
       demand: def.accept,
       supply: def.sell,
       distance: def.distance,
+      transport: def.transport,
       cycleAccum: 0,
       priceHistory: [],
     };

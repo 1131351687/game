@@ -1,6 +1,6 @@
 import { createRngState } from '../core/rng/seeded';
 import { E3 } from '../data/constants';
-import { tick, type E1State } from '../game/engine';
+import { canResearch, tick, type E1State } from '../game/engine';
 import { simulate } from '../game/simulation/simulate';
 import { advancePopulation } from '../game/systems/population';
 import { getTradePrice, settleTradeCycle } from '../game/trade';
@@ -51,6 +51,11 @@ function run(): void {
   const high = getTradePrice('food', 1, { ...common, jitter: 1.2 });
   assert(high / low < 1.05, '契约价格应压缩随机波动');
   assert(low > 1 && high < 2, '契约价格应保持在基准价附近');
+  const researchState = baseState({
+    experience: 900,
+    techs: { writing: true, cuneiform: false },
+  });
+  assert(canResearch('cuneiform', researchState).ok, 'E3 科技应使用同一个 experience 存量作为知识');
 
   const route = {
     partnerId: 'dilmun',
