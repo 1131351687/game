@@ -70,7 +70,6 @@ export interface EraTransitionSource {
   buildings: Record<string, number>;
   jobs: Record<string, number>;
   techs: Record<string, boolean>;
-  localOre: 'copper' | 'tin' | 'alluvial';
 }
 
 /**
@@ -94,7 +93,6 @@ export interface EraTransitionResult {
   buildings: Record<string, number>;
   jobs: Record<string, number>;
   techs: Record<string, boolean>;
-  localOre: 'copper' | 'tin' | 'alluvial';
 }
 
 /**
@@ -108,7 +106,6 @@ export interface EraTransitionResult {
 export function computeEraTransition(
   s: EraTransitionSource,
   nextEraId: EraId,
-  rng: () => number = Math.random,
 ): EraTransitionResult {
   const result: EraTransitionResult = {
     era: nextEraId,
@@ -136,22 +133,11 @@ export function computeEraTransition(
     // 采集者的"进阶为农夫"发生在跃迁**之后**（store.advanceEra 第 6 步的事件，
     // 见 applyJobUpgradeAll）——那是新时代带来的内容，不是本函数的职责
     jobs: s.jobs,
-    localOre: s.localOre,
   };
 
-  // E2→E3 交接的特殊处理
-  if (nextEraId === 'E3') {
-    // localOre 开局随机（用户拍板）
-    const rand = rng();
-    const localOre: 'copper' | 'tin' | 'alluvial' =
-      rand < 1 / 3 ? 'copper' : rand < 2 / 3 ? 'tin' : 'alluvial';
-
-    // 返回时覆盖 localOre，其余照旧透传
-    return {
-      ...result,
-      localOre,
-    };
-  }
+  // ⚠️ 矿脉随机制已废除（2026-09-13 用户拍板）：铜/锡产出改由矿工科技链驱动，
+  // 不再有"开局抽定铜矿带/锡矿带/冲积平原"的随机地图变量。
+  // 原 E2→E3 的 rng 抽签段随 localOre 字段一并删除，rng 参数同步移除。
 
   return result;
 }

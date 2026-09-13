@@ -29,7 +29,6 @@ function baseState(overrides: Partial<E1State> = {}): E1State {
     lapis: 0,
     recorded: [],
     recordedOnce: [],
-    localOre: 'alluvial',
     tradeRoutes: [],
     reputation: 50,
     jobs: {},
@@ -144,16 +143,15 @@ function run(): void {
   assert(interrupted.routes[0].lastStatus === 'break', '确定性中断应更新路线状态');
   assert(interrupted.notes.some(note => note.includes('中断')), '商路中断应写入反馈');
 
-  const tinState = baseState({
-    localOre: 'tin',
-    techs: { cuneiform: true },
-    jobs: { copper_miner: 10 },
+  // 矿工科技链：铜矿开采点亮后矿工产铜；未点亮时不产（矿脉随机制已废除）
+  const miningState = baseState({
+    techs: { cuneiform: true, copper_mining: true },
+    jobs: { miner: 10 },
   });
-  const tinTick = tick(tinState, 10, () => 0.5, 100);
-  assert(tinTick.tin > tinState.tin, '锡矿带应产生少量本地锡');
-  const alluvialTick = tick({ ...tinState, localOre: 'alluvial' }, 10, () => 0.5, 100);
-  assert(alluvialTick.copper === alluvialTick.copper, '冲积平原产出结果应为有限数值');
-  assert(alluvialTick.copper === tinState.copper, '冲积平原不应新增铜');
+  const miningTick = tick(miningState, 10, () => 0.5, 100);
+  assert(miningTick.copper > miningState.copper, '铜矿开采后矿工应产出铜');
+  const noMiningTick = tick({ ...miningState, techs: { cuneiform: true } }, 10, () => 0.5, 100);
+  assert(noMiningTick.copper === miningState.copper, '未研究铜矿开采时矿工不产铜');
 
   const population = advancePopulation({
     population: 2,

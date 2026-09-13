@@ -7,20 +7,11 @@
 //          （速率用 calcJobOutput 实时算）；经验资源额外显示 calcExperienceOutput 合计。
 // 储量来源：用 getStorageBreakdown(id, view) 逐行「label：amount」，空数组显示「无上限」。
 
-import { JOBS, type JobId } from '../../data/jobs';
+import { JOBS } from '../../data/jobs';
 import type { ResourceId } from '../../data/resources';
 import { eraDistance } from '../../data/era';
-import { calcJobOutput, calcExperienceOutput, getStorageBreakdown, type E1State } from '../../game/engine';
-import { getLocalOreLabel } from '../../game/reveal';
+import { calcJobOutput, calcResourceOutput, calcExperienceOutput, getStorageBreakdown, type E1State } from '../../game/engine';
 import { formatRate, formatNumber } from '../../core/format';
-
-/** 单个岗位的产出行：岗位名 ×人数 → 速率/s */
-function jobLine(jobId: JobId, view: E1State): string {
-  const job = JOBS.find(j => j.id === jobId);
-  if (!job) return '';
-  const n = view.jobs[jobId] ?? 0;
-  return `${job.name} ×${n} → ${formatRate(calcJobOutput(jobId, view))}/秒`;
-}
 
 /** 悬浮在「资源名称/图标」上：产出来源与加成 */
 export function buildOutputTitle(id: ResourceId, view: E1State): string {
@@ -35,26 +26,20 @@ export function buildOutputTitle(id: ResourceId, view: E1State): string {
     return lines.join('\n');
   }
 
-  // E3 金属矿脉门控：铜/锡是否有本地产出取决于 localOre，
-  // 提示必须把这一点说明白——否则"雇了矿工没产量"会被当成 bug。
+  // E3 金属：矿工产出由科技链驱动（铜矿开采→铜 / 锡矿开采→锡 / 深井采矿→加成）。
+  // 速率直接取引擎口径（含时代衰减、口头折算、深井乘数），与实际入账一致。
   if (eraDistance('E3', view.era) >= 0 && (id === 'copper' || id === 'tin')) {
-    const lines = [`本地矿藏：${getLocalOreLabel(view)}`];
-    if (view.localOre === 'copper') {
-      lines.push(
-        id === 'copper'
-          ? jobLine('copper_miner', view)
-          : '锡无本地产出 —— 需与迪尔蒙贸易进口'
-      );
-    } else if (view.localOre === 'tin') {
-      lines.push(
-        id === 'tin'
-          ? `${jobLine('copper_miner', view)} ×0.5（矿工转采锡）`
-          : '铜无本地产出 —— 需与埃兰/玛甘贸易进口'
-      );
-    } else {
-      lines.push('无本地金属矿 —— 铜/锡均需贸易进口');
+    const miners = view.jobs.miner ?? 0;
+    const techId = id === 'copper' ? 'copper_mining' : 'tin_mining';
+    const techName = id === 'copper' ? '铜矿开采' : '锡矿开采';
+    if (miners <= 0) {
+      return `暂无矿工 —— 研究「${techName}」解锁矿工后开始产出${id === 'copper' ? '铜' : '锡'}`;
     }
-    return lines.join('\n');
+    if (!view.techs[techId]) {
+      return `矿工 ×${miners}（研究「${techName}」后开始产出${id === 'copper' ? '铜' : '锡'}）`;
+    }
+    const rate = calcResourceOutput(id, view);
+    return `${id === 'copper' ? '铜矿开采' : '锡矿开采'}：矿工 ×${miners} → ${formatRate(rate)}/秒`;
   }
 
   const jobs = JOBS.filter(j => j.output === id);

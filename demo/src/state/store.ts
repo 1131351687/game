@@ -14,7 +14,7 @@ import { isJobRetired } from '../game/reveal';
 import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
 import { NEIGHBOR_MAP } from '../game/trade';
-import { createRngState, nextRandom, type RngState } from '../core/rng/seeded';
+import { createRngState, type RngState } from '../core/rng/seeded';
 import { simulateStep } from '../game/simulation/simulate';
 import type { GameEvent } from '../game/model/events';
 
@@ -131,8 +131,6 @@ export interface GameState {
   recordedOnce: string[];
 
   // ── E3 贸易系统 ──
-  /** 本地矿藏（开局随机，用户拍板：铜矿/锡矿/冲积平原） */
-  localOre: 'copper' | 'tin' | 'alluvial';
   /** 已建立的贸易路线 */
   tradeRoutes: engine.TradeRoute[];
   /** 声望 0–100，初始 50 */
@@ -213,7 +211,8 @@ export interface GameState {
   breachContract: (neighborId: string) => boolean;
 }
 
-const SAVE_VERSION = 6;
+// v7：废除矿脉随机制（localOre 字段删除）+ 岗位 copper_miner → miner（科技驱动产出）
+const SAVE_VERSION = 7;
 
 const initialState = () => ({
   running: false,
@@ -234,7 +233,6 @@ const initialState = () => ({
   lapis: 0,
   recorded: [] as string[],
   recordedOnce: [] as string[],
-  localOre: 'alluvial' as 'copper' | 'tin' | 'alluvial',
   tradeRoutes: [] as engine.TradeRoute[],
   reputation: 50,
   population: INITIAL_STATE.population,
@@ -267,7 +265,6 @@ function engineView(s: GameState): engine.EraState {
     lapis: s.lapis,
     recorded: s.recorded,
     recordedOnce: s.recordedOnce,
-    localOre: s.localOre,
     tradeRoutes: s.tradeRoutes,
     reputation: s.reputation,
     population: s.population,
@@ -557,7 +554,6 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: s.lapis,
       recorded: s.recorded,
       recordedOnce: s.recordedOnce,
-      localOre: s.localOre,
       tradeRoutes: s.tradeRoutes,
       reputation: s.reputation,
     };
@@ -569,7 +565,10 @@ export const useStore = create<GameState>((set, get) => ({
     //   v2 及更早 —— 没有 E2 的牲畜/织物，也没有季节计时，一律补 0
     //   v4 及更早 —— 有独立的「谷物」资源；v5 起谷物并入食物，
     //                迁移时把存档里的 grain **折算进 food**，不让玩家的存粮凭空消失
-    //   v6 起 —— 新增 E3 状态字段（copper/tin/bronze/lapis/recorded/recordedOnce/localOre/tradeRoutes/reputation），一律补默认值
+    //   v6 起 —— 新增 E3 状态字段（copper/tin/bronze/lapis/recorded/recordedOnce/tradeRoutes/reputation），一律补默认值
+    //   v7 起 —— 废除矿脉随机制（localOre 字段删除）；岗位 copper_miner → miner
+    //            （矿工产出改由科技链驱动：铜矿开采/锡矿开采/深井采矿），
+    //            旧存档的 copper_miner 人数**平移为 miner**，玩家不丢人手
     const oldVersion = data.version ?? 0;
     const savedRng = data.rng as Partial<RngState> | undefined;
     const rng: RngState = {
@@ -620,6 +619,15 @@ export const useStore = create<GameState>((set, get) => ({
       era: (data.era as EraId | undefined) ?? 'E1',
       food: (data.food ?? 0) + legacyGrain,
       buildings: legacyBuildings as Record<string, number>,
+      // v7 岗位迁移：copper_miner → miner（矿脉随机制废除后的平移，见上方版本注记）
+      jobs: (() => {
+        const jobs = { ...((data.jobs as Record<string, number> | undefined) ?? {}) };
+        if (oldVersion < 7 && (jobs.copper_miner ?? 0) > 0) {
+          jobs.miner = (jobs.miner ?? 0) + (jobs.copper_miner ?? 0);
+          jobs.copper_miner = 0;
+        }
+        return jobs;
+      })(),
       livestock: data.livestock ?? 0,
       fabric: data.fabric ?? 0,
       eraElapsedSec: data.eraElapsedSec ?? 0,
@@ -632,7 +640,6 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: data.lapis ?? 0,
       recorded: data.recorded ?? [],
       recordedOnce: data.recordedOnce ?? [],
-      localOre: data.localOre ?? 'alluvial',
       tradeRoutes: Array.isArray(data.tradeRoutes)
         ? data.tradeRoutes
             .filter(route => route && typeof route.partnerId === 'string')
@@ -681,12 +688,7 @@ export const useStore = create<GameState>((set, get) => ({
     //    入参用完整 state 而不是 engineView：engineView 是"引擎只读切片"
     //    （只含引擎计算需要的字段），而跃迁要带着**队列**过河，
     //    所以这里显式构造交接切片。
-    let rng = s.rng;
-    const random = (): number => {
-      const result = nextRandom(rng);
-      rng = result.state;
-      return result.value;
-    };
+    //    （矿脉随机制废除后跃迁不再消耗随机数，rng 原样透传。）
     const t = computeEraTransition(
       {
         era: s.era,
@@ -702,10 +704,8 @@ export const useStore = create<GameState>((set, get) => ({
         buildings: s.buildings,
         jobs: s.jobs,
         techs: s.techs,
-        localOre: s.localOre,
       },
-      nextEraId,
-      random
+      nextEraId
     );
 
     set({
@@ -723,16 +723,15 @@ export const useStore = create<GameState>((set, get) => ({
       population: t.population,
       populationProgress: t.populationProgress,
       // 以下字段不经 transition，直接保持原值：
-      // techs / stats / settings / fire / autoMaintainFire
-      // E3 字段重置（E1→E2 交接时置空；E2→E3 交接由 transition 处理 localOre 等）
+      // techs / stats / settings / fire / autoMaintainFire / rng
+      // E3 字段重置（E1→E2 交接时置空；E3 金属由矿工科技链产出，无随机矿藏）
       copper: 0,
       tin: 0,
       bronze: 0,
       lapis: 0,
       recorded: [],
       recordedOnce: [],
-      localOre: t.localOre,
-      rng,
+      rng: s.rng,
       tradeRoutes: [],
       reputation: 50,
     });
@@ -743,19 +742,6 @@ export const useStore = create<GameState>((set, get) => ({
     const eraEvent: GameEvent = { type: 'era.advanced', from: s.era, to: nextEraId };
     const eraMessage = eventMessage(eraEvent);
     if (eraMessage) get().addMessage(eraMessage.text, eraMessage.category, eraMessage.important);
-
-    // 5.5 E3 矿脉公告：本地矿藏决定铜/锡的自给路径（transition 里已随机抽定）。
-    //     不公告的话，抽到锡矿带/冲积平原的玩家雇了铜矿工却见不到铜，
-    //     只会当成"矿工坏了"来报 bug（2026-09-13 实例）。
-    if (nextEraId === 'E3') {
-      const oreMsg =
-        t.localOre === 'copper'
-          ? '本地矿藏：铜矿带 —— 铜矿工可自采铜；锡需贸易进口'
-          : t.localOre === 'tin'
-            ? '本地矿藏：锡矿带 —— 铜矿工转采锡（半效）；铜需贸易进口'
-            : '本地矿藏：冲积平原 —— 无本地金属矿，铜/锡均需贸易进口（矿工岗位不开放）';
-      get().addMessage(oreMsg, 'event', true);
-    }
 
     // 6. 时代入口的**岗位进阶**：进入农耕（定居）时代时，采集者自动专职为农夫
     //

@@ -128,11 +128,6 @@ export function TradePanel() {
         >
           路线 {used} / {slots} · 契约 {activeContracts} / {contractSlots}
         </span>
-
-        {/* 本地矿藏 */}
-        <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-gray-400">
-          本地矿藏 {state.localOre === 'alluvial' ? '冲积平原' : state.localOre === 'copper' ? '铜矿' : '锡矿'}
-        </span>
       </div>
 
       {/* ── 5 个固定邻邦列表 ── */}

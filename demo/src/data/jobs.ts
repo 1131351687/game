@@ -5,7 +5,7 @@ import type { EraId } from './era';
 import type { ResourceId } from './resources';
 import type { BuildingId } from './buildings';
 
-export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'copper_miner' | 'smelter' | 'scribe' | 'merchant';
+export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'miner' | 'smelter' | 'scribe' | 'merchant';
 
 export interface JobDef {
   id: JobId;
@@ -150,15 +150,15 @@ export const JOBS: JobDef[] = [
   },
   // ── E3 城邦时代 · 岗位定义（4 项）──
   {
-    id: 'copper_miner',
-    name: '铜矿工',
-    icon: '🟠',
-    output: 'copper',
-    outputRate: 0.06,
-    requires: { tech: 'cuneiform' },
+    id: 'miner',
+    name: '矿工',
+    icon: '⛏️',
+    output: 'stone',
+    outputRate: 0.05,
+    requires: { tech: 'copper_mining' },
     scaledByTool: false,
     era: 'E3',
-    desc: '在本地铜矿开采铜。**仅当本地矿藏为铜矿时可用**；否则岗位不可派。',
+    desc: '采掘石料 0.05/秒。研究「铜矿开采」后同时产出铜，「锡矿开采」后追加锡，「深井采矿」提升全部采矿产出。',
   },
   {
     id: 'smelter',

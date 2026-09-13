@@ -582,10 +582,9 @@ function autoplayE2(quiet = false): E1State {
 // ─────────────────────────────────────────────
 /**
  * E3 起始状态 —— 同样真实走 E1 → E2 → 跃迁，不手工镜像。
- * E2→E3 的 localOre 随机会影响铜矿可用性：模拟器固定跑 3 次取中位没必要，
- * 直接接受单次随机结果并在输出中标注矿藏类型。
+ * （矿脉随机制已废除：铜/锡产出由矿工科技链驱动，无随机地图变量。）
  */
-function makeE3State(): { state: E1State; ore: string } {
+function makeE3State(): { state: E1State } {
   const e2 = autoplayE2(true);
   const t = computeEraTransition(e2, 'E3');
   // transition 只透传跨代保留字段；E3 新增字段由 store.advanceEra 初始化，
@@ -601,12 +600,7 @@ function makeE3State(): { state: E1State; ore: string } {
     tradeRoutes: [],
     reputation: 50,
   };
-  const oreNames: Record<string, string> = {
-    copper: '铜矿（本地可采铜）',
-    tin: '锡矿（本地无铜，必须依赖贸易）',
-    alluvial: '冲积平原（无矿，铜锡全靠贸易）',
-  };
-  return { state, ore: oreNames[t.localOre] ?? t.localOre };
+  return { state };
 }
 
 function autoplayE3(): void {
@@ -614,7 +608,7 @@ function autoplayE3(): void {
   const LOG_UNTIL = 3600;
   const HARD_CAP = 60000; // E3 是长线时代，上限放宽到 16.7 小时游戏时
 
-  const { state: s, ore } = makeE3State();
+  const { state: s } = makeE3State();
   const e3Techs = techsOfEra('E3');
   const bag = s as unknown as Record<string, number>;
 
@@ -742,9 +736,9 @@ function autoplayE3(): void {
     if (s.techs['bronze_smelting'] && (s.buildings.furnace ?? 0) > 0) {
       take('smelter', Math.min(20, (s.buildings.furnace ?? 0) * 5));
     }
-    // 6) 采矿（仅本地有铜时）
-    if (s.localOre === 'copper' || s.localOre === 'tin') {
-      take('copper_miner', Math.min(15, Math.ceil(left / 4)));
+    // 6) 采矿（铜矿开采点亮后矿工上岗；锡矿开采同步受益）
+    if (s.techs['copper_mining']) {
+      take('miner', Math.min(15, Math.ceil(left / 4)));
     }
     // 7) 兜底：剩下去种地/采集
     if (left > 0) take('gatherer', left);
@@ -826,7 +820,7 @@ function autoplayE3(): void {
     `刻录 ${s.recorded.length}/${getRecordCapacity(s).cap} | 路线 ${(s.tradeRoutes ?? []).length} | E3科技 ${countE3()}/${e3Techs.length}`;
 
   console.log('=== E3 城邦时代自动试玩 ===\n');
-  console.log(`（起始：人口 ${Math.floor(s.population)} / K=${getCapacity(s)} / 矿藏：${ore} / E1+E2 科技全掌握）\n`);
+  console.log(`（起始：人口 ${Math.floor(s.population)} / K=${getCapacity(s)} / E1+E2 科技全掌握）\n`);
 
   const log: string[] = [];
   const logged = new Set<number>();

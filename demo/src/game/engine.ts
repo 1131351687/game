@@ -94,8 +94,6 @@ export interface EraState {
   /** 历史上刻录过的科技 id（供档案库加成计数，与技术退役解耦） */
   recordedOnce: string[];
 
-  /** 本地矿藏：决定铜/锡自给（开局随机，用户拍板） */
-  localOre: 'copper' | 'tin' | 'alluvial';
   /** 已建立的贸易路线 */
   tradeRoutes: TradeRoute[];
   /** 声望 0–100，初始 50 */
@@ -210,6 +208,12 @@ export interface AggregatedEffects {
   recordCapacityAdd: number;
   /** 书吏产出乘数 */
   scribeOutputMul: number;
+  /** 矿工追加铜产出速率（加法键：铜矿开采 0.06/人/秒） */
+  minerCopperRate: number;
+  /** 矿工追加锡产出速率（加法键：锡矿开采 0.03/人/秒） */
+  minerTinRate: number;
+  /** 矿工采掘产出乘数（深井采矿 1.5） */
+  minerOutputMul: number;
   /** 档案库加成：每项已刻录科技的产出加成（取最大，0.03 → 扩建 0.04） */
   archiveBonus: number;
 
@@ -284,6 +288,9 @@ const DEFAULT_EFFECTS: AggregatedEffects = {
   recordingEnabled: false,
   recordCapacityAdd: 0,
   scribeOutputMul: 1,
+  minerCopperRate: 0,
+  minerTinRate: 0,
+  minerOutputMul: 1,
   archiveBonus: 0,
   scribesPerRoute: 40,
   routeSlotsAdd: 0,
@@ -448,6 +455,7 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
 
     // ── E3 乘法键：按时代衰减 ──
     if (e.scribeOutputMul) acc.scribeOutputMul *= mulR(e.scribeOutputMul);
+    if (e.minerOutputMul) acc.minerOutputMul *= mulR(e.minerOutputMul);
     if (e.contractBreachPenalty) acc.contractBreachPenalty *= mulR(e.contractBreachPenalty);
     if (e.contractDurationMul) acc.contractDurationMul *= mulR(e.contractDurationMul);
     if (e.landCaravanMul) acc.landCaravanMul *= mulR(e.landCaravanMul);
@@ -455,6 +463,8 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
 
     // ── E3 加法键：按时代衰减 ──
     if (e.recordCapacityAdd) acc.recordCapacityAdd += addR(e.recordCapacityAdd);
+    if (e.minerCopperRate) acc.minerCopperRate += addR(e.minerCopperRate);
+    if (e.minerTinRate) acc.minerTinRate += addR(e.minerTinRate);
     if (e.routeSlotsAdd) acc.routeSlotsAdd += addR(e.routeSlotsAdd);
     if (e.routeBreakChance) acc.routeBreakChance += addR(e.routeBreakChance);
 
@@ -835,29 +845,21 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
   const perResource = eff.resourceMultiplier[resourceId];
   if (perResource !== undefined) total *= perResource;
 
-  // ── E3 城邦时代：矿脉门控（让 UI 显示的毛速率与 tick 实际写回一致）──
+  // ── E3 城邦时代：矿工的科技追加产出 ──
   //
-  // 现状 bug：UI 顶栏/资源表显示 calcResourceOutput('copper')（毛产出），
-  // 但 tick 里 ① localOre==='tin' 时矿工产出 ×0.5 实际计入 tin、铜毛速率却照常显示；
-  // ② 冶炼工每秒消耗铜（存量被抵消），玩家看到"有产量但存量不动"。
-  // 修复：按本地矿藏区分毛产出口径——
-  //   · localOre!=='copper' → 铜毛产出 0（锡矿带/冲积平原不产铜）
-  //   · localOre==='tin'    → 锡毛产出 = 铜矿工产出 ×0.5（复用铜矿工岗位，对齐 tick 5a 段）
-  // ⚠️ 此处返回「毛产出」；扣冶炼消耗后的净速率由 getNetResourceRate 提供（UI 用于显示）。
-  if (state.era === 'E3' && (resourceId === 'copper' || resourceId === 'tin')) {
-    if (resourceId === 'copper') {
-      return state.localOre === 'copper' ? total : 0;
+  // 2026-09-13 用户拍板「移除矿脉随机制」：铜/锡不再取决于开局随机抽定的
+  // localOre，而是由**科技**决定矿工产出什么——
+  //   · 铜矿开采（copper_mining）→ 每名矿工追加铜 0.06/秒
+  //   · 锡矿开采（tin_mining）   → 每名矿工追加锡 0.03/秒
+  //   · 深井采矿（deep_mining）  → 全部采掘产出 ×1.5
+  // 基础石料产出走上方 JOBS 循环（miner.output === 'stone'）。
+  // 加法速率键走 addR（时代衰减 + 口头折算），乘数键走 mulR，与书吏口径一致。
+  if (state.era === 'E3') {
+    const miners = state.jobs.miner ?? 0;
+    if (miners > 0 && (resourceId === 'copper' || resourceId === 'tin')) {
+      const rate = resourceId === 'copper' ? eff.minerCopperRate : eff.minerTinRate;
+      total += miners * rate * eff.minerOutputMul;
     }
-    // tin：锡矿带复用铜矿工岗位，按铜矿工产出 50% 计为少量自给（对齐 tick 5a 段）。
-    // 用裸铜矿工产出并叠加铜的资源乘数，与门控前 calcResourceOutput('copper') 口径一致。
-    if (state.localOre !== 'tin') return 0;
-    let copperMiner = 0;
-    for (const job of JOBS) {
-      if (job.output === 'copper') copperMiner += calcJobOutput(job.id, state);
-    }
-    const m = eff.resourceMultiplier['copper'];
-    if (m !== undefined) copperMiner *= m;
-    return copperMiner * 0.5;
   }
 
   return total;
@@ -1617,10 +1619,9 @@ export function tick(
 
   if (state.era === 'E3') {
     // 5a) 铜/锡/青铜产出
-    // 矿脉门控已下沉到 calcResourceOutput（见该函数 E3 段）：
-    //   · localOre!=='copper' → 铜毛产出返回 0（不再虚高 UI 毛速率）
-    //   · localOre==='tin'    → 锡毛产出 = 铜矿工产出 ×0.5
-    // 这里只把产出写回，行为与原手工分支完全一致。
+    // 矿工产出由科技驱动（铜矿开采→铜、锡矿开采→锡），口径统一在
+    // calcResourceOutput 的 E3 段，这里只写回；冶炼消耗在 5b 段扣除，
+    // 净速率由 getNetResourceRate 提供给 UI。
     copper += calcResourceOutput('copper', state) * dt;
     tin += calcResourceOutput('tin', state) * dt;
 

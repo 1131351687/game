@@ -157,6 +157,12 @@ export interface TechEffects {
   recordCapacityAdd?: number;
   /** 书吏产出乘数 */
   scribeOutputMul?: number;
+  /** 矿工追加铜产出速率（加法键：铜矿开采 +0.06/人/秒） */
+  minerCopperRate?: number;
+  /** 矿工追加锡产出速率（加法键：锡矿开采 +0.03/人/秒） */
+  minerTinRate?: number;
+  /** 矿工采掘产出乘数（乘法键：深井采矿 1.5） */
+  minerOutputMul?: number;
   /** 档案库加成：已刻录科技每项提供的产出加成（绝对设置，取最大） */
   archiveBonus?: number;
 
