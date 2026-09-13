@@ -70,68 +70,58 @@ export function TradePanel() {
         <div className="text-xs text-gray-600">悬停邻邦查看详情，开通后可自选交易货物</div>
       </header>
 
-      {/* ── 贸易仪表盘（紧凑横向条）── */}
-      <div className="flex shrink-0 flex-nowrap items-center gap-3 overflow-x-auto rounded-md bg-gray-900/40 px-4 py-2.5 text-sm leading-tight">
-        {/* 声望线性条：0–100 */}
-        <div
-          className="relative h-2 min-w-[6rem] flex-1 overflow-hidden rounded-md bg-gray-800"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={rep}
-          aria-label={`声望 ${rep}`}
-        >
-          <div
-            className="h-full rounded-md transition-all duration-300"
-            style={{
-              width: `${repRatio * 100}%`,
-              // 低声望红色警示，高声望青色优惠，中段灰青
-              backgroundColor: rep <= E3.REP_LOW ? '#ef4444' : rep >= E3.REP_HIGH ? '#2dd4bf' : '#64748b',
-            }}
-          />
+      {/* ── 贸易仪表盘：带标签的分组网格，一眼对上号 ── */}
+      <div className="grid grid-cols-2 gap-x-8 gap-y-2.5 rounded-md bg-gray-900/40 px-4 py-3 sm:grid-cols-3">
+        {/* 声望：线性条 + 数值 + 效果，占满一格 */}
+        <div className="col-span-2 sm:col-span-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs text-gray-600">声望</span>
+            <span className="text-xs tabular-nums text-gray-500">
+              {repEff.priceMul < 1
+                ? `全线价格 −${formatPercent(1 - repEff.priceMul)}`
+                : repEff.priceMul > 1
+                  ? `全线价格 +${formatPercent(repEff.priceMul - 1)}`
+                  : '价格平稳'}
+            </span>
+          </div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <div
+              className="relative h-1.5 flex-1 overflow-hidden rounded-md bg-gray-800"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={rep}
+              aria-label={`声望 ${rep}`}
+            >
+              <div
+                className="h-full rounded-md transition-all duration-300"
+                style={{
+                  width: `${repRatio * 100}%`,
+                  // 低声望红色警示，高声望青色优惠，中段灰青
+                  backgroundColor: rep <= E3.REP_LOW ? '#ef4444' : rep >= E3.REP_HIGH ? '#2dd4bf' : '#64748b',
+                }}
+              />
+            </div>
+            <span className="w-8 text-right font-mono text-xs font-semibold tabular-nums text-gray-200">
+              {rep}
+            </span>
+          </div>
         </div>
 
-        {/* 声望数值 */}
-        <span className="shrink-0 min-w-[3rem] text-right font-mono font-semibold tabular-nums text-gray-200">
-          {rep}
-        </span>
-
-        {/* 声望效果提示 */}
-        <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-gray-500">
-          {repEff.priceMul < 1
-            ? `全线 −${formatPercent(1 - repEff.priceMul)}`
-            : repEff.priceMul > 1
-              ? `全线 +${formatPercent(repEff.priceMul - 1)}`
-              : '价格平稳'}
-        </span>
-
-        {/* 贸易周期 */}
-        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-gray-400">
-          <Icon emoji="⏱️" className="text-xs" />
-          <span className="font-mono tabular-nums">周期 {E3.TRADE_CYCLE_SEC}s</span>
-        </span>
-
-        {/* 商人数 */}
-        <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-xs text-gray-400">
-          <Icon emoji="🚶" className="text-xs" />
-          <span className="font-mono tabular-nums">商人</span>
-          <span
-            className={`font-mono tabular-nums ${
-              merchants < 1 ? 'text-danger' : 'text-gray-200'
-            }`}
-          >
-            {merchants}
-          </span>
-        </span>
-
-        {/* 路线槽位 */}
-        <span
-          className={`shrink-0 whitespace-nowrap text-xs tabular-nums ${
-            free <= 0 ? 'text-danger' : 'text-gray-500'
-          }`}
-        >
-          路线 {used} / {slots} · 契约 {activeContracts} / {contractSlots}
-        </span>
+        <DashboardCell label="贸易周期" value={`${E3.TRADE_CYCLE_SEC}s`} />
+        <DashboardCell
+          label="商人"
+          value={String(merchants)}
+          danger={merchants < 1}
+          hint={merchants < 1 ? '需在「工作」分配' : undefined}
+        />
+        <DashboardCell
+          label="路线"
+          value={`${used} / ${slots}`}
+          danger={free <= 0}
+          hint={free <= 0 ? '槽位已满，建商站可扩' : undefined}
+        />
+        <DashboardCell label="契约" value={`${activeContracts} / ${contractSlots}`} />
       </div>
 
       {/* ── 邻邦网格：紧凑方块，hover / 点击出详情卡 ── */}
@@ -146,6 +136,31 @@ export function TradePanel() {
         声望 ≥{E3.REP_HIGH} 全线 −{formatPercent(1 - E3.REP_HIGH_DISCOUNT)}，≤{E3.REP_LOW} 全线 +{formatPercent(E3.REP_LOW_PENALTY - 1)} 且有拒交风险。
       </p>
     </section>
+  );
+}
+
+/** 仪表盘单元格：标签灰、数值等宽；danger 时数值转红并附一句提示 */
+function DashboardCell({
+  label,
+  value,
+  danger,
+  hint,
+}: {
+  label: string;
+  value: string;
+  danger?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <div className="text-xs text-gray-600">{label}</div>
+      <div
+        className={`mt-0.5 font-mono text-sm tabular-nums ${danger ? 'text-red-400' : 'text-gray-100'}`}
+      >
+        {value}
+      </div>
+      {hint && <div className="mt-0.5 text-[10px] leading-tight text-gray-600">{hint}</div>}
+    </div>
   );
 }
 
@@ -382,7 +397,9 @@ function GoodsSelect({
       >
         {list.map(id => (
           <option key={id} value={id} disabled={id === exclude}>
-            {RESOURCE_MAP[id].icon} {RESOURCE_MAP[id].name}
+            {/* 原生 <option> 无法走 <Icon> 组件，也就无法响应「显示图标」开关——
+                直接只写名称，保证纯文字模式下不漏 emoji */}
+            {RESOURCE_MAP[id].name}
           </option>
         ))}
       </select>

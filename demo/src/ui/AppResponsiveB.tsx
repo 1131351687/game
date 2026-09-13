@@ -297,8 +297,11 @@ export default function AppResponsiveB() {
       <main className="min-w-[24rem] flex-1 overflow-y-auto p-3 xl:p-4">
         <nav className="flex gap-4 border-b border-gray-800 px-1 xl:gap-6 xl:px-2">
           {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`-mb-px border-b-2 px-1 py-3 text-sm transition-colors ${tab === t.id ? 'border-accent text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-200'}`}>
-              {t.icon} {t.label}
+            <button key={t.id} onClick={() => setTab(t.id)} className={`-mb-px flex items-center gap-1.5 border-b-2 px-1 py-3 text-sm transition-colors ${tab === t.id ? 'border-accent text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-200'}`}>
+              {/* 图标必须走 <Icon>：裸 emoji 会绕过「显示图标」开关，
+                  导致纯文字模式下 Tab 名旁边仍挂着图片（2026-09-13 反馈实例） */}
+              <Icon emoji={t.icon} className="text-sm" />
+              <span>{t.label}</span>
             </button>
           ))}
         </nav>
