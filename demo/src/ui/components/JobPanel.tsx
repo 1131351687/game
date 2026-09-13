@@ -243,16 +243,28 @@ export function JobPanel() {
                       {job.upgradesTo &&
                         (() => {
                           const target = JOB_MAP[job.upgradesTo.job];
-                          const reached = eraDistance(target.era, view.era) >= 0;
-                          const working = reached && (view.jobs[job.id] ?? 0) > 0;
+                          // 触发门槛：era 触发看时代；tech 触发（打石者→矿工）看前置科技。
+                          const techGate =
+                            job.upgradesTo.trigger === 'tech' ? target.requires.tech : undefined;
+                          const gateOpen = techGate
+                            ? !!view.techs[techGate]
+                            : eraDistance(target.era, view.era) >= 0;
+                          const working = gateOpen && (view.jobs[job.id] ?? 0) > 0;
+                          const label = gateOpen
+                            ? '已取消'
+                            : techGate
+                              ? '职业进阶'
+                              : '时代演进';
 
                           return (
                             <div
                               className={`mt-0.5 text-xs ${working ? 'text-warn' : 'text-gray-600'}`}
                             >
-                              {reached ? '已取消' : '时代演进'} → {target.name}：
-                              {!reached
-                                ? `进入${ERAS[target.era].name}后本职业取消，全员转为${target.name}`
+                              {label} → {target.name}：
+                              {!gateOpen
+                                ? techGate
+                                  ? `研究「${TECH_MAP[techGate]?.name ?? techGate}」后本职业取消，全员转为${target.name}`
+                                  : `进入${ERAS[target.era].name}后本职业取消，全员转为${target.name}`
                                 : working
                                   ? `全员转为${target.name}中（每 0.25 秒 1 人）`
                                   : `已全部转为${target.name}`}

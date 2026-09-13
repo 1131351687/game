@@ -1020,8 +1020,15 @@ export function canUpgradeJob(state: E1State, from: JobId): JobId | null {
   const up = JOB_MAP[from].upgradesTo;
   if (!up) return null;
   if ((state.jobs[from] ?? 0) <= 0) return null;
-  // 目标岗位所属时代已到来即可进阶
-  if (eraDistance(JOB_MAP[up.job].era, state.era) < 0) return null;
+  const target = JOB_MAP[up.job];
+  // 目标岗位所属时代已到来（两种触发方式的公共前提）
+  if (eraDistance(target.era, state.era) < 0) return null;
+  if (up.trigger === 'tech') {
+    // 科技触发（打石者→矿工，2026-09-13 拍板）：还需目标岗位的前置科技已研究。
+    // 时代一到就转会产生"凭空出现的空岗位"，且与"解锁对应科技后进阶"的预期不符。
+    const tech = target.requires.tech;
+    if (tech && !state.techs[tech]) return null;
+  }
   return up.job;
 }
 

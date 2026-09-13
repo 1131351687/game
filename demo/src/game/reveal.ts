@@ -160,6 +160,13 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
 export function isJobRetired(jobId: JobId, s: E1State): boolean {
   const up = JOB_MAP[jobId].upgradesTo;
   if (!up) return false;
+  // 科技触发的进阶（打石者→矿工）：前置科技研究完成即退役——
+  // 此时 applyJobUpgrade 会立即开始转人，行随人数清零自然消失。
+  // 若按时代退役，玩家会在研究科技前看到一个挂着"已取消"却转不出去的岗位。
+  if (up.trigger === 'tech') {
+    const tech = JOB_MAP[up.job].requires.tech;
+    return !!tech && !!s.techs[tech];
+  }
   return eraDistance(JOB_MAP[up.job].era, s.era) >= 0;
 }
 
