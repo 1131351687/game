@@ -8,7 +8,7 @@ import type { EraId } from '../data/era';
 import type { ResourceId } from '../data/resources';
 import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
-import { INITIAL_STATE, LOOP, E2, E3 } from '../data/constants';
+import { INITIAL_STATE, LOOP, E2, E3, E4 } from '../data/constants';
 import * as engine from '../game/engine';
 import * as engineRecord from '../game/record';
 import { isJobRetired } from '../game/reveal';
@@ -124,6 +124,28 @@ export interface GameState {
   bronze: number;
   /** 青金石：远方贸易品（需「青金石商路」解锁） */
   lapis: number;
+  /** 铁：E4 铁器与帝国建设材料 */
+  iron: number;
+  /** 铸币：E4 官吏、军团和扩张的支付媒介 */
+  coin: number;
+  /** E4 秩序仪表盘 */
+  order: number;
+  /** E4 版图格数 */
+  territory: number;
+  /** E4 政体 */
+  polity: engine.PolityId | null;
+  /** E4 官吏与军团编制 */
+  officials: number;
+  legions: number;
+  /** E4 已颁布法典条款 */
+  codeArticles: string[];
+  /** E4 政体切换冷却（秒时间戳） */
+  polityCooldownUntil: number;
+  /** E4 领土扩张平定期 */
+  expansionPending: { until: number; targetN: number } | null;
+  /** P1 文明重启状态 */
+  p1Unlocked: boolean;
+  legacyPoints: number;
 
   // ── E3 记录系统 ──
   /** 已刻录科技 id（槽位占用 = recorded.length；刻录不可撤销） */
@@ -223,6 +245,12 @@ export interface GameState {
   setRouteGoods: (neighborId: string, demand: ResourceId, supply: ResourceId) => void;
   signContract: (neighborId: string) => boolean;
   breachContract: (neighborId: string) => boolean;
+  /** E4 版图扩张：支付资源后进入平定期，完成后增加一格。返回失败原因或空字符串。 */
+  expandTerritory: () => string;
+  /** E4 政体切换。 */
+  switchPolity: (polity: engine.PolityId) => boolean;
+  /** E4 法典条款设置，供已解锁条款面板使用。 */
+  setCodeArticles: (articles: string[]) => void;
 }
 
 // v7：废除矿脉随机制（localOre 字段删除）+ 岗位 copper_miner → miner（科技驱动产出）
@@ -247,6 +275,18 @@ const initialState = () => ({
   tin: 0,
   bronze: 0,
   lapis: 0,
+  iron: 0,
+  coin: 0,
+  order: 70,
+  territory: 1,
+  polity: null,
+  officials: 0,
+  legions: 0,
+  codeArticles: [],
+  polityCooldownUntil: 0,
+  expansionPending: null,
+  p1Unlocked: false,
+  legacyPoints: 0,
   recorded: [] as string[],
   recordedOnce: [] as string[],
   tradeRoutes: [] as engine.TradeRoute[],
@@ -279,6 +319,18 @@ function engineView(s: GameState): engine.EraState {
     tin: s.tin,
     bronze: s.bronze,
     lapis: s.lapis,
+    iron: s.iron,
+    coin: s.coin,
+    order: s.order,
+    territory: s.territory,
+    polity: s.polity,
+    officials: s.officials,
+    legions: s.legions,
+    codeArticles: s.codeArticles,
+    polityCooldownUntil: s.polityCooldownUntil,
+    expansionPending: s.expansionPending,
+    p1Unlocked: s.p1Unlocked,
+    legacyPoints: s.legacyPoints,
     recorded: s.recorded,
     recordedOnce: s.recordedOnce,
     tradeRoutes: s.tradeRoutes,
@@ -331,21 +383,37 @@ export const useStore = create<GameState>((set, get) => ({
     if (isJobRetired(jobId, engineView(s))) return;
 
     const others = engine.getAssignedPopulation(engineView(s)) - (s.jobs[jobId] ?? 0);
-    const maxAllowed = Math.max(0, Math.floor(s.population - others));
-    const clamped = Math.max(0, Math.min(Math.floor(count), maxAllowed));
-    set({ jobs: { ...s.jobs, [jobId]: clamped } });
+    const populationLimit = Math.max(0, Math.floor(s.population - others));
+    const slotLimit = Math.floor(engine.getJobSlotCapacity(jobId, engineView(s)));
+    const clamped = Math.max(0, Math.min(Math.floor(count), populationLimit, slotLimit));
+    const jobs = { ...s.jobs, [jobId]: clamped };
+    set({
+      jobs,
+      ...(s.era === 'E4' && jobId === 'official' ? { officials: clamped } : {}),
+      ...(s.era === 'E4' && jobId === 'legion' ? { legions: clamped } : {}),
+    });
   },
 
   assignAllIdle: (jobId) => {
     const s = get();
     if (!engine.isJobUnlocked(jobId, engineView(s))) return;
-    const idle = engine.getIdlePopulation(engineView(s));
-    set({ jobs: { ...s.jobs, [jobId]: (s.jobs[jobId] ?? 0) + Math.floor(idle) } });
+    const view = engineView(s);
+    const idle = engine.getIdlePopulation(view);
+    const slotLimit = Math.floor(engine.getJobSlotCapacity(jobId, view));
+    const nextCount = Math.min(slotLimit, (s.jobs[jobId] ?? 0) + Math.floor(idle));
+    set({
+      jobs: { ...s.jobs, [jobId]: nextCount },
+      ...(s.era === 'E4' && jobId === 'official' ? { officials: nextCount } : {}),
+      ...(s.era === 'E4' && jobId === 'legion' ? { legions: nextCount } : {}),
+    });
   },
 
   clearJobs: () => {
     const s = get();
-    set({ jobs: { ...s.jobs, ...Object.fromEntries(JOBS.map(j => [j.id, 0])) } });
+    set({
+      jobs: { ...s.jobs, ...Object.fromEntries(JOBS.map(j => [j.id, 0])) },
+      ...(s.era === 'E4' ? { officials: 0, legions: 0 } : {}),
+    });
   },
 
   build: (buildingId) => {
@@ -361,7 +429,7 @@ export const useStore = create<GameState>((set, get) => ({
     // 按成本表逐项扣除。写成资源名驱动而不是 if (res === 'wood')/('stone')/('food')，
     // 否则 E2/E3 一旦出现谷物等新成本的建筑，就会变成"不花资源白拿"。
     for (const [res, amount] of Object.entries(cost)) {
-      const key = res as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric';
+      const key = res as ResourceId;
       const owned = s[key];
       if (typeof owned === 'number') next[key] = owned - (amount as number);
     }
@@ -400,7 +468,7 @@ export const useStore = create<GameState>((set, get) => ({
     };
     // 与 build 相同：按资源名逐项扣费，不白名单资源种类
     for (const [res, amount] of Object.entries(total)) {
-      const key = res as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric';
+      const key = res as ResourceId;
       const ownedRes = s[key];
       if (typeof ownedRes === 'number') next[key] = ownedRes - (amount as number);
     }
@@ -484,6 +552,15 @@ export const useStore = create<GameState>((set, get) => ({
 
     const step = simulateStep(engineView(s), dt, s.rng);
     const r = step.result;
+    const populationAfterTick = Math.max(0, Math.floor(r.population));
+    const jobsAfterTick = { ...s.jobs };
+    let assignedAfterTick = 0;
+    for (const job of JOBS) {
+      const count = Math.max(0, Math.floor(jobsAfterTick[job.id] ?? 0));
+      const kept = Math.min(count, Math.max(0, populationAfterTick - assignedAfterTick));
+      jobsAfterTick[job.id] = kept;
+      assignedAfterTick += kept;
+    }
     set({
       food: r.food,
       wood: r.wood,
@@ -492,15 +569,28 @@ export const useStore = create<GameState>((set, get) => ({
       livestock: r.livestock,
       fabric: r.fabric,
       eraElapsedSec: r.eraElapsedSec,
-      population: r.population,
+      population: populationAfterTick,
       populationProgress: r.populationProgress,
       fire: r.fire,
       copper: r.copper,
       tin: r.tin,
       bronze: r.bronze,
       lapis: r.lapis,
+      iron: r.iron,
+      coin: r.coin,
+      order: r.order,
+      territory: r.territory,
+      polity: r.polity,
+      codeArticles: r.codeArticles,
+      polityCooldownUntil: r.polityCooldownUntil,
+      expansionPending: r.expansionPending,
+      p1Unlocked: r.p1Unlocked,
+      legacyPoints: r.legacyPoints,
       tradeRoutes: r.tradeRoutes,
       reputation: r.reputation,
+      jobs: jobsAfterTick,
+      officials: jobsAfterTick.official ?? r.officials,
+      legions: jobsAfterTick.legion ?? r.legions,
       rng: step.rng,
     });
 
@@ -609,6 +699,18 @@ export const useStore = create<GameState>((set, get) => ({
       tin: s.tin,
       bronze: s.bronze,
       lapis: s.lapis,
+      iron: s.iron,
+      coin: s.coin,
+      order: s.order,
+      territory: s.territory,
+      polity: s.polity,
+      officials: s.officials,
+      legions: s.legions,
+      codeArticles: s.codeArticles,
+      polityCooldownUntil: s.polityCooldownUntil,
+      expansionPending: s.expansionPending,
+      p1Unlocked: s.p1Unlocked,
+      legacyPoints: s.legacyPoints,
       recorded: s.recorded,
       recordedOnce: s.recordedOnce,
       tradeRoutes: s.tradeRoutes,
@@ -708,6 +810,18 @@ export const useStore = create<GameState>((set, get) => ({
       tin: data.tin ?? 0,
       bronze: data.bronze ?? 0,
       lapis: data.lapis ?? 0,
+      iron: data.iron ?? 0,
+      coin: data.coin ?? 0,
+      order: data.order ?? 70,
+      territory: data.territory ?? 1,
+      polity: data.polity ?? null,
+      officials: data.officials ?? 0,
+      legions: data.legions ?? 0,
+      codeArticles: data.codeArticles ?? [],
+      polityCooldownUntil: data.polityCooldownUntil ?? 0,
+      expansionPending: data.expansionPending ?? null,
+      p1Unlocked: data.p1Unlocked ?? false,
+      legacyPoints: data.legacyPoints ?? 0,
       recorded: data.recorded ?? [],
       recordedOnce: data.recordedOnce ?? [],
       tradeRoutes: Array.isArray(data.tradeRoutes)
@@ -771,6 +885,16 @@ export const useStore = create<GameState>((set, get) => ({
         livestock: s.livestock,
         fabric: s.fabric,
         experience: s.experience,
+        copper: s.copper,
+        tin: s.tin,
+        bronze: s.bronze,
+        lapis: s.lapis,
+        iron: s.iron,
+        coin: s.coin,
+        recorded: s.recorded,
+        recordedOnce: s.recordedOnce,
+        tradeRoutes: s.tradeRoutes,
+        reputation: s.reputation,
         buildings: s.buildings,
         jobs: s.jobs,
         techs: s.techs,
@@ -794,16 +918,29 @@ export const useStore = create<GameState>((set, get) => ({
       populationProgress: t.populationProgress,
       // 以下字段不经 transition，直接保持原值：
       // techs / stats / settings / fire / autoMaintainFire / rng
-      // E3 字段重置（E1→E2 交接时置空；E3 金属由矿工科技链产出，无随机矿藏）
-      copper: 0,
-      tin: 0,
-      bronze: 0,
-      lapis: 0,
-      recorded: [],
-      recordedOnce: [],
+      // E3 资产：E1/E2→E3 初始化；E3→E4 原样继承。
+      copper: s.era === 'E3' ? (t.copper ?? s.copper) : 0,
+      tin: s.era === 'E3' ? (t.tin ?? s.tin) : 0,
+      bronze: s.era === 'E3' ? (t.bronze ?? s.bronze) : 0,
+      lapis: s.era === 'E3' ? (t.lapis ?? s.lapis) : 0,
+      recorded: s.era === 'E3' ? (t.recorded ?? s.recorded) : [],
+      recordedOnce: s.era === 'E3' ? (t.recordedOnce ?? s.recordedOnce) : [],
       rng: s.rng,
-      tradeRoutes: [],
-      reputation: 50,
+      tradeRoutes: s.era === 'E3' ? (t.tradeRoutes as engine.TradeRoute[] ?? s.tradeRoutes) : [],
+      reputation: s.era === 'E3' ? (t.reputation ?? s.reputation) : 50,
+      // E4 专属状态只在进入 E4 时初始化；E4→E5 目前不可用，但保持契约明确。
+      iron: s.era === 'E3' ? (t.iron ?? s.iron) : s.iron,
+      coin: s.era === 'E3' ? (t.coin ?? s.coin) : s.coin,
+      order: nextEraId === 'E4' && s.era !== 'E4' ? 70 : s.order,
+      territory: nextEraId === 'E4' && s.era !== 'E4' ? 1 : s.territory,
+      polity: nextEraId === 'E4' && s.era !== 'E4' ? null : s.polity,
+      officials: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.officials,
+      legions: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.legions,
+      codeArticles: nextEraId === 'E4' && s.era !== 'E4' ? [] : s.codeArticles,
+      polityCooldownUntil: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.polityCooldownUntil,
+      expansionPending: nextEraId === 'E4' && s.era !== 'E4' ? null : s.expansionPending,
+      p1Unlocked: nextEraId === 'E4' && s.era !== 'E4' ? true : s.p1Unlocked,
+      legacyPoints: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.legacyPoints,
     });
 
     // 5. 先产生结构化事件，再由消息层翻译（重要，置顶显示）
@@ -835,7 +972,18 @@ export const useStore = create<GameState>((set, get) => ({
     //    ⚠️ 无田地时农夫产出为 0，所以这里必须把话说清楚，
     //    否则玩家会以为"跃迁把我的食物生产搞没了"。
     const afterJobs = get();
-    const upAll = engine.applyJobUpgradeAll(engineView(afterJobs));
+    let transitionJobs = afterJobs;
+    if (nextEraId === 'E4' && (afterJobs.jobs.scribe ?? 0) > 0) {
+      const retiredScribes = afterJobs.jobs.scribe;
+      set({ jobs: { ...afterJobs.jobs, scribe: 0 } });
+      get().addMessage(
+        '书吏岗位退役：' + retiredScribes + ' 人回到闲置人口 —— 文字已成为帝国基础设施，知识改由人口自然积累',
+        'event',
+        true
+      );
+      transitionJobs = get();
+    }
+    const upAll = engine.applyJobUpgradeAll(engineView(transitionJobs));
     if (upAll) {
       set({ jobs: upAll.jobs });
       for (const m of upAll.moved) {
@@ -965,6 +1113,58 @@ export const useStore = create<GameState>((set, get) => ({
     });
     get().addMessage(`已毁约「${def.name}」，该路线短期报价上浮`, 'warn', true);
     return true;
+  },
+  expandTerritory: () => {
+    const s = get();
+    if (s.era !== 'E4') return '仅帝国时代可扩张版图';
+    if (s.expansionPending) return '已有一块版图正在平定';
+    const n = Math.max(1, s.territory);
+    if (n >= E4.MAX_TERRITORY) return '版图已达当前上限';
+    if (s.order < 50) return `秩序不足（需 ≥50，当前 ${Math.round(s.order)}）`;
+    const coinCost = Math.ceil(E4.EXPANSION_COIN_BASE * n ** E4.EXPANSION_COIN_EXP);
+    const ironCost = Math.ceil(E4.EXPANSION_IRON_BASE * n ** E4.EXPANSION_IRON_EXP);
+    const flatSec = (E4.EXPANSION_FLAT_BASE_SEC + E4.EXPANSION_FLAT_PER_TERRITORY_SEC * n) * engine.aggregateEffects(engineView(s)).expansionFlatMul;
+    const legionNeed = Math.ceil(0.15 * n ** 1.15);
+    const legions = s.jobs.legion ?? s.legions;
+    if (legions < legionNeed) return `军团不足（需 ${legionNeed}，当前 ${legions}）`;
+    if (s.coin < coinCost) return `铸币不足（需 ${coinCost}）`;
+    if (s.iron < ironCost) return `铁不足（需 ${ironCost}）`;
+    set({
+      coin: s.coin - coinCost,
+      iron: s.iron - ironCost,
+      expansionPending: { until: s.eraElapsedSec + flatSec, targetN: n + 1 },
+    });
+    get().addMessage(`开始平定第 ${n + 1} 块版图：铸币 -${coinCost}、铁 -${ironCost}，预计 ${flatSec} 秒完成`, 'event', true);
+    return '';
+  },
+  switchPolity: (polity) => {
+    const s = get();
+    if (s.era !== 'E4') return false;
+    if (!['monarchy', 'republic', 'theocracy'].includes(polity)) return false;
+    if (s.polity === polity || s.polityCooldownUntil > 0) return false;
+    if (s.order < E4.POLITY_SWITCH_ORDER_COST || s.coin < E4.POLITY_SWITCH_COIN_COST) {
+      get().addMessage(`切换政体需要秩序 ≥${E4.POLITY_SWITCH_ORDER_COST} 且铸币 ≥${E4.POLITY_SWITCH_COIN_COST}`, 'warn');
+      return false;
+    }
+    set({
+      polity,
+      coin: s.coin - E4.POLITY_SWITCH_COIN_COST,
+      order: Math.max(0, s.order - 10),
+      polityCooldownUntil: E4.POLITY_SWITCH_COOLDOWN_SEC,
+    });
+    get().addMessage(`政体已切换为${polity === 'monarchy' ? '君主制' : polity === 'republic' ? '共和制' : '神权制'}`, 'event', true);
+    return true;
+  },
+  setCodeArticles: (articles) => {
+    if (get().era !== 'E4') return;
+    const s = get();
+    const slots = Math.max(0, (s.buildings.code_stele ?? 0) * 2);
+    const allowed = new Set(['written_law', 'census', 'imperial_standard', 'military_merit']);
+    const next = [...new Set(articles)].filter(id => allowed.has(id) && !!s.techs[id]).slice(0, slots);
+    set({ codeArticles: next });
+    if (next.length < [...new Set(articles)].length) {
+      get().addMessage(`法典条款已按 ${slots} 个槽位和已研究科技截取`, 'warn');
+    }
   },
 }));
 

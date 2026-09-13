@@ -16,7 +16,8 @@
 //   · 所有 emoji 经 <Icon> 渲染（纯文字模式），间距用 gap 建立，不依赖图标宽度
 
 import { useStore, toEngineState } from '../../state/store';
-import { calcExperienceOutput } from '../../game/engine';
+import { calcExperienceOutput, getAdminLoad, getGovernanceCoverage, getStabilityRate, getOrderRegime } from '../../game/engine';
+import { E4 } from '../../data/constants';
 import { isModuleUnlocked } from '../../game/reveal';
 import { techsUpToEra } from '../../data/techs';
 import { formatNumber, formatRate } from '../../core/format';
@@ -26,6 +27,100 @@ import { Icon } from './Icon';
 import { TechGrid } from './TechGrid';
 import { AdvancePanel } from './AdvancePanel';
 import { RecordPanel } from './RecordPanel';
+
+function EmpireDashboard() {
+  const s = useStore();
+  const view = toEngineState(s);
+  const load = getAdminLoad(view);
+  const coverage = getGovernanceCoverage(view);
+  const stability = getStabilityRate(view);
+  const regime = getOrderRegime(view);
+  const n = Math.max(1, s.territory);
+  const coinCost = Math.ceil(E4.EXPANSION_COIN_BASE * n ** E4.EXPANSION_COIN_EXP);
+  const ironCost = Math.ceil(E4.EXPANSION_IRON_BASE * n ** E4.EXPANSION_IRON_EXP);
+  const pending = s.expansionPending;
+  const polityNames: Record<NonNullable<typeof s.polity>, string> = {
+    monarchy: '君主制',
+    republic: '共和制',
+    theocracy: '神权制',
+  };
+  return (
+    <section className="space-y-3 border-y border-gray-800 py-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <span className="font-semibold text-accent">帝国治理</span>
+        <span>秩序 <b className={s.order >= 80 ? 'text-green-400' : s.order >= 50 ? 'text-amber-300' : 'text-red-400'}>{Math.round(s.order)}</b> · {regime.name}</span>
+        <span>覆盖率 κ <b className="text-gray-200">{coverage.toFixed(2)}</b></span>
+        <span>维稳率 ρ <b className="text-gray-200">{(stability * 100).toFixed(0)}%</b></span>
+        <span>行政负荷 <b className="text-gray-200">{load.toFixed(1)}</b></span>
+        <span>版图 <b className="text-gray-200">{s.territory}/{E4.MAX_TERRITORY}</b></span>
+        <span>铁 <b className="text-gray-200">{formatNumber(s.iron, 0)}</b></span>
+        <span>铸币 <b className="text-amber-300">{formatNumber(s.coin, 0)}</b></span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <button
+          type="button"
+          disabled={!!pending || regime.canExpand === false || s.territory >= E4.MAX_TERRITORY}
+          onClick={() => {
+            const reason = s.expandTerritory();
+            if (reason) s.addMessage(`扩张失败：${reason}`, 'warn');
+          }}
+          className="rounded bg-accent px-3 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-600"
+        >
+          {pending ? `平定中（目标版图 ${pending.targetN}）` : `扩张至 ${s.territory + 1}（${formatNumber(coinCost, 0)} 铸币 / ${formatNumber(ironCost, 0)} 铁）`}
+        </button>
+        {pending && <span className="text-gray-500">预计剩余 {Math.max(0, Math.ceil(pending.until - s.eraElapsedSec))} 秒</span>}
+        <span className="mx-1 text-gray-700">|</span>
+        <span className="text-gray-500">政体：{s.polity ? polityNames[s.polity] : '未选择'}</span>
+        {(['monarchy', 'republic', 'theocracy'] as const).map(p => (
+          <button
+            key={p}
+            type="button"
+            disabled={s.polity === p || s.polityCooldownUntil > 0 || s.order < E4.POLITY_SWITCH_ORDER_COST || s.coin < E4.POLITY_SWITCH_COIN_COST}
+            onClick={() => s.switchPolity(p)}
+            className="rounded border border-gray-700 px-2 py-1 text-gray-400 hover:border-gray-500 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {polityNames[p]}
+          </button>
+        ))}
+        {s.polityCooldownUntil > 0 && <span className="text-gray-500">切换冷却 {Math.ceil(s.polityCooldownUntil)} 秒</span>}
+      </div>
+      <div className="border-t border-gray-800 pt-2 text-xs">
+        <div className="mb-2 flex items-center gap-3">
+          <span className="font-semibold text-gray-300">法典</span>
+          <span className="text-gray-500">已用 {s.codeArticles.length} / {(s.buildings.code_stele ?? 0) * 2} 槽位</span>
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1">
+          {[
+            ['written_law', '成文法', '治理效率 +10%'],
+            ['census', '编户齐民', '版图承载 +15%'],
+            ['imperial_standard', '统一法度', '秩序恢复 +15%'],
+            ['military_merit', '军功爵', '军团与扩张治理 +10%'],
+          ].map(([id, name, desc]) => {
+            const checked = s.codeArticles.includes(id);
+            const available = !!s.techs[id];
+            return (
+              <label key={id} className={available ? 'cursor-pointer text-gray-300' : 'cursor-not-allowed text-gray-700'} title={desc}>
+                <input
+                  type="checkbox"
+                  className="mr-1 accent-orange-500"
+                  checked={checked}
+                  disabled={!available}
+                  onChange={event => {
+                    const next = event.target.checked
+                      ? [...s.codeArticles, id]
+                      : s.codeArticles.filter(article => article !== id);
+                    s.setCodeArticles(next);
+                  }}
+                />
+                {name}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function CivilizationPanel() {
   const s = useStore();
@@ -103,6 +198,8 @@ export function CivilizationPanel() {
         </div>
       )}
 
+      {s.era === 'E4' && <EmpireDashboard />}
+
       {/* ── 刻录 · 泥板档案（E3 记录系统；由左侧状态栏移入文明板块）──
           RecordPanel 自带可折叠外壳：未研究「楔形文字」时整节不渲染。 */}
       <RecordPanel className="mx-auto max-w-4xl" />
@@ -112,7 +209,7 @@ export function CivilizationPanel() {
       <div className="pb-40">
         <TechGrid />
       </div>
-    </div>
+      </div>
   );
 }
 

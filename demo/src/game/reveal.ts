@@ -134,6 +134,9 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
       return eraDistance('E3', s.era) >= 0 && !!s.techs['bronze_smelting'];
     case 'lapis':
       return eraDistance('E3', s.era) >= 0 && !!s.techs['lapis_route'];
+    case 'iron':
+    case 'coin':
+      return eraDistance('E4', s.era) >= 0;
 
     default:
       return false;

@@ -83,12 +83,22 @@ export const E3_RESOURCE_ORDER: ResourceId[] = [
   'food',
 ];
 
+/** E4 帝国时代资源排列：知识承接 E3，铁与铸币服务治理和扩张。 */
+export const E4_RESOURCE_ORDER: ResourceId[] = [
+  'experience',
+  'iron',
+  'coin',
+  'wood',
+  'stone',
+  'food',
+];
+
 export function TopBar() {
   const s = useStore();
   const view = toEngineState(s);
 
   const order =
-    s.era === 'E3' ? E3_RESOURCE_ORDER : s.era === 'E2' ? E2_RESOURCE_ORDER : MATERIAL_RESOURCES;
+    s.era === 'E4' ? E4_RESOURCE_ORDER : s.era === 'E3' ? E3_RESOURCE_ORDER : s.era === 'E2' ? E2_RESOURCE_ORDER : MATERIAL_RESOURCES;
   const shown = order.filter(id => isResourceRevealed(id, view));
   const popGrowth = getPopulationGrowth(view);
   const capacity = getCapacity(view);
@@ -102,7 +112,7 @@ export function TopBar() {
         const amount =
           id === 'experience'
             ? s.experience
-            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis'] as number);
+            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin'] as number);
         // experience 的显示名按时代切换：E3 起「知识」，E1/E2「经验」。
         // 直接用 data 层的 researchCurrencyName，避免在本文件硬编码时代字符串。
         const displayName = id === 'experience' ? researchCurrencyName(s.era) : def.name;

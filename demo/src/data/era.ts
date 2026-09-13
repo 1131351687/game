@@ -4,7 +4,7 @@
 // 本文件只维护"时代"这一层，不做引擎与 UI 逻辑。
 
 /** 时代标识符 */
-export type EraId = 'E1' | 'E2' | 'E3';
+export type EraId = 'E1' | 'E2' | 'E3' | 'E4';
 
 /** 单个时代的元数据 */
 export interface EraMeta {
@@ -46,6 +46,12 @@ export interface EraMeta {
     minRecorded?: number;
     /** 资源存量门槛：资源 id → 最低值（E3：青铜 ≥2000） */
     minResources?: Record<string, number>;
+    /** E4 版图最低格数 */
+    minTerritory?: number;
+    /** E4 铸币最低存量 */
+    minCoin?: number;
+    /** E4 秩序最低值 */
+    minOrder?: number;
   };
 }
 
@@ -100,6 +106,18 @@ export const ERAS: Record<EraId, EraMeta> = {
       minRecorded: 12,
       /** 学宫 ≥3 座（记录容量 ≥18）、商栈 ≥2 座 */
       minBuildings: { academy: 3, trading_post: 2 },
+    },
+  },
+  E4: {
+    id: 'E4',
+    name: '帝国时代',
+    index: 3,
+    gateTech: 'printing',
+    advanceConditions: {
+      minTerritory: 20,
+      minCoin: 150000,
+      minOrder: 80,
+      minBuildings: { government_office: 6 },
     },
   },
 };

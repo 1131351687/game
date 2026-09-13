@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useStore, toEngineState } from '../state/store';
-import { TopBar, E2_RESOURCE_ORDER, E3_RESOURCE_ORDER } from './components/TopBar';
+import { TopBar, E2_RESOURCE_ORDER, E3_RESOURCE_ORDER, E4_RESOURCE_ORDER } from './components/TopBar';
 import {
   MATERIAL_RESOURCES,
   RESOURCE_MAP,
@@ -136,7 +136,7 @@ function ResourceList() {
   const view = toEngineState(s);
 
   const order: ResourceId[] =
-    s.era === 'E3' ? E3_RESOURCE_ORDER : s.era === 'E2' ? E2_RESOURCE_ORDER : MATERIAL_RESOURCES;
+    s.era === 'E4' ? E4_RESOURCE_ORDER : s.era === 'E3' ? E3_RESOURCE_ORDER : s.era === 'E2' ? E2_RESOURCE_ORDER : MATERIAL_RESOURCES;
   const shown = order.filter(id => isResourceRevealed(id, view));
   const popGrowth = getPopulationGrowth(view);
   const capacity = getCapacity(view);
@@ -153,7 +153,7 @@ function ResourceList() {
         const amount =
           id === 'experience'
             ? s.experience
-            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis'] as number);
+            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin'] as number);
         const displayName = id === 'experience' ? researchCurrencyName(s.era) : def.name;
 
         return (

@@ -26,6 +26,7 @@ import {
   BUILDING_EFFECTS,
   E2,
   E3,
+  E4,
   HUNT,
   getFireTier,
   getToolMultiplier,
@@ -88,6 +89,30 @@ export interface EraState {
   bronze: number;
   /** 青金石：远方贸易品（需「青金石商路」解锁） */
   lapis: number;
+  /** 铁：E4 铁器与帝国建设材料 */
+  iron: number;
+  /** 铸币：E4 官吏、军团和扩张的支付媒介 */
+  coin: number;
+  /** 秩序：E4 治理状态仪表盘，0-100 */
+  order: number;
+  /** 版图格数：E4 扩张规模，至少为 1 */
+  territory: number;
+  /** 当前政体；未解锁时为空 */
+  polity: 'monarchy' | 'republic' | 'theocracy' | null;
+  /** 官吏数量 */
+  officials: number;
+  /** 军团数量 */
+  legions: number;
+  /** 已颁布法典条款 */
+  codeArticles: string[];
+  /** 政体切换冷却截止时间（秒） */
+  polityCooldownUntil: number;
+  /** 版图扩张平定状态 */
+  expansionPending: { until: number; targetN: number } | null;
+  /** P1 文明重启是否解锁 */
+  p1Unlocked: boolean;
+  /** 遗产点 */
+  legacyPoints: number;
 
   /** 已刻录科技 id（槽位占用 = recorded.length；刻录不可撤销） */
   recorded: string[];
@@ -242,6 +267,14 @@ export interface AggregatedEffects {
   recyclingRate: number;
   /** 文明级损失事件减幅（青铜兵器 0.4） */
   lossReduction: number;
+  ironOutputMul: number;
+  coinOutputMul: number;
+  roadLevelMax: number;
+  governanceMul: number;
+  orderRecoveryMul: number;
+  legionPayMul: number;
+  expansionFlatMul: number;
+  territoryCapacityMul: number;
 }
 
 const DEFAULT_EFFECTS: AggregatedEffects = {
@@ -304,6 +337,14 @@ const DEFAULT_EFFECTS: AggregatedEffects = {
   lapisEnabled: false,
   recyclingRate: 0,
   lossReduction: 0,
+  ironOutputMul: 1,
+  coinOutputMul: 1,
+  roadLevelMax: 4,
+  governanceMul: 1,
+  orderRecoveryMul: 1,
+  legionPayMul: 1,
+  expansionFlatMul: 1,
+  territoryCapacityMul: 1,
 };
 
 export function aggregateEffects(state: E1State): AggregatedEffects {
@@ -484,6 +525,14 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     if (e.lossReduction !== undefined) {
       acc.lossReduction = Math.max(acc.lossReduction, e.lossReduction);
     }
+    if (e.ironOutputMul) acc.ironOutputMul *= mulR(e.ironOutputMul);
+    if (e.coinOutputMul) acc.coinOutputMul *= mulR(e.coinOutputMul);
+    if (e.roadLevelMax !== undefined) acc.roadLevelMax = Math.max(acc.roadLevelMax, e.roadLevelMax);
+    if (e.governanceMul) acc.governanceMul *= mulR(e.governanceMul);
+    if (e.orderRecoveryMul) acc.orderRecoveryMul *= mulR(e.orderRecoveryMul);
+    if (e.legionPayMul) acc.legionPayMul *= mulR(e.legionPayMul);
+    if (e.expansionFlatMul) acc.expansionFlatMul *= mulR(e.expansionFlatMul);
+    if (e.territoryCapacityMul) acc.territoryCapacityMul *= mulR(e.territoryCapacityMul);
     if (e.conversionLoss !== undefined) {
       acc.conversionLoss = Math.min(acc.conversionLoss, e.conversionLoss);
     }
@@ -598,6 +647,15 @@ export function getCapacity(state: E1State): number {
   const villageHouses = state.buildings.village_house ?? 0;
   const fields = state.buildings.field ?? 0;
   const farmers = state.jobs.farmer ?? 0;
+
+  if (state.era === 'E4') {
+    const existingHousing =
+      houses * POPULATION.CAPACITY_PER_HOUSE +
+      villageHouses * E2.CAPACITY_PER_VILLAGE_HOUSE +
+      (state.buildings.city_house ?? 0) * E3.POP_PER_CITY_HOUSE +
+      Math.min(fields, Math.floor(farmers / E2.FIELD_MIN_FARMERS)) * E2.CAPACITY_PER_FIELD;
+    return 200 + existingHousing + getTerritoryCapacity(state);
+  }
 
   // ── E3 城邦时代：人口模型切换 ──
   // K = 320 基础 + 民居×130（E3-citystate.md §11.3）。
@@ -824,6 +882,20 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
   const eff = aggregateEffects(state);
   let total = 0;
 
+  if (state.era === 'E4' && resourceId === 'iron') {
+    return (state.jobs.iron_miner ?? 0) * E4.IRON_MINER_RATE * eff.ironOutputMul * getOrderRegime(state).outputMultiplier;
+  }
+  if (state.era === 'E4' && resourceId === 'coin') {
+    const mintWorkers = Math.min(
+      state.jobs.mint_worker ?? 0,
+      (state.buildings.mint ?? 0) * E4.MINT_WORKERS_PER_BUILDING
+    );
+    const gross = mintWorkers * E4.COIN_MINT_RATE * getOrderRegime(state).outputMultiplier;
+    const ironAvailable = Math.max(0, state.iron ?? 0);
+    const ironRate = mintWorkers * E4.COIN_MINT_RATE * E4.MINT_IRON_PER_COIN;
+    return ironRate > 0 ? gross * eff.coinOutputMul * Math.min(1, ironAvailable / ironRate) : gross;
+  }
+
   for (const job of JOBS) {
     if (job.output !== resourceId) continue;
     total += calcJobOutput(job.id, state);
@@ -863,6 +935,85 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
   }
 
   return total;
+}
+
+// -----------------------------------------------------------------------------
+// E4 帝国规则：所有函数均保持时代门控，E1-E3 返回中性值。
+// -----------------------------------------------------------------------------
+export type PolityId = 'monarchy' | 'republic' | 'theocracy';
+
+export interface OrderRegime {
+  id: 'collapse' | 'rebellion' | 'unrest' | 'stable' | 'peace';
+  name: string;
+  outputMultiplier: number;
+  researchMultiplier: number;
+  canExpand: boolean;
+}
+
+export function getAdminLoad(state: E1State): number {
+  if (state.era !== 'E4') return 0;
+  const eff = aggregateEffects(state);
+  const n = Math.max(1, state.territory ?? 1);
+  const roadLevel = Math.min(eff.roadLevelMax, state.buildings.royal_road ?? 0);
+  const legions = Math.max(0, state.jobs.legion ?? state.legions ?? 0);
+  const radius = 1 + Math.max(0, 0.03 - 0.006 * roadLevel) * (n - 1);
+  const suppression = Math.max(0.7, 1 - 0.02 * legions);
+  return 1.5 * n ** 1.5 * radius * suppression;
+}
+
+export function getGovernanceEfficiency(state: E1State): number {
+  if (state.era !== 'E4') return 1;
+  const eff = aggregateEffects(state);
+  const offices = Math.min(4, state.buildings.government_office ?? 0);
+  const polity = state.polity === 'republic' ? 1.15 : state.polity === 'theocracy' ? 0.9 : 1;
+  const articleBonus = (state.codeArticles ?? []).includes('written_law') ? 0.1 : 0;
+  return (1 + 0.25 * offices) * polity * eff.governanceMul * (1 + articleBonus);
+}
+
+export function getGovernanceSupply(state: E1State): number {
+  if (state.era !== 'E4') return 0;
+  const officials = Math.max(0, state.jobs.official ?? state.officials ?? 0);
+  return officials * getGovernanceEfficiency(state);
+}
+
+export function getGovernanceCoverage(state: E1State): number {
+  if (state.era !== 'E4') return 1;
+  const load = getAdminLoad(state);
+  return load <= 0 ? 1 : getGovernanceSupply(state) / load;
+}
+
+export function getStabilityRate(state: E1State): number {
+  if (state.era !== 'E4') return 0;
+  const load = getAdminLoad(state);
+  const uncovered = Math.max(0, 1 - getGovernanceCoverage(state));
+  return 0.8 * load / (load + 240) * (1 + 0.6 * uncovered);
+}
+
+export function getOrderDelta(state: E1State): number {
+  if (state.era !== 'E4') return 0;
+  const recovery = state.polity === 'theocracy' ? 1.6 : 1;
+  return Math.max(-8, Math.min(3, 15 * (getGovernanceCoverage(state) - 0.8))) * recovery;
+}
+
+export function getOrderRegime(state: E1State): OrderRegime {
+  let order = state.order ?? 70;
+  if (order <= 0) return { id: 'collapse', name: '崩解', outputMultiplier: 0.3, researchMultiplier: 0.3, canExpand: false };
+  if (order < 20) return { id: 'rebellion', name: '叛乱', outputMultiplier: 0.5, researchMultiplier: 0.5, canExpand: false };
+  if (order < 50) return { id: 'unrest', name: '骚动', outputMultiplier: 0.8, researchMultiplier: 0.7, canExpand: false };
+  if (order < 80) return { id: 'stable', name: '安定', outputMultiplier: 1, researchMultiplier: 0.9, canExpand: true };
+  return { id: 'peace', name: '太平', outputMultiplier: 1.15, researchMultiplier: 1, canExpand: true };
+}
+
+export function getCoinSpendPerSec(state: E1State): number {
+  if (state.era !== 'E4') return 0;
+  const officials = Math.max(0, state.jobs.official ?? state.officials ?? 0);
+  const legions = Math.max(0, state.jobs.legion ?? state.legions ?? 0);
+  return officials * 0.15 + legions * 0.8 * aggregateEffects(state).legionPayMul;
+}
+
+export function getTerritoryCapacity(state: E1State): number {
+  if (state.era !== 'E4') return 0;
+  return 60 * Math.max(1, state.territory ?? 1) ** 0.85;
 }
 
 // ─────────────────────────────────────────────
@@ -934,6 +1085,13 @@ export function calcExperienceOutput(state: E1State): number {
     // 平滑交接：用 max 而不是硬切换——书吏经济自然长大后再接管 bootstrap 通道，
     // 两条曲线在交叉点自然衔接，避免研究楔形文字 / 初派书吏时产量断崖下跌。
     return Math.max(bootstrapPath, scribePath);
+  }
+
+  // E4 起文字已成为基础设施：知识仍写入既有 experience 字段，
+  // 由人口与政体研究系数共同决定，避免新增同义 knowledge 状态。
+  if (state.era === 'E4') {
+    const researchMul = state.polity === 'republic' ? 1.15 : state.polity === 'theocracy' ? 0.8 : 0.9;
+    return state.population * 0.012 * researchMul * getOrderRegime(state).researchMultiplier;
   }
 
   return state.population * POPULATION.EXP_PER_PERSON * eff.expMultiplier;
@@ -1041,6 +1199,12 @@ export function canAffordCost(
  * 这些农夫产出为 0，玩家会在毫无预警的情况下断粮。
  */
 export function getJobSlotCapacity(jobId: JobId, state: E1State): number {
+  if (state.era === 'E4') {
+    if (jobId === 'mint_worker') return Math.max(0, (state.buildings.mint ?? 0) * E4.MINT_WORKERS_PER_BUILDING);
+    if (jobId === 'official') return Math.max(0, (state.buildings.government_office ?? 0) * 10);
+    if (jobId === 'legion') return Math.max(0, (state.buildings.legion_camp ?? 0) * 20);
+    return Number.POSITIVE_INFINITY;
+  }
   switch (jobId) {
     case 'farmer':
       return (state.buildings.field ?? 0) * E2.JOBS_PER_FIELD;
@@ -1177,6 +1341,10 @@ export function canResearch(techId: string, state: E1State): ResearchCheck {
 
   if (state.experience < def.cost) {
     return { ok: false, reason: `${researchCurrencyName(state.era)}不足（还差 ${Math.ceil(def.cost - state.experience)}）` };
+  }
+
+  if (eraDistance(def.era, state.era) < 0) {
+    return { ok: false, reason: '该科技属于尚未到达的时代' };
   }
 
   return { ok: true };
@@ -1320,6 +1488,20 @@ export function checkAdvance(state: E1State): AdvanceCheck {
     });
   }
 
+  // E4 帝国毕业条件：版图、铸币与秩序必须同时达标。
+  if (cond.minTerritory !== undefined) {
+    const territory = state.territory ?? 1;
+    items.push({ label: `版图 ≥ ${cond.minTerritory}`, done: territory >= cond.minTerritory, detail: `${territory} / ${cond.minTerritory}` });
+  }
+  if (cond.minCoin !== undefined) {
+    const coin = state.coin ?? 0;
+    items.push({ label: `铸币 ≥ ${cond.minCoin}`, done: coin >= cond.minCoin, detail: `${Math.floor(coin)} / ${cond.minCoin}` });
+  }
+  if (cond.minOrder !== undefined) {
+    const order = state.order ?? 0;
+    items.push({ label: `秩序 ≥ ${cond.minOrder}`, done: order >= cond.minOrder, detail: `${Math.round(order)} / ${cond.minOrder}` });
+  }
+
   // ── E3 特殊条件：钢铁必须已刻录 ──
   // devplan §7.2：跃迁六项条件中的第一项是「研究「钢铁」并完成刻录」。
   // 刻录是刻录系统本身的要求（铁门槛刻录需 1 槽），这里额外校验以防漏刻。
@@ -1393,6 +1575,12 @@ export function getResourceStorage(resourceId: ResourceId, state: E1State): numb
         (state.buildings.city_house ?? 0) * 150 +
         (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_METAL_BONUS
       );
+    case 'iron':
+      if (state.era !== 'E4') return Number.POSITIVE_INFINITY;
+      return 1000 + (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_METAL_BONUS + (state.buildings.government_office ?? 0) * 400;
+    case 'coin':
+      if (state.era !== 'E4') return Number.POSITIVE_INFINITY;
+      return 1_000_000;
     // 牲畜是活体储备，不占粮仓容量；织物同理
     default:
       return Number.POSITIVE_INFINITY;
@@ -1491,6 +1679,20 @@ export function getStorageBreakdown(id: ResourceId, state: E1State): StorageBrea
       }
       return items;
     }
+    case 'iron':
+      if (state.era !== 'E4') return [];
+      return [
+        { label: '基础储量', amount: 1000 },
+        ...(state.buildings.warehouse ?? 0) > 0
+          ? [{ label: `通用仓库 (×${state.buildings.warehouse ?? 0})`, amount: (state.buildings.warehouse ?? 0) * E3.WAREHOUSE_METAL_BONUS }]
+          : [],
+        ...(state.buildings.government_office ?? 0) > 0
+          ? [{ label: `官署 (×${state.buildings.government_office ?? 0})`, amount: (state.buildings.government_office ?? 0) * 400 }]
+          : [],
+      ];
+    case 'coin':
+      if (state.era !== 'E4') return [];
+      return [{ label: '流动资金上限', amount: 1_000_000 }];
     default:
       return [];
   }
@@ -1553,6 +1755,18 @@ export interface TickResult {
   tin: number;
   bronze: number;
   lapis: number;
+  iron: number;
+  coin: number;
+  order: number;
+  territory: number;
+  polity: PolityId | null;
+  officials: number;
+  legions: number;
+  codeArticles: string[];
+  polityCooldownUntil: number;
+  expansionPending: { until: number; targetN: number } | null;
+  p1Unlocked: boolean;
+  legacyPoints: number;
   tradeRoutes: TradeRoute[];
   reputation: number;
   tradeNotes: string[];
@@ -1604,8 +1818,8 @@ export function tick(
     growthPerSec: growth,
     dt,
   });
-  const population = populationStep.population;
-  const progress = populationStep.progress;
+  let population = populationStep.population;
+  let progress = populationStep.progress;
 
   // ── 3.5) 吃粮：单一「食物」池 ──
   //
@@ -1672,9 +1886,74 @@ export function tick(
   let tin = state.tin ?? 0;
   let bronze = state.bronze ?? 0;
   let lapis = state.lapis ?? 0;
+  let iron = state.iron ?? 0;
+  let coin = state.coin ?? 0;
+  let order = state.order ?? 70;
+  let territory = Math.max(1, state.territory ?? 1);
+  const polity = state.polity ?? null;
+  const officials = state.jobs.official ?? state.officials ?? 0;
+  const legions = state.jobs.legion ?? state.legions ?? 0;
+  const codeArticles = state.codeArticles ?? [];
+  let polityCooldownUntil = state.polityCooldownUntil ?? 0;
+  let expansionPending = state.expansionPending ?? null;
+  const p1Unlocked = state.p1Unlocked ?? false;
+  const legacyPoints = state.legacyPoints ?? 0;
   let tradeRoutes = state.tradeRoutes ?? [];
   let reputation = state.reputation ?? 50;
   const tradeNotes: string[] = [];
+
+  if (state.era === 'E4') {
+    const ironGain = calcResourceOutput('iron', state) * dt;
+    const coinGain = calcResourceOutput('coin', state) * dt;
+    iron = Math.min(iron + ironGain, getResourceStorage('iron', state));
+    coin = Math.min(coin + coinGain, getResourceStorage('coin', state));
+    // 铸币不是凭空生成：按实际产出的铸币量消耗铁，缺铁时产出已按比例降速。
+    iron = Math.max(0, iron - coinGain * E4.MINT_IRON_PER_COIN);
+
+    const foodUpkeep =
+      officials * E4.OFFICIAL_FOOD_PER_SEC * dt +
+      legions * E4.LEGION_FOOD_PER_SEC * dt;
+    const coinUpkeep = getCoinSpendPerSec(state) * dt;
+    food = Math.max(0, food - foodUpkeep);
+    coin = Math.max(0, coin - coinUpkeep);
+
+    const unpaid = Math.max(0, coinUpkeep - (state.coin ?? 0));
+    order = Math.max(0, Math.min(100, order + getOrderDelta(state) * dt - (unpaid > 0 ? Math.min(2, unpaid / Math.max(dt, 0.001)) * dt : 0)));
+    if (unpaid > 0) tradeNotes.push('铸币不足 —— 官吏或军团欠饷，秩序下降');
+
+    polityCooldownUntil = Math.max(0, polityCooldownUntil - dt);
+    if (expansionPending) {
+      const remaining = expansionPending.until - (state.eraElapsedSec ?? 0) - dt;
+      expansionPending = remaining <= 0 ? null : { ...expansionPending, until: (state.eraElapsedSec ?? 0) + dt + remaining };
+      if (!expansionPending) territory = Math.max(territory, Math.min(E4.MAX_TERRITORY, (state.territory ?? 1) + 1));
+    }
+
+    // 失序后果按时代时钟的区间边界结算，避免每个 0.25 秒 tick 重复扣除。
+    // 叛乱：每 30 秒失去一格；崩解：每 10 秒失去一格，并持续损失人口。
+    const beforeSec = state.eraElapsedSec ?? 0;
+    const rebellionCrossings = order > 0 && order < 20
+      ? Math.max(0, Math.floor((eraElapsedSec) / 30) - Math.floor(beforeSec / 30))
+      : 0;
+    const collapseCrossings = order <= 0
+      ? Math.max(0, Math.floor(eraElapsedSec / 10) - Math.floor(beforeSec / 10))
+      : 0;
+    const territoryLoss = Math.min(Math.max(0, territory - 1), rebellionCrossings + collapseCrossings);
+    if (territoryLoss > 0) {
+      territory -= territoryLoss;
+      expansionPending = null;
+      tradeNotes.push(
+        order <= 0
+          ? `帝国崩解：失去 ${territoryLoss} 格版图`
+          : `叛乱：失去 ${territoryLoss} 格版图`
+      );
+    }
+    if (order <= 0 && dt > 0 && population > 0) {
+      population = Math.max(0, Math.floor(population * Math.exp(-0.005 * dt)));
+      progress = 0;
+      tradeNotes.push('帝国崩解：人口持续流失');
+    }
+  }
+
 
   if (state.era === 'E3') {
     // 5a) 铜/锡/青铜产出
@@ -1746,6 +2025,9 @@ export function tick(
     }
   }
 
+  // E4 资源产出暂由下一批规则接入；这里先保证模拟结果完整透传，
+  // 避免新增状态在每个 tick 中丢失。
+
   // E3 资源仓储上限（food/wood/stone 与铜锡青铜共用 GetCapacity 体系）
   if (state.era === 'E3') {
     food = Math.max(0, Math.min(food, getResourceStorage('food', state)));
@@ -1771,6 +2053,18 @@ export function tick(
     tin,
     bronze,
     lapis,
+    iron,
+    coin,
+    order,
+    territory,
+    polity,
+    officials,
+    legions,
+    codeArticles,
+    polityCooldownUntil,
+    expansionPending,
+    p1Unlocked,
+    legacyPoints,
     tradeRoutes,
     reputation,
     tradeNotes,

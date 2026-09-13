@@ -77,6 +77,16 @@ export interface EraTransitionSource {
   livestock: number;
   fabric: number;
   experience: number;
+  iron?: number;
+  coin?: number;
+  copper?: number;
+  tin?: number;
+  bronze?: number;
+  lapis?: number;
+  recorded?: string[];
+  recordedOnce?: string[];
+  tradeRoutes?: unknown[];
+  reputation?: number;
   buildings: Record<string, number>;
   jobs: Record<string, number>;
   techs: Record<string, boolean>;
@@ -100,6 +110,16 @@ export interface EraTransitionResult {
   livestock: number;
   fabric: number;
   experience: number;
+  iron?: number;
+  coin?: number;
+  copper?: number;
+  tin?: number;
+  bronze?: number;
+  lapis?: number;
+  recorded?: string[];
+  recordedOnce?: string[];
+  tradeRoutes?: unknown[];
+  reputation?: number;
   buildings: Record<string, number>;
   jobs: Record<string, number>;
   techs: Record<string, boolean>;
@@ -142,6 +162,16 @@ export function computeEraTransition(
     fabric: s.fabric,
     // 经验与科技：文明积累，跨代保留（科技效果按 eraDecay 自动衰减）
     experience: s.experience,
+    iron: s.iron ?? 0,
+    coin: s.coin ?? 0,
+    copper: s.copper ?? 0,
+    tin: s.tin ?? 0,
+    bronze: s.bronze ?? 0,
+    lapis: s.lapis ?? 0,
+    recorded: s.recorded ? [...s.recorded] : [],
+    recordedOnce: s.recordedOnce ? [...s.recordedOnce] : [],
+    tradeRoutes: s.tradeRoutes ? [...s.tradeRoutes] : [],
+    reputation: s.reputation ?? 50,
     techs: s.techs,
     // 建筑：**全数保留**（住所/作坊继续生效、继续贡献承载力与加成），
     // 不再做"升级映射"式的替换——那等于把玩家的建筑换成另一种东西。

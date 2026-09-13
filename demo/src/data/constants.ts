@@ -427,3 +427,28 @@ export const E3 = {
     reputation: 50,
   } as const,
 } as const;
+
+// ─────────────────────────────────────────────
+// E4 帝国时代常量（首轮可玩闭环）
+// ─────────────────────────────────────────────
+export const E4 = {
+  IRON_MINER_RATE: 0.4,
+  COIN_MINT_RATE: 0.5,
+  MINT_IRON_PER_COIN: 0.2,
+  MINT_WORKERS_PER_BUILDING: 20,
+  OFFICIAL_FOOD_PER_SEC: 1.2,
+  OFFICIAL_COIN_PER_SEC: 0.15,
+  LEGION_FOOD_PER_SEC: 2.0,
+  LEGION_COIN_PER_SEC: 0.8,
+  MAX_TERRITORY: 24,
+  BASE_TERRITORY_CAPACITY: 60,
+  EXPANSION_COIN_BASE: 800,
+  EXPANSION_COIN_EXP: 1.3,
+  EXPANSION_IRON_BASE: 200,
+  EXPANSION_IRON_EXP: 1.1,
+  EXPANSION_FLAT_BASE_SEC: 15,
+  EXPANSION_FLAT_PER_TERRITORY_SEC: 2,
+  POLITY_SWITCH_COIN_COST: 2500,
+  POLITY_SWITCH_ORDER_COST: 60,
+  POLITY_SWITCH_COOLDOWN_SEC: 300,
+} as const;

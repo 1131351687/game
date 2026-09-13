@@ -1,6 +1,7 @@
 import { createRngState } from '../core/rng/seeded';
-import { E3 } from '../data/constants';
-import { calcExperienceOutput, canResearch, checkAdvance, tick, type E1State } from '../game/engine';
+import { E3, E4 } from '../data/constants';
+import { calcExperienceOutput, canResearch, checkAdvance, getAdminLoad, getGovernanceCoverage, getOrderRegime, getResourceStorage, tick, type E1State } from '../game/engine';
+import { computeEraTransition } from '../game/transition';
 import { simulate } from '../game/simulation/simulate';
 import { advancePopulation } from '../game/systems/population';
 import { getTradePrice, settleTradeCycle } from '../game/trade';
@@ -168,6 +169,45 @@ function run(): void {
     nowSec: 100,
   });
   assert(offline.events.some(event => event.type === 'simulation.offline'), '离线模拟应产生离线事件');
+
+  const transition = computeEraTransition({
+    ...baseState({
+      copper: 321,
+      tin: 123,
+      bronze: 456,
+      lapis: 7,
+      recorded: ['writing'],
+      recordedOnce: ['writing', 'cuneiform'],
+      reputation: 73,
+      tradeRoutes: [route],
+    }),
+  }, 'E4');
+  assert(transition.era === 'E4' && transition.bronze === 456, 'E3 资产应透传到 E4');
+  assert(transition.recorded?.length === 1 && transition.tradeRoutes?.length === 1, 'E3 记录与贸易路线应透传到 E4');
+
+  const e4 = baseState({
+    era: 'E4',
+    population: 1000,
+    food: 10000,
+    iron: 1000,
+    coin: 0,
+    order: 70,
+    territory: 3,
+    jobs: { iron_miner: 10, mint_worker: 10 },
+    buildings: { mint: 1 },
+    techs: { iron_tools: true, minting: true },
+  });
+  const e4Tick = tick(e4, 10, () => 0.5, 100);
+  assert(e4Tick.iron > e4.iron, 'E4 铁矿工应产铁');
+  assert(e4Tick.coin > e4.coin && e4Tick.iron < e4.iron + 10 * E4.IRON_MINER_RATE * 10, '铸币应由铁供应并消耗铁');
+  assert(getResourceStorage('iron', e4) >= e4Tick.iron, '铁应受 E4 存储上限约束');
+
+  const governed = { ...e4, jobs: { official: 20 }, buildings: { government_office: 2 } };
+  assert(getGovernanceCoverage(governed) > 0, '官吏应提供治理覆盖率');
+  assert(getAdminLoad({ ...governed, territory: 1 }) < getAdminLoad(governed), '版图扩大应提高行政负荷');
+  assert(getOrderRegime({ ...e4, order: 10 }).id === 'rebellion', '低秩序应进入叛乱档');
+  const collapse = tick({ ...e4, order: 0, territory: 3, eraElapsedSec: 9, population: 100 }, 2, () => 0.5, 100);
+  assert(collapse.territory < 3 && collapse.population < 100, '崩解应丢失版图并造成持续人口损失');
   console.log('E3 regression: passed');
 }
 

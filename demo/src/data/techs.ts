@@ -19,6 +19,9 @@ import { E2_TECHS_SETTLEMENT } from './e2-techs-settlement';
 import { E3_TECHS_WRITING } from './e3-techs-writing';
 import { E3_TECHS_BRONZE } from './e3-techs-bronze';
 import { E3_TECHS_TRADE } from './e3-techs-trade';
+import { E4_TECHS_CORE } from './e4-techs-core';
+import { E4_TECHS_GOVERNANCE } from './e4-techs-governance';
+import { E4_TECHS_MILITARY } from './e4-techs-military';
 
 /**
  * 科技所属分支。
@@ -41,6 +44,8 @@ export type TechBranch =
   | 'writing'
   | 'bronze'
   | 'trade'
+  | 'governance'
+  | 'military'
   | 'gate';
 
 /** 科技类型（设计规范：解锁 ≥40% / 质变 ≥25% / 数值 ≤25%） */
@@ -191,6 +196,16 @@ export interface TechEffects {
   recyclingRate?: number;
   /** 文明级损失事件减幅（青铜兵器 0.4） */
   lossReduction?: number;
+
+  /** E4 帝国效率效果 */
+  ironOutputMul?: number;
+  coinOutputMul?: number;
+  roadLevelMax?: number;
+  governanceMul?: number;
+  orderRecoveryMul?: number;
+  legionPayMul?: number;
+  expansionFlatMul?: number;
+  territoryCapacityMul?: number;
 }
 
 export interface TechDef {
@@ -562,6 +577,9 @@ export const TECHS: TechDef[] = [
   ...E3_TECHS_WRITING,
   ...E3_TECHS_BRONZE,
   ...E3_TECHS_TRADE,
+  ...E4_TECHS_CORE,
+  ...E4_TECHS_GOVERNANCE,
+  ...E4_TECHS_MILITARY,
 ];
 
 export const TECH_MAP: Record<string, TechDef> = Object.fromEntries(
@@ -579,6 +597,8 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   writing: TECHS.filter(t => t.branch === 'writing'),
   bronze: TECHS.filter(t => t.branch === 'bronze'),
   trade: TECHS.filter(t => t.branch === 'trade'),
+  governance: TECHS.filter(t => t.branch === 'governance'),
+  military: TECHS.filter(t => t.branch === 'military'),
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
 
@@ -718,6 +738,22 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
     desc: '本地无锡——贸易路线是供应链的另一半',
     role: '分支 · 规模',
   },
+  governance: {
+    name: '治理与行政',
+    kind: 'branch',
+    order: 11,
+    color: '#60a5fa',
+    desc: '以法典、户籍和道路降低帝国的管理摩擦',
+    role: '分支 · 治理',
+  },
+  military: {
+    name: '军团与边疆',
+    kind: 'branch',
+    order: 12,
+    color: '#ef4444',
+    desc: '用军团执行扩张、驻防与边疆压制',
+    role: '分支 · 扩张',
+  },
   gate: {
     name: '时代之门',
     kind: 'gate',
@@ -745,6 +781,8 @@ export const BRANCH_ORDER: TechBranch[] = [
   'writing',
   'bronze',
   'trade',
+  'governance',
+  'military',
   'gate',
 ];
 

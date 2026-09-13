@@ -5,6 +5,7 @@
 //   npx tsx src/dev/simulate.ts autoplay            跑 20 分钟 E1 自动试玩
 //   npx tsx src/dev/simulate.ts autoplay beeline    E1 极限速通（回归基准：门槛 932s）
 //   npx tsx src/dev/simulate.ts autoplay e2         跑 E2 定居时代自动试玩
+//   npx tsx src/dev/simulate.ts autoplay e4         链式跑 E1 → E2 → E3 → E4
 //
 // 用途：改数值后快速看曲线，不用开浏览器。
 
@@ -603,7 +604,7 @@ function makeE3State(): { state: E1State } {
   return { state };
 }
 
-function autoplayE3(): void {
+function autoplayE3(): E1State {
   const STEP = 0.25;
   const LOG_UNTIL = 3600;
   const HARD_CAP = 60000; // E3 是长线时代，上限放宽到 16.7 小时游戏时
@@ -871,12 +872,134 @@ function autoplayE3(): void {
   } else {
     console.log(`⛔ ${Math.round(t)}s 内未满足全部跃迁条件`);
   }
+  return s;
+}
+
+// ─────────────────────────────────────────────
+// E4 帝国时代自动试玩
+// ─────────────────────────────────────────────
+function makeE4State(): E1State {
+  const e3 = autoplayE3();
+  const t = computeEraTransition(e3, 'E4');
+  return {
+    ...t,
+    iron: e3.iron ?? 0,
+    coin: e3.coin ?? 0,
+    order: 70,
+    territory: 1,
+    polity: null,
+    officials: 0,
+    legions: 0,
+    codeArticles: [],
+    polityCooldownUntil: 0,
+    expansionPending: null,
+    p1Unlocked: true,
+    legacyPoints: 0,
+  };
+}
+
+function autoplayE4(): void {
+  const STEP = 0.25;
+  const HARD_CAP = 180000;
+  const s = makeE4State();
+  const e4Order = [
+    'steel', 'codification', 'iron_tools', 'heavy_plow', 'water_management',
+    'coinage', 'written_law', 'census', 'road_building', 'provincial_system',
+    'minting', 'legion_organization', 'administrative_records', 'imperial_standard',
+    'military_merit', 'fortification', 'logistics', 'frontier_command',
+    'standard_army', 'imperial_command', 'printing',
+  ];
+  const buildingOrder = ['government_office', 'mint', 'legion_camp', 'royal_road', 'code_stele'];
+  let elapsed = 0;
+  let lastExpansion = 0;
+  let researchCount = 0;
+  let expansionCount = 0;
+
+  const write = (r: ReturnType<typeof tick>): void => {
+    Object.assign(s, r);
+  };
+  const research = (): void => {
+    for (const id of e4Order) {
+      const def = TECHS.find(x => x.id === id);
+      if (!def || s.techs[id] || !isTechAvailable(id, s) || !canResearch(id, s).ok) continue;
+      s.experience -= def.cost;
+      s.techs[id] = true;
+      researchCount += 1;
+      return;
+    }
+  };
+  const build = (): void => {
+    for (const id of buildingOrder) {
+      if (!isBuildingUnlocked(id as never, s) || !canAffordBuilding(id as never, s)) continue;
+      const cost = getBuildingCost(id as never, s);
+      for (const [resource, amount] of Object.entries(cost)) {
+        const key = resource as keyof E1State;
+        if (typeof s[key] === 'number') (s[key] as number) -= amount as number;
+      }
+      s.buildings[id] = (s.buildings[id] ?? 0) + 1;
+      return;
+    }
+  };
+  const assign = (): void => {
+    const jobs = { ...s.jobs };
+    const pop = Math.floor(s.population);
+    for (const job of JOBS) jobs[job.id] = 0;
+    let left = pop;
+    const take = (id: string, count: number): void => {
+      const n = Math.min(left, Math.max(0, Math.floor(count)));
+      jobs[id] = n;
+      left -= n;
+    };
+    take('farmer', Math.ceil(pop * 0.3));
+    take('woodcutter', Math.ceil(pop * 0.08));
+    take('iron_miner', Math.min(left, (s.buildings.government_office ?? 0) * 4 + 12));
+    take('mint_worker', Math.min(left, (s.buildings.mint ?? 0) * 20));
+    take('official', Math.min(left, (s.buildings.government_office ?? 0) * 10));
+    take('legion', Math.min(left, (s.buildings.legion_camp ?? 0) * 20));
+    take('gatherer', left);
+    s.jobs = jobs;
+    s.officials = jobs.official ?? 0;
+    s.legions = jobs.legion ?? 0;
+  };
+  const expand = (): void => {
+    if (s.expansionPending || s.territory >= 20 || elapsed - lastExpansion < 30) return;
+    const n = s.territory;
+    const coinCost = Math.ceil(800 * n ** 1.3);
+    const ironCost = Math.ceil(200 * n ** 1.1);
+    const needLegions = Math.ceil(0.15 * n ** 1.15);
+    if (s.order < 50 || s.coin < coinCost || s.iron < ironCost || (s.jobs.legion ?? 0) < needLegions) return;
+    s.coin -= coinCost;
+    s.iron -= ironCost;
+    s.expansionPending = { targetN: n + 1, until: elapsed + 15 + n * 2 };
+    lastExpansion = elapsed;
+    expansionCount += 1;
+  };
+
+  console.log('=== E4 帝国时代自动试玩 ===\n');
+  while (elapsed < HARD_CAP) {
+    write(tick(s, STEP));
+    elapsed += STEP;
+    research();
+    build();
+    assign();
+    expand();
+    if (Math.round(elapsed) % 600 === 0 && Math.round(elapsed) > 0) {
+      console.log(`  ${Math.round(elapsed)}s | 人口 ${Math.floor(s.population)} | 版图 ${s.territory} | 秩序 ${Math.round(s.order)} | 铁 ${Math.round(s.iron)} | 铸币 ${Math.round(s.coin)} | 科技 ${researchCount} | 扩张 ${expansionCount}`);
+    }
+    if (checkAdvance(s).ok) break;
+  }
+  const result = checkAdvance(s);
+  console.log(`\nE4 末态：人口 ${Math.floor(s.population)} | 版图 ${s.territory} | 秩序 ${Math.round(s.order)} | 铸币 ${Math.round(s.coin)}`);
+  for (const item of result.items) console.log(`   ${item.done ? '✅' : '⬜'} ${item.label} —— ${item.detail}`);
+  console.log(result.ok ? '→ 可以跃迁到 E5' : `→ 尚未满足（${Math.round(elapsed)}s 内）`);
 }
 
 const args = process.argv.slice(1);
 if (args.includes('autoplay')) {
   if (args.includes('e3')) {
     autoplayE3();
+  } else if (args.includes('e4')) {
+    autoplayE4();
   } else if (args.includes('e2')) {
     autoplayE2();
   } else {
@@ -884,5 +1007,5 @@ if (args.includes('autoplay')) {
   }
 } else {
   openingSim();
-  console.log('提示：autoplay [beeline|focus] 跑 E1 自动试玩；autoplay e2 跑 E2 定居时代；autoplay e3 跑 E3 城邦时代');
+  console.log('提示：autoplay [beeline|focus] 跑 E1；autoplay e2 跑 E2；autoplay e3 跑 E3；autoplay e4 跑 E4');
 }

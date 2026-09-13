@@ -1,8 +1,8 @@
 // E1 远古时代 · 资源定义（5 项）
 
-import type { EraId } from './era';
+import { eraDistance, type EraId } from './era';
 
-export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis';
+export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin';
 
 export interface ResourceDef {
   id: ResourceId;
@@ -110,6 +110,22 @@ export const RESOURCES: ResourceDef[] = [
     era: 'E3',
     desc: '远方美鲁哈的珍宝，单价 200。需「青金石商路」科技解锁路线；用于声望与奢侈储备。',
   },
+  {
+    id: 'iron',
+    name: '铁',
+    icon: '⛏️',
+    category: 'material',
+    era: 'E4',
+    desc: '铁器时代的基础材料，用于官署、驰道、铸币厂与军团营垒。',
+  },
+  {
+    id: 'coin',
+    name: '铸币',
+    icon: '🪙',
+    category: 'material',
+    era: 'E4',
+    desc: '标准化支付媒介，用于官吏俸禄、军团军饷和领土扩张。',
+  },
 ];
 
 export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
@@ -117,7 +133,7 @@ export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
 ) as Record<ResourceId, ResourceDef>;
 
 /** 可在 UI 资源栏显示的实体资源（排除人口，人口单独显示） */
-export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'livestock', 'fabric', 'copper', 'tin', 'bronze', 'lapis'];
+export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'livestock', 'fabric', 'copper', 'tin', 'bronze', 'lapis', 'iron', 'coin'];
 
 /**
  * 返回指定时代的全部资源
@@ -132,5 +148,5 @@ export function resourcesOfEra(era: EraId): ResourceDef[] {
  * E1/E2 叫「经验」，E3 起叫「知识」（用户拍板：改名即可，同一字段）。
  */
 export function researchCurrencyName(era: EraId): string {
-  return era === 'E3' ? '知识' : '经验';
+  return eraDistance('E3', era) >= 0 ? '知识' : '经验';
 }
