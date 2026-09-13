@@ -405,11 +405,13 @@ export const E3 = {
    */
   WAREHOUSE_FOOD_BONUS: 600,
 
-  /** 贸易基准价（食物=1，价值尺度） */
+  /** 贸易基准价（食物=1，价值尺度；2026-09-13 起全部物资可贸易，补齐牲畜/织物） */
   BASE_PRICES: {
     food: 1,
     wood: 2,
     stone: 3,
+    livestock: 6,
+    fabric: 8,
     copper: 12,
     tin: 150,
     bronze: 30,

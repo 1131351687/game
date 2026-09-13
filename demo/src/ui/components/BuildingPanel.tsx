@@ -138,7 +138,7 @@ function BuildingTile({
             : 'cursor-not-allowed border-gray-800/60 bg-gray-900/20 opacity-50'
         }`}
       >
-        <span className="text-xl leading-none">{b.icon}</span>
+        <Icon emoji={b.icon} className="text-xl leading-none" />
         <span
           className={`w-full truncate text-xs font-medium ${affordable ? 'text-gray-200' : 'text-gray-500'}`}
         >
@@ -154,10 +154,10 @@ function BuildingTile({
         <div className="absolute left-1/2 top-full z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-md border border-gray-700 bg-gray-900 p-3 shadow-xl shadow-black/50">
           {/* 标题行：图标 + 名称 + 分类徽章 */}
           <div className="flex items-center gap-2">
-            <span className="text-lg leading-none">{b.icon}</span>
+            <Icon emoji={b.icon} className="text-lg leading-none" />
             <span className="text-sm font-semibold text-gray-100">{b.name}</span>
             <span className="ml-auto flex items-center gap-1 rounded-md bg-gray-800/60 px-1.5 py-0.5 text-xs text-gray-400">
-              <span>{LIMIT_ICON[b.limit]}</span>
+              <Icon emoji={LIMIT_ICON[b.limit]} className="text-xs" />
               <span>{LIMIT_LABEL[b.limit]}</span>
             </span>
           </div>

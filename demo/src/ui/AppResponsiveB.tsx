@@ -39,7 +39,7 @@ import { MessageLog } from './components/MessageLog';
 import { Icon } from './components/Icon';
 import { ERAS } from '../data/era';
 
-type TabId = 'work' | 'buildings' | 'civilization';
+type TabId = 'work' | 'buildings' | 'trade' | 'civilization';
 /** 布局偏好：auto 跟随窗口宽度；手动选择后持久化 */
 type LayoutPref = 'auto' | 'vertical' | 'horizontal';
 
@@ -208,9 +208,14 @@ export default function AppResponsiveB() {
 
   const [tab, setTab] = useState<TabId>('civilization');
 
+  // 贸易板块（第四 Tab）：与工作/建筑/文明并列，由「商队组织」科技解锁。
+  // 2026-09-13 从左栏「状态」抽屉升格 —— 抽屉里的横条形态信息过密且易被忽略。
+  const showTrade = !!s.techs['caravan_org'];
+
   const tabs: { id: TabId; label: string; icon: string }[] = [
     { id: 'work', label: '工作', icon: '👥' },
     ...(showBuildings ? [{ id: 'buildings' as const, label: '建筑', icon: '🏕️' }] : []),
+    ...(showTrade ? [{ id: 'trade' as const, label: '贸易', icon: '🐪' }] : []),
     { id: 'civilization', label: '文明', icon: '🔬' },
   ];
 
@@ -228,12 +233,11 @@ export default function AppResponsiveB() {
           </div>
         </div>
 
-        {/* 状态抽屉：点击展开 */}
+        {/* 状态抽屉：点击展开（贸易已升格为独立 Tab，不再挤在这里） */}
         <div className="px-3 py-2">
           <Drawer title="状态" icon="📊">
             {s.era === 'E1' && fireUnlocked && <FireDashboard />}
             <SeasonBar />
-            <TradePanel />
           </Drawer>
         </div>
 
@@ -241,6 +245,7 @@ export default function AppResponsiveB() {
         <main className="flex-1 overflow-y-auto px-3 pb-4">
           {tab === 'work' && <JobPanel />}
           {tab === 'buildings' && <BuildingPanel />}
+          {tab === 'trade' && <TradePanel />}
           {tab === 'civilization' && <CivilizationPanel />}
         </main>
 
@@ -279,12 +284,11 @@ export default function AppResponsiveB() {
           <ResourceList />
         </div>
 
-        {/* 状态抽屉：火种/季节/记录/贸易/提示 默认收起 */}
+        {/* 状态抽屉：火种/季节 默认收起（贸易已升格为独立 Tab） */}
         <div className="px-3 pb-3">
           <Drawer title="状态" icon="📊">
             {s.era === 'E1' && fireUnlocked && <FireDashboard />}
             <SeasonBar />
-            <TradePanel />
           </Drawer>
         </div>
       </aside>
@@ -301,6 +305,7 @@ export default function AppResponsiveB() {
         <div className="mt-4">
           {tab === 'work' && <div className="mx-auto max-w-4xl"><JobPanel /></div>}
           {tab === 'buildings' && <div className="mx-auto max-w-4xl"><BuildingPanel /></div>}
+          {tab === 'trade' && <TradePanel />}
           {tab === 'civilization' && <CivilizationPanel />}
         </div>
       </main>

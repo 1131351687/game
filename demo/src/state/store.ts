@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { JOBS, type JobId } from '../data/jobs';
 import { BUILDINGS, type BuildingId } from '../data/buildings';
 import type { EraId } from '../data/era';
+import type { ResourceId } from '../data/resources';
 import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
 import { INITIAL_STATE, LOOP, E2, E3 } from '../data/constants';
@@ -13,7 +14,7 @@ import * as engineRecord from '../game/record';
 import { isJobRetired } from '../game/reveal';
 import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
-import { NEIGHBOR_MAP } from '../game/trade';
+import { NEIGHBOR_MAP, TRADABLE_RESOURCES } from '../game/trade';
 import { createRngState, type RngState } from '../core/rng/seeded';
 import { simulateStep } from '../game/simulation/simulate';
 import type { GameEvent } from '../game/model/events';
@@ -207,6 +208,12 @@ export interface GameState {
    * 青金石路线需 lapis_route 科技；未研究时拒绝开通。
    */
   toggleRoute: (neighborId: string) => void;
+  /**
+   * 改动一条已开通路线的货物配对（2026-09-13 用户拍板：可交易所有资源）。
+   * 仅对已开通路线生效；付出 ≠ 换得；青金石作为换得方需「青金石商路」科技。
+   * 改动会清空该路线的价格历史（历史价格属于旧配对，混在一起会污染需求冲击）。
+   */
+  setRouteGoods: (neighborId: string, demand: ResourceId, supply: ResourceId) => void;
   signContract: (neighborId: string) => boolean;
   breachContract: (neighborId: string) => boolean;
 }
@@ -818,6 +825,32 @@ export const useStore = create<GameState>((set, get) => ({
     };
     set({ tradeRoutes: [...s.tradeRoutes, route] });
     get().addMessage(`开通与「${def.name}」的贸易路线`, 'event');
+  },
+  setRouteGoods: (neighborId, demand, supply) => {
+    const s = get();
+    const route = s.tradeRoutes.find(r => r.partnerId === neighborId);
+    if (!route) return; // 未开通的路线没有货物可改（开通走 toggleRoute）
+
+    // 校验 1：付出 ≠ 换得（同货互易等于无限印钞）
+    if (demand === supply) {
+      get().addMessage('货物配对无效：付出与换得不能是同一种资源', 'warn');
+      return;
+    }
+    // 校验 2：两种货物都必须在可贸易清单内
+    if (!TRADABLE_RESOURCES.includes(demand) || !TRADABLE_RESOURCES.includes(supply)) {
+      get().addMessage('货物配对无效：该资源不在可贸易清单内', 'warn');
+      return;
+    }
+    // 校验 3：青金石作为换得方需「青金石商路」科技（与结算门控一致）
+    if (supply === 'lapis' && !s.techs['lapis_route']) {
+      get().addMessage('换得青金石需先研究「青金石商路」', 'warn');
+      return;
+    }
+
+    const routes = s.tradeRoutes.map(r =>
+      r.partnerId === neighborId ? { ...r, demand, supply, priceHistory: [] } : r
+    );
+    set({ tradeRoutes: routes });
   },
   signContract: (neighborId) => {
     const s = get();

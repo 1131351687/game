@@ -93,6 +93,26 @@ export const NEIGHBOR_MAP: Record<string, NeighborDef> = Object.fromEntries(
   NEIGHBORS.map(n => [n.id, n])
 );
 
+/**
+ * 可贸易物资清单（2026-09-13 用户拍板：路线上可以交易**所有资源**）。
+ *
+ * 路线的「付出 / 换得」货物不再锁死在邻邦的历史配对上，玩家可从本清单
+ * 自由选择（付出 ≠ 换得）。经验是研究货币、人口不是货物，均不在此列。
+ * 青金石作为**换得方**仍需「青金石商路」科技（与 settleTradeCycle 的
+ * r.supply==='lapis' 门控一致）。
+ */
+export const TRADABLE_RESOURCES: ResourceId[] = [
+  'food',
+  'wood',
+  'stone',
+  'livestock',
+  'fabric',
+  'copper',
+  'tin',
+  'bronze',
+  'lapis',
+];
+
 /** 声望修正：≥70 全线 −10%；≤20 全线 +25% 且 20% 概拒交易（消费方需自己处理拒绝） */
 export function getReputationEffect(rep: number): { priceMul: number; refuseChance: number } {
   if (rep >= E3.REP_HIGH) return { priceMul: E3.REP_HIGH_DISCOUNT, refuseChance: 0 };
