@@ -4,7 +4,7 @@
 
 import { TECHS, TECH_MAP, type TechEffects } from '../data/techs';
 import { JOBS, JOB_MAP, type JobId } from '../data/jobs';
-import { BUILDING_MAP, type BuildingId } from '../data/buildings';
+import { BUILDING_MAP, UPGRADE_COST_RATIO, type BuildingId } from '../data/buildings';
 import { RESOURCE_MAP, researchCurrencyName, type ResourceId } from '../data/resources';
 import { ERAS, eraDistance, eraDecay, type EraId } from '../data/era';
 import {
@@ -975,6 +975,58 @@ export function isBuildingUnlocked(buildingId: BuildingId, state: E1State): bool
   const def = BUILDING_MAP[buildingId];
   if (!def.requires.tech) return true;
   return !!state.techs[def.requires.tech];
+}
+
+// ── 住所链升级（2026-09-13 用户拍板：住所可经科技升级为后续时代的居住建筑）──
+
+/** 住所链的进阶目标（无进阶关系的建筑返回 null） */
+export function getUpgradeTarget(buildingId: BuildingId): BuildingId | null {
+  return BUILDING_MAP[buildingId].upgradesTo ?? null;
+}
+
+/**
+ * 旧建筑是否**当前就可供升级**：
+ * 目标时代已到达 + 目标建筑已解锁（住所链的触发条件是科技）+ 手里有货。
+ * 与 isBuildingBuildable 不同：升级目标没有 requires.tech 的（如 city_house）
+ * 依时代到达即视为解锁。
+ */
+export function canUpgradeBuilding(buildingId: BuildingId, state: E1State): boolean {
+  const target = getUpgradeTarget(buildingId);
+  if (!target) return false;
+  if ((state.buildings[buildingId] ?? 0) <= 0) return false;
+  if (eraDistance(BUILDING_MAP[target].era, state.era) < 0) return false;
+  return isBuildingUnlocked(target, state);
+}
+
+/**
+ * 每座升级的材料价：目标建筑**基础成本** × UPGRADE_COST_RATIO（向上取整）。
+ *
+ * 为什么不用 getBuildingCost 的数量递增价：升级是存量转换（N 座旧住所 → N 座新民居），
+ * 若按目标建筑已建数递增，玩家升级得越晚反而越贵，等于惩罚"继续用旧住所"的玩家。
+ * 固定半价让"升级 vs 新建"成为一道清晰的取舍：省材料，但不增加额外的数量递增基数。
+ */
+export function getUpgradeCostPerUnit(
+  buildingId: BuildingId
+): Partial<Record<ResourceId, number>> {
+  const target = getUpgradeTarget(buildingId);
+  if (!target) return {};
+  const out: Partial<Record<ResourceId, number>> = {};
+  for (const [res, amount] of Object.entries(BUILDING_MAP[target].cost)) {
+    out[res as ResourceId] = Math.ceil((amount as number) * UPGRADE_COST_RATIO);
+  }
+  return out;
+}
+
+/** 任意成本表的整体可负担性判断（供升级等非建造扣费复用） */
+export function canAffordCost(
+  cost: Partial<Record<ResourceId, number>>,
+  state: E1State
+): boolean {
+  for (const [res, amount] of Object.entries(cost)) {
+    const owned = state[res as keyof E1State];
+    if (typeof owned !== 'number' || owned < (amount as number)) return false;
+  }
+  return true;
 }
 
 // ─────────────────────────────────────────────

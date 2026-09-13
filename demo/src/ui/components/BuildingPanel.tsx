@@ -15,13 +15,18 @@
 
 import { useState } from 'react';
 import { useStore, toEngineState, type GameState } from '../../state/store';
-import type { BuildingDef } from '../../data/buildings';
+import { BUILDING_MAP, type BuildingDef } from '../../data/buildings';
 import { RESOURCE_MAP, type ResourceId } from '../../data/resources';
 import { E2 } from '../../data/constants';
+import { TECH_MAP } from '../../data/techs';
 import {
   aggregateEffects,
   canAffordBuilding,
+  canAffordCost,
+  canUpgradeBuilding,
   getBuildingCost,
+  getUpgradeCostPerUnit,
+  getUpgradeTarget,
   type E1State,
 } from '../../game/engine';
 import { getRevealedBuildings } from '../../game/reveal';
@@ -205,8 +210,90 @@ function BuildingTile({
           >
             {affordable ? `建造（第 ${owned + 1} 座）` : '资源不足'}
           </button>
+
+          {/* ── 住所链升级区（2026-09-13 用户拍板：住所经科技升级为后续时代居住建筑）── */}
+          <UpgradeSection def={b} state={state} view={view} />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * 住所链升级区块（hover 详情卡内）。
+ *
+ * 三种形态：
+ *   1. 可升级   —— 列出每座半价材料 + 「全部升级」按钮（1:1 转换，整体结算）
+ *   2. 未解锁   —— 提示需要研究的科技（或需要到达的时代）
+ *   3. 无进阶链 —— 不渲染
+ */
+function UpgradeSection({ def: b, state, view }: { def: BuildingDef; state: GameState; view: E1State }) {
+  const upgradeBuildings = useStore(s => s.upgradeBuildings);
+  const targetId = getUpgradeTarget(b.id);
+  if (!targetId) return null;
+
+  const target = BUILDING_MAP[targetId];
+  const owned = state.buildings[b.id] ?? 0;
+  // 手里没有旧建筑就没有升级对象（新建直接造目标建筑即可）
+  if (owned <= 0) return null;
+  const canUp = canUpgradeBuilding(b.id, view);
+
+  // 未解锁：给出下一步目标（科技名或时代名）
+  if (!canUp) {
+    const techId = target.requires.tech;
+    const step = techId
+      ? (TECH_MAP[techId]?.name ?? techId)
+      : `进入${target.era === 'E2' ? '定居' : target.era === 'E3' ? '城邦' : '后续'}时代`;
+    return (
+      <div className="mt-2 border-t border-gray-800 pt-2 text-xs text-gray-600">
+        研究「{step}」后可升级为「{target.name}」
+      </div>
+    );
+  }
+
+  // 每座半价材料；「全部升级」按 owned 座整体结算，不足任一项即不可点
+  const perUnit = getUpgradeCostPerUnit(b.id);
+  const entries = (Object.keys(perUnit) as ResourceId[])
+    .map(res => ({ res, amount: perUnit[res] ?? 0 }))
+    .filter(e => e.amount > 0);
+  const total: Partial<Record<ResourceId, number>> = {};
+  for (const e of entries) total[e.res] = e.amount * owned;
+  const canAffordAll = owned > 0 && canAffordCost(total, view);
+
+  return (
+    <div className="mt-2 border-t border-gray-800 pt-2">
+      <div className="text-xs text-gray-600">
+        升级为「{target.name}」· 每座材料（半价）
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+        {entries.map(({ res, amount }) => {
+          const short = !hasEnough(res, amount * owned, view);
+          return (
+            <span
+              key={res}
+              className={`flex items-center gap-1 text-xs tabular-nums ${
+                short ? 'font-semibold text-red-400' : 'text-gray-300'
+              }`}
+            >
+              <Icon emoji={RESOURCE_MAP[res].icon} className="text-xs" />
+              <span>{RESOURCE_MAP[res].name}</span>
+              <span>{formatNumber(amount, 0)}</span>
+            </span>
+          );
+        })}
+      </div>
+      <button
+        type="button"
+        disabled={!canAffordAll}
+        onClick={() => upgradeBuildings(b.id, owned)}
+        className={`mt-2 w-full rounded-md px-3 py-2 text-xs font-semibold transition-colors ${
+          canAffordAll
+            ? 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25 active:bg-sky-500/30'
+            : 'cursor-not-allowed text-gray-700'
+        }`}
+      >
+        {owned > 0 ? `全部升级（${owned} 座）` : '暂无可升级的旧建筑'}
+      </button>
     </div>
   );
 }

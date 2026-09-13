@@ -199,13 +199,32 @@ export function getRevealedJobs(s: E1State) {
 // 建筑渐进显示
 // ─────────────────────────────────────────────
 /**
- * 当前可操作的建筑集合：**当前及以前时代的建筑 + 已建成的建筑**。
+ * 该建筑是否已随时代**退役**（2026-09-13 用户拍板的建筑分类规则）。
+ *
+ * 退役只发生在**绑定时代独属机制**的建筑上（数据字段 retireAfterEra），
+ * 目前唯一实例是火塘：它服务于 E1 的火种机制，进入定居时代后火种不再需要维护，
+ * 火塘随机制一并退出（跃迁时拆除，见 transition.ts）。
+ *
+ * 住所链（住所→村落民居→民居）不走退役，走 upgradesTo 科技升级；
+ * 其余旧时代建筑（作坊/粮仓/田地…）跨时代永久保留、可新建。
+ */
+export function isBuildingRetired(id: BuildingId, s: E1State): boolean {
+  const retireEra = BUILDING_MAP[id].retireAfterEra;
+  if (!retireEra) return false;
+  // 当前时代已越过退役时代（严格大于）→ 退役
+  return eraDistance(retireEra, s.era) > 0;
+}
+
+/**
+ * 当前可操作的建筑集合：**当前及以前时代的建筑 + 已建成的建筑 − 已退役建筑**。
  *
  * 旧时代建筑保留新建入口（2026-09-12 用户拍板「跃迁 = 叠加开放，绝不重置」）：
  * 跃迁不重置旧内容，引擎的承载力/存储/产出模型也在持续计算旧建筑
  * （见 engine.getCapacity 的 E3 分支）；如果 UI 层单方面锁死新建，
  * E3 里田地/粮仓/畜栏/陶窑（本代无替代建筑）将无法扩张，粮食产能与存储直接卡死。
- * 故旧时代建筑一律保持可新建，绝不退役——包括 E1 住所/火塘。
+ *
+ * 唯一例外是退役建筑（isBuildingRetired）：它们绑定的是已经谢幕的
+ * 时代独属机制，机制没了建筑自然没有存在意义——过滤后不占栏位。
  *
  * 岗位则相反 —— 有进阶目标的岗位在其目标时代到来时**退役**（采集者→农夫，
  * 见 isJobRetired，2026-09-12 用户拍板）；无进阶关系的岗位（猎人、伐木者…）
@@ -213,11 +232,14 @@ export function getRevealedJobs(s: E1State) {
  */
 export function eraBuildings(s: E1State) {
   return BUILDINGS.filter(
-    b => eraDistance(b.era, s.era) >= 0 || (s.buildings[b.id] ?? 0) > 0
+    b =>
+      !isBuildingRetired(b.id, s) &&
+      (eraDistance(b.era, s.era) >= 0 || (s.buildings[b.id] ?? 0) > 0)
   );
 }
 
 export function isBuildingRevealed(id: BuildingId, s: E1State): boolean {
+  if (isBuildingRetired(id, s)) return false;
   const def = BUILDING_MAP[id];
   const owned = (s.buildings[id] ?? 0) > 0;
   // 未来时代建筑：除非已建成（不该发生，防御性保留），否则不显示
@@ -232,8 +254,10 @@ export function isBuildingRevealed(id: BuildingId, s: E1State): boolean {
  * 规则（2026-09-12 用户拍板「跃迁 = 叠加开放，绝不重置」）：
  * 所属时代已到达即可新建——旧时代的建筑一律保持可新建，绝不锁死，
  * 已建成的建筑继续生效（K、存储、加成照算）。未来时代尚未到达则不可建。
+ * 退役建筑（火塘）除外——机制已随时代谢幕，新建入口一并关闭。
  */
 export function isBuildingBuildable(id: BuildingId, s: E1State): boolean {
+  if (isBuildingRetired(id, s)) return false;
   const def = BUILDING_MAP[id];
   // 未来时代：不可建
   if (eraDistance(def.era, s.era) < 0) return false;

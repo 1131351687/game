@@ -52,6 +52,10 @@
 - 跃迁应产生结构化 GameEvent，再由状态层翻译成消息。
 - E4 已在 `feat-e4` 分支（worktree `.worktrees/e4`）实装全链路，尚未合并 main；合并前以 main 为准。
 - **反向铁律（2026-09-13 用户拍板）**：时代门控只允许拦住"新机制漏进旧时代"，绝不反向剥离旧内容。旧时代建筑**一律可新建**（`supersededBy`/`obsoleteAfterEra` 退役机制已删除）；科技类 UI 数据源必须用 `techsUpToEra(era)`，禁止 `techsOfEra(s.era)` 导致已学/漏学的旧科技"消失"。
+- **建筑分类规则（2026-09-13 用户拍板，对上条的唯一细化）**：旧建筑分三类——
+  1. **普通建筑**（作坊/粮仓/田地…）：跨时代永久保留、可新建（默认，不改）；
+  2. **时代独属机制建筑**（数据字段 `retireAfterEra`，如火塘之于 E1 火种机制）：进入更晚时代时随机制退役——跃迁时拆除（`transition.ts` 的 `retired` 段）、UI 过滤（`reveal.isBuildingRetired`）、此后不可新建；新增此类建筑必须同时给 `retireNote` 说明"为什么退役"；
+  3. **住所链**（住所→村落民居→民居，数据字段 `upgradesTo`）：不退役、可新建，但玩家研究目标科技后可把旧住所 1:1 升级为目标建筑（材料半价 `UPGRADE_COST_RATIO=0.5`，`store.upgradeBuildings`）；每代居住建筑形态必须符合该时代。
 
 ### 4.2 科技
 

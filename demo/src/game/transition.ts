@@ -23,6 +23,14 @@
 // 3. 现在（本版）：跃迁**只有一个副作用** —— 新时代的季节时钟从 0 起算。
 //    其余字段全部原样透传。
 //
+// ── 2026-09-13 的唯一例外：退役建筑 ──
+//
+// 用户进一步拍板建筑分类：绑定**时代独属机制**的建筑（retireAfterEra，如火塘
+// 之于火种）在进入更晚时代时随机制退役、跃迁时拆除；住所链（住所→村落民居→
+// 民居）不走拆除，由玩家研究科技后主动升级（upgradesTo，半价材料）；
+// 其余建筑依旧全数保留、可新建。"只新增"原则在此让位于机制的一致性：
+// 机制没了，依附机制的建筑留着只会是尸体。
+//
 // ── 为什么不是"什么都不做" ──
 //
 // 季节循环是 E2 才引入的**新机制**，它的计时起点必须定义（否则会沿用 E1
@@ -37,6 +45,8 @@
 // 玩家不会经历"刚进 E2 就断粮"的假饥饿。
 
 import type { EraId } from '../data/era';
+import { ERAS } from '../data/era';
+import { BUILDING_MAP, type BuildingId } from '../data/buildings';
 
 /**
  * 跃迁换算常数。
@@ -93,6 +103,13 @@ export interface EraTransitionResult {
   buildings: Record<string, number>;
   jobs: Record<string, number>;
   techs: Record<string, boolean>;
+  /**
+   * 本次跃迁拆除的**退役建筑**（绑定旧时代独属机制的建筑，如火塘之于火种）。
+   * 2026-09-13 用户拍板：这是"叠加开放"原则的唯一例外——
+   * 机制随时代谢幕，依附它的建筑随之消失，其余建筑全数保留。
+   * 空数组 = 本次跃迁没有退役建筑。
+   */
+  retired: Array<{ id: BuildingId; name: string; count: number; note?: string }>;
 }
 
 /**
@@ -126,18 +143,39 @@ export function computeEraTransition(
     // 经验与科技：文明积累，跨代保留（科技效果按 eraDecay 自动衰减）
     experience: s.experience,
     techs: s.techs,
-    // 建筑：**全数保留**（住所/火塘/作坊继续生效、继续贡献承载力与加成），
-    // 不再做"升级映射"式的替换——那等于把玩家的建筑换成另一种东西
-    buildings: s.buildings,
+    // 建筑：**全数保留**（住所/作坊继续生效、继续贡献承载力与加成），
+    // 不再做"升级映射"式的替换——那等于把玩家的建筑换成另一种东西。
+    // （住所链的进阶改由玩家主动升级：upgradesTo + 半价材料，见 buildings.ts；
+    //   唯一被拆除的是退役建筑，见下方 retired 段。）
+    buildings: { ...s.buildings },
     // 岗位：**保留分配**。猎人/伐木者等无进阶关系的岗位原样继续；
     // 采集者的"进阶为农夫"发生在跃迁**之后**（store.advanceEra 第 6 步的事件，
     // 见 applyJobUpgradeAll）——那是新时代带来的内容，不是本函数的职责
     jobs: s.jobs,
+
+    // 退役建筑拆除明细（下方 retired 段填充；先占位数组以满足类型）
+    retired: [],
   };
 
   // ⚠️ 矿脉随机制已废除（2026-09-13 用户拍板）：铜/锡产出改由矿工科技链驱动，
   // 不再有"开局抽定铜矿带/锡矿带/冲积平原"的随机地图变量。
   // 原 E2→E3 的 rng 抽签段随 localOre 字段一并删除，rng 参数同步移除。
+
+  // ── 退役建筑拆除（2026-09-13 用户拍板的建筑分类规则）──
+  //
+  // 绑定**时代独属机制**的建筑（def.retireAfterEra）在进入更晚时代时随机制退役：
+  // 当前唯一实例是火塘（E1 火种机制）——进入定居时代后火种常燃不熄（E2 §11.1），
+  // 火塘不再有任何效果，留着只会让建筑栏挂着一具"尸体"。
+  // 拆除明细返回给调用方（store.advanceEra）生成公告，玩家清楚知道少了什么、为什么。
+  const retired: EraTransitionResult['retired'] = result.retired;
+  for (const [id, count] of Object.entries(result.buildings)) {
+    const def = BUILDING_MAP[id as BuildingId];
+    if (!def?.retireAfterEra || count <= 0) continue;
+    if (ERAS[nextEraId].index > ERAS[def.retireAfterEra].index) {
+      retired.push({ id: def.id, name: def.name, count, note: def.retireNote });
+      delete result.buildings[id];
+    }
+  }
 
   return result;
 }

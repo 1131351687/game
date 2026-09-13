@@ -3,7 +3,7 @@
 
 import { create } from 'zustand';
 import { JOBS, type JobId } from '../data/jobs';
-import { BUILDINGS, type BuildingId } from '../data/buildings';
+import { BUILDINGS, BUILDING_MAP, type BuildingId } from '../data/buildings';
 import type { EraId } from '../data/era';
 import type { ResourceId } from '../data/resources';
 import { ERAS } from '../data/era';
@@ -171,6 +171,13 @@ export interface GameState {
   assignAllIdle: (jobId: JobId) => void;
   clearJobs: () => void;
   build: (buildingId: BuildingId) => boolean;
+  /**
+   * 住所链升级（2026-09-13 用户拍板）：把 count 座旧住所 1:1 升级为目标建筑。
+   * 触发条件由引擎 canUpgradeBuilding 判定（目标时代到达 + 目标科技已研究）；
+   * 每座材料价 = 目标基础成本 × 0.5（见 UPGRADE_COST_RATIO），资源不足则整体失败。
+   * 返回实际升级座数（0 = 条件不满足或参数非法）。
+   */
+  upgradeBuildings: (buildingId: BuildingId, count: number) => number;
   research: (techId: string) => boolean;
   /**
    * 刻录一项已研究的科技到泥板。
@@ -219,7 +226,9 @@ export interface GameState {
 }
 
 // v7：废除矿脉随机制（localOre 字段删除）+ 岗位 copper_miner → miner（科技驱动产出）
-const SAVE_VERSION = 7;
+// v8：建筑分类规则落地（2026-09-13 用户拍板）——退役建筑（retireAfterEra，如火塘）
+//     在已越过退役时代的存档里拆除；住所链升级为玩家主动操作，无存档结构变化
+const SAVE_VERSION = 8;
 
 const initialState = () => ({
   running: false,
@@ -360,6 +369,47 @@ export const useStore = create<GameState>((set, get) => ({
     const def = BUILDINGS.find(b => b.id === buildingId);
     get().addMessage(`建成「${def?.name ?? buildingId}」`, 'event');
     return true;
+  },
+
+  upgradeBuildings: (buildingId, count) => {
+    const s = get();
+    const view = engineView(s);
+    const target = engine.getUpgradeTarget(buildingId);
+    if (!target) return 0;
+    // 引擎侧条件：目标时代已到达 + 目标已解锁 + 手里有旧建筑
+    if (!engine.canUpgradeBuilding(buildingId, view)) return 0;
+
+    const owned = s.buildings[buildingId] ?? 0;
+    const moved = Math.min(Math.max(Math.floor(count), 0), owned);
+    if (moved === 0) return 0;
+
+    // 每座半价 × 座数；整体可负担才执行（不做部分升级，避免"付了钱升了一半"）
+    const perUnit = engine.getUpgradeCostPerUnit(buildingId);
+    const total: Partial<Record<ResourceId, number>> = {};
+    for (const [res, amount] of Object.entries(perUnit)) {
+      total[res as ResourceId] = (amount as number) * moved;
+    }
+    if (!engine.canAffordCost(total, view)) return 0;
+
+    const next: Partial<GameState> = {
+      buildings: {
+        ...s.buildings,
+        [buildingId]: owned - moved,
+        [target]: (s.buildings[target] ?? 0) + moved,
+      },
+    };
+    // 与 build 相同：按资源名逐项扣费，不白名单资源种类
+    for (const [res, amount] of Object.entries(total)) {
+      const key = res as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric';
+      const ownedRes = s[key];
+      if (typeof ownedRes === 'number') next[key] = ownedRes - (amount as number);
+    }
+    set(next);
+
+    const fromName = BUILDING_MAP[buildingId].name;
+    const toName = BUILDING_MAP[target].name;
+    get().addMessage(`${moved} 座「${fromName}」升级为「${toName}」`, 'event');
+    return moved;
   },
 
   research: (techId) => {
@@ -620,6 +670,19 @@ export const useStore = create<GameState>((set, get) => ({
         legacyBuildings.village_house = 0;
       }
     }
+    // v8 退役建筑迁移：时代已越过退役时代的存档里，退役建筑（火塘等）就地拆除。
+    // 它们绑定的机制（火种）在 E2+ 本就冻结无效，拆除不影响任何数值，
+    // 只是把"建筑栏里挂着一具无法新建也无法生效的尸体"清理掉。
+    {
+      const migratedEra = (data.era as EraId | undefined) ?? 'E1';
+      for (const [id, count] of Object.entries(legacyBuildings)) {
+        const def = BUILDING_MAP[id as BuildingId];
+        if (!def?.retireAfterEra || count <= 0) continue;
+        if (ERAS[migratedEra].index > ERAS[def.retireAfterEra].index) {
+          legacyBuildings[id] = 0;
+        }
+      }
+    }
 
     const migrated: Partial<GameState> = {
       ...data,
@@ -749,6 +812,19 @@ export const useStore = create<GameState>((set, get) => ({
     const eraEvent: GameEvent = { type: 'era.advanced', from: s.era, to: nextEraId };
     const eraMessage = eventMessage(eraEvent);
     if (eraMessage) get().addMessage(eraMessage.text, eraMessage.category, eraMessage.important);
+
+    // 5.5 退役建筑公告（2026-09-13 用户拍板的建筑分类规则）
+    //
+    //     绑定旧时代独属机制的建筑（如火塘之于火种）在跃迁时随机制拆除
+    //     （见 transition.ts 的 retired 段）。必须把话说清楚——
+    //     玩家回头发现建筑栏少了一样东西，且这不是 bug，是机制的谢幕。
+    for (const r of t.retired) {
+      get().addMessage(
+        `「${r.name}」退役（拆除 ${r.count} 座）——${r.note ?? '它所依附的机制已随新时代谢幕'}`,
+        'event',
+        true
+      );
+    }
 
     // 6. 时代入口的**岗位进阶**：进入农耕（定居）时代时，采集者自动专职为农夫
     //

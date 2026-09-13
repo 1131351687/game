@@ -24,7 +24,27 @@ export interface BuildingDef {
   era: EraId;
   /** 一句话说明 */
   desc: string;
+  /**
+   * 退役时代（2026-09-13 用户拍板的建筑分类规则）：
+   * 仅**绑定某个时代独属机制**的建筑使用（如火塘绑定 E1 的火种机制）。
+   * 玩家进入比它更晚的时代时，该建筑随机制一并退役：
+   * 已建成的在跃迁时拆除（transition.ts），此后不再出现在建筑栏。
+   * 没有此字段的建筑跨时代永久保留、可新建（叠加开放原则不受影响）。
+   */
+  retireAfterEra?: EraId;
+  /** 退役时的公告文案（说明"为什么退役"，与 retireAfterEra 搭配） */
+  retireNote?: string;
+  /**
+   * 住所链进阶目标（2026-09-13 用户拍板）：
+   * 住所 → 村落民居 → 民居。目标建筑的解锁科技研究完成后，
+   * 玩家可把已建成的旧住所 1:1 升级为目标建筑（材料半价，见 UPGRADE_COST_RATIO）。
+   * 升级是**可选操作**——旧住所继续生效，不升级也不会坏。
+   */
+  upgradesTo?: BuildingId;
 }
+
+/** 住所链升级的材料折扣：每座升级价 = 目标建筑基础成本 × 0.5（向上取整，不随数量递增） */
+export const UPGRADE_COST_RATIO = 0.5;
 
 export const BUILDINGS: BuildingDef[] = [
   {
@@ -36,7 +56,8 @@ export const BUILDINGS: BuildingDef[] = [
     requires: { tech: 'shelter_building' },
     limit: 'population',
     era: 'E1',
-    desc: '为族人提供栖身之所。每座提升人口上限 4。',
+    desc: '为族人提供栖身之所。每座提升人口上限 4。研究「定居营造」后可升级为村落民居。',
+    upgradesTo: 'village_house',
   },
   {
     id: 'hearth',
@@ -48,6 +69,10 @@ export const BUILDINGS: BuildingDef[] = [
     limit: 'environment',
     era: 'E1',
     desc: '固定的火塘让火种衰减减缓 20%，并提升火种上限 20。',
+    // 火塘绑定 E1 独有的火种机制：进入定居时代后火种不再需要维护（E2 §11.1），
+    // 火塘随之退役（跃迁时拆除、此后不再可建）——2026-09-13 用户拍板。
+    retireAfterEra: 'E1',
+    retireNote: '定居之后火种常燃不熄，火塘完成了它的使命',
   },
   {
     id: 'workshop',
@@ -69,7 +94,8 @@ export const BUILDINGS: BuildingDef[] = [
     requires: { tech: 'settled_construction' },
     limit: 'population',
     era: 'E2',
-    desc: '定居时代的标准住所，每座提升人口上限 4；取消 E1 承载力硬顶。',
+    desc: '定居时代的标准住所，每座提升人口上限 4；取消 E1 承载力硬顶。进入城邦时代后可升级为民居。',
+    upgradesTo: 'city_house',
   },
   {
     id: 'field',
@@ -124,7 +150,7 @@ export const BUILDINGS: BuildingDef[] = [
     requires: { tech: '' },
     limit: 'population',
     era: 'E3',
-    desc: '定居时代的升级版住所，每座人口上限 +130——对应本代人口限制线。',
+    desc: '城邦时代的砖瓦民居，沿街联排而建。每座人口上限 +130——对应本代人口限制线。',
   },
   {
     id: 'furnace',
