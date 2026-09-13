@@ -109,6 +109,8 @@ export interface EraState {
   polityCooldownUntil: number;
   /** 版图扩张平定状态 */
   expansionPending: { until: number; targetN: number } | null;
+  /** 法典条款改动冷却剩余秒数 */
+  codeArticlesCooldownSec: number;
   /** P1 文明重启是否解锁 */
   p1Unlocked: boolean;
   /** 遗产点 */
@@ -966,7 +968,9 @@ export function getGovernanceEfficiency(state: E1State): number {
   const eff = aggregateEffects(state);
   const offices = Math.min(4, state.buildings.government_office ?? 0);
   const polity = state.polity === 'republic' ? 1.15 : state.polity === 'theocracy' ? 0.9 : 1;
-  const articleBonus = (state.codeArticles ?? []).includes('written_law') ? 0.1 : 0;
+  const articles = state.codeArticles ?? [];
+  const articleBonus = (articles.includes('written_law') ? 0.1 : 0) +
+    (articles.includes('census') ? 0.05 : 0);
   return (1 + 0.25 * offices) * polity * eff.governanceMul * (1 + articleBonus);
 }
 
@@ -991,8 +995,14 @@ export function getStabilityRate(state: E1State): number {
 
 export function getOrderDelta(state: E1State): number {
   if (state.era !== 'E4') return 0;
-  const recovery = state.polity === 'theocracy' ? 1.6 : 1;
-  return Math.max(-8, Math.min(3, 15 * (getGovernanceCoverage(state) - 0.8))) * recovery;
+  const articles = state.codeArticles ?? [];
+  const recovery = (state.polity === 'theocracy' ? 1.6 : 1) *
+    (articles.includes('imperial_standard') ? 1.15 : 1) *
+    (articles.includes('central_mint') ? 1.2 : 1) *
+    (articles.includes('merchant_charter') ? 0.85 : 1);
+  const pressure = articles.includes('salt_iron_monopoly') ? -1 : 0;
+  const threshold = articles.includes('faith_tolerance') ? 0.65 : 0.8;
+  return Math.max(-8, Math.min(3, 15 * (getGovernanceCoverage(state) - threshold))) * recovery + pressure;
 }
 
 export function getOrderRegime(state: E1State): OrderRegime {
@@ -1008,12 +1018,27 @@ export function getCoinSpendPerSec(state: E1State): number {
   if (state.era !== 'E4') return 0;
   const officials = Math.max(0, state.jobs.official ?? state.officials ?? 0);
   const legions = Math.max(0, state.jobs.legion ?? state.legions ?? 0);
-  return officials * 0.15 + legions * 0.8 * aggregateEffects(state).legionPayMul;
+  const payMul = aggregateEffects(state).legionPayMul *
+    ((state.codeArticles ?? []).includes('census') ? 1.15 : 1);
+  return officials * 0.15 * ((state.codeArticles ?? []).includes('census') ? 1.15 : 1) + legions * 0.8 * payMul;
+}
+
+/** E4 法典碑提供的制度带宽：初始 2 槽，每座法典碑 +1，最多 8 槽。 */
+export function getCodeArticleSlots(state: E1State): number {
+  if (state.era !== 'E4') return 0;
+  return Math.min(8, 2 + (state.buildings.code_stele ?? 0));
+}
+
+/** 运行时读取条款的辅助判断，避免 UI/store 各自维护一套规则。 */
+export function hasCodeArticle(state: E1State, article: string): boolean {
+  return state.era === 'E4' && (state.codeArticles ?? []).includes(article);
 }
 
 export function getTerritoryCapacity(state: E1State): number {
   if (state.era !== 'E4') return 0;
-  return 60 * Math.max(1, state.territory ?? 1) ** 0.85;
+  const n = Math.max(1, state.territory ?? 1);
+  const censusBonus = hasCodeArticle(state, 'census') ? 4 * n : 0;
+  return 60 * n ** 0.85 * aggregateEffects(state).territoryCapacityMul + censusBonus;
 }
 
 // ─────────────────────────────────────────────
@@ -1764,6 +1789,7 @@ export interface TickResult {
   legions: number;
   codeArticles: string[];
   polityCooldownUntil: number;
+  codeArticlesCooldownSec: number;
   expansionPending: { until: number; targetN: number } | null;
   p1Unlocked: boolean;
   legacyPoints: number;
@@ -1895,6 +1921,7 @@ export function tick(
   const legions = state.jobs.legion ?? state.legions ?? 0;
   const codeArticles = state.codeArticles ?? [];
   let polityCooldownUntil = state.polityCooldownUntil ?? 0;
+  let codeArticlesCooldownSec = state.codeArticlesCooldownSec ?? 0;
   let expansionPending = state.expansionPending ?? null;
   const p1Unlocked = state.p1Unlocked ?? false;
   const legacyPoints = state.legacyPoints ?? 0;
@@ -1922,6 +1949,7 @@ export function tick(
     if (unpaid > 0) tradeNotes.push('铸币不足 —— 官吏或军团欠饷，秩序下降');
 
     polityCooldownUntil = Math.max(0, polityCooldownUntil - dt);
+    codeArticlesCooldownSec = Math.max(0, codeArticlesCooldownSec - dt);
     if (expansionPending) {
       const remaining = expansionPending.until - (state.eraElapsedSec ?? 0) - dt;
       expansionPending = remaining <= 0 ? null : { ...expansionPending, until: (state.eraElapsedSec ?? 0) + dt + remaining };
@@ -2062,6 +2090,7 @@ export function tick(
     legions,
     codeArticles,
     polityCooldownUntil,
+    codeArticlesCooldownSec,
     expansionPending,
     p1Unlocked,
     legacyPoints,

@@ -141,6 +141,8 @@ export interface GameState {
   codeArticles: string[];
   /** E4 政体切换冷却（秒时间戳） */
   polityCooldownUntil: number;
+  /** E4 法典条款改动冷却剩余秒数 */
+  codeArticlesCooldownSec: number;
   /** E4 领土扩张平定期 */
   expansionPending: { until: number; targetN: number } | null;
   /** P1 文明重启状态 */
@@ -284,6 +286,7 @@ const initialState = () => ({
   legions: 0,
   codeArticles: [],
   polityCooldownUntil: 0,
+  codeArticlesCooldownSec: 0,
   expansionPending: null,
   p1Unlocked: false,
   legacyPoints: 0,
@@ -328,6 +331,7 @@ function engineView(s: GameState): engine.EraState {
     legions: s.legions,
     codeArticles: s.codeArticles,
     polityCooldownUntil: s.polityCooldownUntil,
+    codeArticlesCooldownSec: s.codeArticlesCooldownSec,
     expansionPending: s.expansionPending,
     p1Unlocked: s.p1Unlocked,
     legacyPoints: s.legacyPoints,
@@ -583,6 +587,7 @@ export const useStore = create<GameState>((set, get) => ({
       polity: r.polity,
       codeArticles: r.codeArticles,
       polityCooldownUntil: r.polityCooldownUntil,
+      codeArticlesCooldownSec: r.codeArticlesCooldownSec,
       expansionPending: r.expansionPending,
       p1Unlocked: r.p1Unlocked,
       legacyPoints: r.legacyPoints,
@@ -708,6 +713,7 @@ export const useStore = create<GameState>((set, get) => ({
       legions: s.legions,
       codeArticles: s.codeArticles,
       polityCooldownUntil: s.polityCooldownUntil,
+      codeArticlesCooldownSec: s.codeArticlesCooldownSec,
       expansionPending: s.expansionPending,
       p1Unlocked: s.p1Unlocked,
       legacyPoints: s.legacyPoints,
@@ -819,6 +825,7 @@ export const useStore = create<GameState>((set, get) => ({
       legions: data.legions ?? 0,
       codeArticles: data.codeArticles ?? [],
       polityCooldownUntil: data.polityCooldownUntil ?? 0,
+      codeArticlesCooldownSec: data.codeArticlesCooldownSec ?? 0,
       expansionPending: data.expansionPending ?? null,
       p1Unlocked: data.p1Unlocked ?? false,
       legacyPoints: data.legacyPoints ?? 0,
@@ -938,6 +945,7 @@ export const useStore = create<GameState>((set, get) => ({
       legions: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.legions,
       codeArticles: nextEraId === 'E4' && s.era !== 'E4' ? [] : s.codeArticles,
       polityCooldownUntil: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.polityCooldownUntil,
+      codeArticlesCooldownSec: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.codeArticlesCooldownSec,
       expansionPending: nextEraId === 'E4' && s.era !== 'E4' ? null : s.expansionPending,
       p1Unlocked: nextEraId === 'E4' && s.era !== 'E4' ? true : s.p1Unlocked,
       legacyPoints: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.legacyPoints,
