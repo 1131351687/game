@@ -166,6 +166,15 @@ export function isJobRetired(jobId: JobId, s: E1State): boolean {
 export function isJobRevealed(jobId: JobId, s: E1State): boolean {
   const def = JOB_MAP[jobId];
 
+  // 矿脉门控（E3 起生效）：铜矿工只有在"有矿可采"的矿脉下才有意义——
+  //   铜矿带 → 自采铜；锡矿带 → 转采锡（×0.5）；冲积平原 → 无本地金属矿。
+  // 冲积平原上若无人任职则整行隐藏：一个雇了也零产出的岗位挂在列表里
+  // 而不解释原因，玩家只会把它当成"矿工坏了"的 bug（2026-09-13 反馈实例）。
+  // 已有人的行仍显示（同退役岗位的道理——统计里有人、列表里没行像凭空消失）。
+  if (jobId === 'copper_miner' && s.era !== 'E1' && s.era !== 'E2' && s.localOre === 'alluvial') {
+    return (s.jobs[jobId] ?? 0) > 0;
+  }
+
   // 退役岗位：**还有人时仍然显示**（正在全员转出），人清零后彻底消失。
   // 为什么不直接隐藏：那会让"统计里有人、列表里没这行"——人像是凭空消失了。
   if (isJobRetired(jobId, s)) return (s.jobs[jobId] ?? 0) > 0;
@@ -186,6 +195,18 @@ export function isJobRevealed(jobId: JobId, s: E1State): boolean {
 /** 当前应显示的岗位 */
 export function getRevealedJobs(s: E1State) {
   return JOBS.filter(j => isJobRevealed(j.id, s));
+}
+
+/** 本地矿藏的中文标签（E3 起铜/锡自给路径说明用） */
+export function getLocalOreLabel(s: E1State): string {
+  switch (s.localOre) {
+    case 'copper':
+      return '铜矿带';
+    case 'tin':
+      return '锡矿带';
+    case 'alluvial':
+      return '冲积平原';
+  }
 }
 
 // ─────────────────────────────────────────────

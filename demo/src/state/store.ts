@@ -744,6 +744,19 @@ export const useStore = create<GameState>((set, get) => ({
     const eraMessage = eventMessage(eraEvent);
     if (eraMessage) get().addMessage(eraMessage.text, eraMessage.category, eraMessage.important);
 
+    // 5.5 E3 矿脉公告：本地矿藏决定铜/锡的自给路径（transition 里已随机抽定）。
+    //     不公告的话，抽到锡矿带/冲积平原的玩家雇了铜矿工却见不到铜，
+    //     只会当成"矿工坏了"来报 bug（2026-09-13 实例）。
+    if (nextEraId === 'E3') {
+      const oreMsg =
+        t.localOre === 'copper'
+          ? '本地矿藏：铜矿带 —— 铜矿工可自采铜；锡需贸易进口'
+          : t.localOre === 'tin'
+            ? '本地矿藏：锡矿带 —— 铜矿工转采锡（半效）；铜需贸易进口'
+            : '本地矿藏：冲积平原 —— 无本地金属矿，铜/锡均需贸易进口（矿工岗位不开放）';
+      get().addMessage(oreMsg, 'event', true);
+    }
+
     // 6. 时代入口的**岗位进阶**：进入农耕（定居）时代时，采集者自动专职为农夫
     //
     //    这是"时代分界线只决定新增什么"的例外吗？不是——

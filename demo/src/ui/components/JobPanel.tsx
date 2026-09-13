@@ -24,11 +24,11 @@ import {
   isJobUnlocked,
   type E1State,
 } from '../../game/engine';
-import { getRevealedJobs, isJobRetired } from '../../game/reveal';
+import { getRevealedJobs, isJobRetired, getLocalOreLabel } from '../../game/reveal';
 import { JOB_MAP } from '../../data/jobs';
 import { ERAS, eraDistance } from '../../data/era';
 import type { JobDef } from '../../data/jobs';
-import { RESOURCE_MAP } from '../../data/resources';
+import { RESOURCE_MAP, type ResourceId } from '../../data/resources';
 import { TECH_MAP } from '../../data/techs';
 import { TOOL_TIERS } from '../../data/constants';
 import { formatNumber, formatRate } from '../../core/format';
@@ -137,6 +137,18 @@ export function JobPanel() {
         </span>
       </div>
 
+      {/* E3 起矿脉说明：本地矿藏决定铜/锡自给路径。
+          不说明的话，抽到锡矿带/冲积平原的玩家雇了矿工却见不到铜，
+          只会当成"矿工坏了"来报 bug（机制可以藏，但不能不说）。 */}
+      {eraDistance('E3', view.era) >= 0 && (
+        <p className="text-xs leading-relaxed text-gray-500">
+          本地矿藏：<span className="text-gray-300">{getLocalOreLabel(view)}</span>
+          {view.localOre === 'copper' && ' —— 铜矿工自采铜；锡需与迪尔蒙贸易进口'}
+          {view.localOre === 'tin' && ' —— 矿工转采锡（半效）；铜需与埃兰/玛甘贸易进口'}
+          {view.localOre === 'alluvial' && ' —— 无本地金属矿；铜/锡均需贸易进口'}
+        </p>
+      )}
+
       {/* ── 人力分配一览（横条图，相对已分配总数）── */}
       <div className="space-y-2">
         <div className="flex items-baseline justify-between">
@@ -194,9 +206,25 @@ export function JobPanel() {
           jobs.map(job => {
             const count = state.jobs[job.id] ?? 0;
             const unlocked = isJobUnlocked(job.id, view);
-            const output = calcJobOutput(job.id, view);
-            const per = perPersonRate(job, view, count);
-            const outDef = RESOURCE_MAP[job.output];
+            // 铜矿工的产出随矿脉变化：铜矿带产铜；锡矿带转采锡（×0.5）；
+            // 冲积平原零产出（该脉下无人任职时整行已隐藏，有人时也如实显示 0）。
+            const isMiner = job.id === 'copper_miner';
+            const tinVein = view.localOre === 'tin';
+            const alluvial = view.localOre === 'alluvial';
+            const outRes: ResourceId =
+              isMiner && tinVein ? 'tin' : job.output;
+            let output = calcJobOutput(job.id, view);
+            let per = perPersonRate(job, view, count);
+            if (isMiner) {
+              if (alluvial) {
+                output = 0;
+                per = 0;
+              } else if (tinVein) {
+                output *= 0.5;
+                per *= 0.5;
+              }
+            }
+            const outDef = RESOURCE_MAP[outRes];
             // 已随时代退役的职业（采集者在农耕时代）：不再可分配，只显示正在转出
             const retired = isJobRetired(job.id, view);
 
