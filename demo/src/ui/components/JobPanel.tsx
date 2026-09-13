@@ -1,22 +1,18 @@
 // 工作页（独立 Tab）· 岗位分配
 //
-// 布局约定（配合 App.tsx 的 Tab 结构）：
-//   1. 外层已由 App.tsx 提供 `mx-auto max-w-4xl`，本组件不再套外层容器
-//   2. 资源总量常驻顶部 TopBar —— 这里只显示「速率」与「成本」，不重复显示存量
-//   3. MessageLog 是 `fixed bottom-0`（约 160px），最外层 pb-40 防止末尾元素被遮挡
+// 2026-09-13 改版（用户拍板）：与建筑/贸易方块同构 ——
+//   ① 紧凑小方块（图标 + 名称 + 人数），详细内容收进 hover / 点击展开的悬浮详情卡；
+//   ② 增减方式支持**直接输入数字**（回车或失焦生效，store.setJobCount 自带人数钳制）；
+//   ③ 保留顶部人力分配横条（去掉图例列表，横条自带悬浮提示），整体密度对齐建筑页。
 //
-// 渐进解锁：未达条件的岗位**不显示**（getRevealedJobs 过滤）；
-// 唯一例外是「前置科技已研究、但工具世代还没到」的岗位（猎人）：
-// 它会被 reveal 出来但尚未解锁，此时灰化显示并提示缺什么。
-//
-// 视觉简约化：岗位行改为无边框列表项（hover:bg-gray-800/50 区分），
-// 标题小号灰淡，按钮轻量化（小号、无边框、hover 才显色）。
-// 全组件间距统一：区块间 space-y-4，区块内 space-y-2。
+// 渐进解锁：未达条件的岗位灰化显示（🔒 + 缺什么）；
+// 退役职业（采集者/打石者转职中）不可分配，显示转出状态。
 //
 // 纯文字模式：所有 emoji 走 <Icon>；图标可能渲染为 null，
 // 因此所有含图标的行都用 flex + gap 排布，不依赖图标宽度。
 
-import { useStore, toEngineState } from '../../state/store';
+import { useState } from 'react';
+import { useStore, toEngineState, type GameState } from '../../state/store';
 import {
   calcJobOutput,
   getAssignedPopulation,
@@ -75,18 +71,16 @@ function perPersonRate(job: JobDef, view: E1State, count: number): number {
   return calcJobOutput(job.id, { ...view, jobs: { ...view.jobs, [job.id]: 1 } });
 }
 
-/** 列表内 +/- 按钮：放宽到 40px 高（h-10）适配触屏；保留 text-sm + 紧凑 px-2，
- *  避免一行 5 个按钮在窄屏换行爆版（实测 375px 屏也能单行容纳）。 */
+/** 增减按钮统一尺寸：与数字输入框同高，一行排得下 */
 const BTN =
-  'inline-flex h-10 items-center justify-center rounded-md px-2 text-sm font-mono tabular-nums text-gray-400 transition-colors hover:bg-gray-800/50 hover:text-gray-100 disabled:cursor-not-allowed disabled:text-gray-600 disabled:hover:bg-transparent';
+  'inline-flex h-8 items-center justify-center rounded-md px-2 font-mono text-xs tabular-nums text-gray-300 transition-colors hover:bg-gray-700 hover:text-gray-100 disabled:cursor-not-allowed disabled:text-gray-600 disabled:hover:bg-transparent';
 
-/** 小号区块标题：小号化 + 灰淡化（标签属次要层级，统一收为 gray-400） */
-const SECTION_TITLE = 'text-xs uppercase tracking-wide text-gray-400';
+const SECTION_TITLE = 'text-xs uppercase tracking-wide text-gray-500';
 
 export function JobPanel() {
   const state = useStore();
   const view = toEngineState(state);
-  const { setJobCount, assignAllIdle, clearJobs } = state;
+  const { clearJobs } = state;
 
   const jobs = getRevealedJobs(view);
   const idle = Math.floor(getIdlePopulation(view));
@@ -94,273 +88,65 @@ export function JobPanel() {
   const total = state.population;
 
   return (
-    // pb-40：给 fixed bottom-0 的 MessageLog 让位
-    // space-y-6：区块之间用留白分层（去卡片化后，留白是唯一的分层手段）
-    <section className="space-y-6 pb-40">
-      {/* 页头：标题（主文字）+ 清空按钮（可点文字，hover 才显色） */}
-      <header className="flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-100">
-          <Icon emoji="👥" className="text-sm" />
+    <section className="space-y-4 pb-40">
+      {/* 页头：标题 + 空闲/总人口摘要 + 清空按钮 */}
+      <header className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className={`flex items-center gap-1.5 ${SECTION_TITLE}`}>
+          <Icon emoji="👥" className="text-xs" />
           <span>岗位分配</span>
         </h2>
-        <button
-          type="button"
-          onClick={clearJobs}
-          disabled={assigned <= 0}
-          className={`inline-flex h-10 items-center justify-center rounded-md px-3 text-sm transition-colors ${
-            assigned <= 0
-              ? 'cursor-not-allowed text-gray-600'
-              : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-100'
-          }`}
-        >
-          清空分配
-        </button>
+        <div className="flex items-baseline gap-3">
+          <span className="text-xs tabular-nums text-gray-500">
+            空闲{' '}
+            <span className={`font-semibold ${idle > 0 ? 'text-accent' : 'text-gray-600'}`}>
+              {idle}
+            </span>{' '}
+            / 总人口 {formatNumber(total, 0)} · 在岗 {formatNumber(assigned, 0)}
+          </span>
+          <button
+            type="button"
+            onClick={clearJobs}
+            disabled={assigned <= 0}
+            className={`text-xs transition-colors ${
+              assigned <= 0
+                ? 'cursor-not-allowed text-gray-700'
+                : 'text-gray-500 hover:text-gray-100'
+            }`}
+          >
+            清空分配
+          </button>
+        </div>
       </header>
 
-      {/* 顶部：空闲人口 / 总人口 —— 无卡片，靠留白与字重分层（空闲>0 用强调色点出"尚待分配"） */}
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="text-xs text-gray-400">空闲人口</span>
-        <span
-          className={`text-lg font-semibold tabular-nums ${
-            idle > 0 ? 'text-accent' : 'text-gray-600'
-          }`}
-        >
-          {idle}
-        </span>
-        <span className="text-gray-600">/</span>
-        <span className="text-xs text-gray-400">总人口</span>
-        <span className="text-lg font-semibold tabular-nums text-gray-100">
-          {formatNumber(total, 0)}
-        </span>
-        <span className="text-xs tabular-nums text-gray-600">
-          在岗 {formatNumber(assigned, 0)}
-        </span>
+      {/* ── 人力分配一览（细横条，悬浮看明细；不再单列图例）── */}
+      <div className="flex h-2 w-full overflow-hidden rounded-md bg-gray-800/60">
+        {jobs.map(job => {
+          const count = state.jobs[job.id] ?? 0;
+          const pct = assigned > 0 ? (count / assigned) * 100 : 0;
+          if (pct <= 0) return null;
+          return (
+            <div
+              key={job.id}
+              className={`h-full ${JOB_BAR[job.id] ?? 'bg-gray-600'}`}
+              style={{ width: `${pct}%` }}
+              title={`${job.name} ${count} 人（${pct.toFixed(0)}%）`}
+            />
+          );
+        })}
       </div>
 
-      {/* ── 人力分配一览（横条图，相对已分配总数）── */}
-      <div className="space-y-2">
-        <div className="flex items-baseline justify-between">
-          <span className={SECTION_TITLE}>人力分配一览</span>
-          <span className="text-xs tabular-nums text-gray-600">
-            {assigned > 0 ? `${formatNumber(assigned, 0)} 人在岗` : '尚无人分配'}
-          </span>
+      {/* ── 岗位网格：紧凑方块，hover / 点击出详情卡 ── */}
+      {jobs.length === 0 ? (
+        <div className="px-4 py-8 text-center text-sm text-gray-600">
+          暂无可用岗位 —— 继续研究科技以解锁新的生产方式。
         </div>
-        {/* 横条轨道：保留极淡实色底（bg-gray-800）作为"槽"的语义，非内容卡片 */}
-        <div className="flex h-2.5 w-full overflow-hidden rounded-md bg-gray-800">
-          {jobs.map(job => {
-            const count = state.jobs[job.id] ?? 0;
-            const pct = assigned > 0 ? (count / assigned) * 100 : 0;
-            if (pct <= 0) return null;
-            return (
-              <div
-                key={job.id}
-                className={`h-full ${JOB_BAR[job.id] ?? 'bg-gray-600'}`}
-                style={{ width: `${pct}%` }}
-                title={`${job.name} ${count} 人（${pct.toFixed(0)}%）`}
-              />
-            );
-          })}
+      ) : (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          {jobs.map(job => (
+            <JobTile key={job.id} job={job} state={state} view={view} idle={idle} />
+          ))}
         </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {jobs.map(job => {
-            const count = state.jobs[job.id] ?? 0;
-            const pct = assigned > 0 ? (count / assigned) * 100 : 0;
-            return (
-              <span
-                key={job.id}
-                className="flex items-center gap-1 text-xs tabular-nums text-gray-600"
-              >
-                <span
-                  className={`inline-block h-2 w-2 shrink-0 rounded-sm ${JOB_BAR[job.id] ?? 'bg-gray-600'}`}
-                />
-                <Icon emoji={job.icon} className="text-xs" />
-                <span>
-                  {job.name} {count} 人 · {pct.toFixed(0)}%
-                </span>
-              </span>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── 岗位列表（无边框列表项）── */}
-      <div className="space-y-2">
-        {jobs.length === 0 ? (
-          // 理论上不会出现（采集者始终可见），仅作兜底
-          <div className="px-4 py-8 text-center text-sm text-gray-600">
-            暂无可用岗位 —— 继续研究科技以解锁新的生产方式。
-          </div>
-        ) : (
-          jobs.map(job => {
-            const count = state.jobs[job.id] ?? 0;
-            const unlocked = isJobUnlocked(job.id, view);
-            const output = calcJobOutput(job.id, view);
-            const per = perPersonRate(job, view, count);
-            const outDef = RESOURCE_MAP[job.output];
-            // 已随时代退役的职业（采集者在农耕时代）：不再可分配，只显示正在转出
-            const retired = isJobRetired(job.id, view);
-
-            // 岗位行：去掉卡片壳与底色，反白只在 hover 出现；未解锁行靠 opacity 弱化
-            return (
-              <div
-                key={job.id}
-                className={`space-y-2 px-4 py-3 transition-colors ${
-                  unlocked ? 'hover:bg-gray-800/50' : ''
-                }`}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                  {/* 左：岗位名 + 当前人数 + 说明 */}
-                  <div className={`flex min-w-0 items-center gap-3 ${unlocked ? '' : 'opacity-50'}`}>
-                    <Icon emoji={job.icon} className="text-xl leading-none" />
-                    <div className="min-w-0">
-                      {/* 明确显示「谁 · 几个人 → 每秒产出多少」 */}
-                      <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                        <span className="font-medium text-gray-100">{job.name}</span>
-                        <span className="tabular-nums text-gray-400">{count} 人</span>
-                        {unlocked && (
-                          <>
-                            <span className="text-gray-600">→</span>
-                            <span className="tabular-nums text-gray-400">
-                              {formatRate(output)} {outDef.name}/秒
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      {/* 说明文字属次要层级（gray-400） */}
-                      <div className="mt-0.5 truncate text-xs text-gray-400">{job.desc}</div>
-                      {/* 岗位进阶提示：**三态**呈现，让玩家在任何时候都能看懂
-                          "这个岗位会变成什么"以及"现在还差什么"。
-
-                          为什么必须三态（而不是"解锁后才显示"）：
-                          最初只在目标岗位解锁后显示，结果是——「农业」还没研究的玩家
-                          在界面上完全看不到这个机制存在，以为它没做。
-                          机制可以悄悄生效，但**不能悄悄存在**。
-
-                          进阶不是"多一个岗位"，而是**这个职业被新时代取代**：
-                            时代未到 → 预告"进入某时代后该职业取消"
-                            时代已到 → 正在全员转出（每 0.25 秒 1 人）
-                          仅展示状态、不提供按钮：转换是自动的，这里只是让玩家看得见。 */}
-                      {job.upgradesTo &&
-                        (() => {
-                          const target = JOB_MAP[job.upgradesTo.job];
-                          // 触发门槛：era 触发看时代；tech 触发（打石者→矿工）看前置科技。
-                          const techGate =
-                            job.upgradesTo.trigger === 'tech' ? target.requires.tech : undefined;
-                          const gateOpen = techGate
-                            ? !!view.techs[techGate]
-                            : eraDistance(target.era, view.era) >= 0;
-                          const working = gateOpen && (view.jobs[job.id] ?? 0) > 0;
-                          const label = gateOpen
-                            ? '已取消'
-                            : techGate
-                              ? '职业进阶'
-                              : '时代演进';
-
-                          return (
-                            <div
-                              className={`mt-0.5 text-xs ${working ? 'text-warn' : 'text-gray-600'}`}
-                            >
-                              {label} → {target.name}：
-                              {!gateOpen
-                                ? techGate
-                                  ? `研究「${TECH_MAP[techGate]?.name ?? techGate}」后本职业取消，全员转为${target.name}`
-                                  : `进入${ERAS[target.era].name}后本职业取消，全员转为${target.name}`
-                                : working
-                                  ? `全员转为${target.name}中（每 0.25 秒 1 人）`
-                                  : `已全部转为${target.name}`}
-                            </div>
-                          );
-                        })()}
-                    </div>
-                  </div>
-
-                  {/* 右：速率明细 */}
-                  <div className="shrink-0 text-right">
-                    {unlocked ? (
-                      <>
-                        <div className="flex items-center justify-end gap-1 text-xs tabular-nums text-gray-400">
-                          <Icon emoji={outDef.icon} className="text-xs" />
-                          <span>每人 {formatRate(per)}/秒</span>
-                        </div>
-                        <div className="text-xs tabular-nums text-gray-600">
-                          {count > 0 ? `${count} 人合计` : '尚未派人'}
-                        </div>
-                      </>
-                    ) : (
-                      <span className="flex items-center justify-end gap-1 text-xs text-gray-600">
-                        <Icon emoji="🔒" className="text-xs" />
-                        <span>条件未满足</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {retired ? (
-                  // 退役职业：不提供任何分配入口 —— 它正在被新时代消化掉
-                  <div className="text-xs text-warn">
-                    本职业已随时代取消，剩余 {count} 人正在转为
-                    {job.upgradesTo ? JOB_MAP[job.upgradesTo.job].name : '新职业'}
-                  </div>
-                ) : unlocked ? (
-                  <div className="flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      className={BTN}
-                      disabled={count <= 0}
-                      onClick={() => setJobCount(job.id, count - 10)}
-                    >
-                      -10
-                    </button>
-                    <button
-                      type="button"
-                      className={BTN}
-                      disabled={count <= 0}
-                      onClick={() => setJobCount(job.id, count - 1)}
-                    >
-                      -1
-                    </button>
-                    <button
-                      type="button"
-                      className={BTN}
-                      disabled={idle <= 0}
-                      onClick={() => setJobCount(job.id, count + 1)}
-                    >
-                      +1
-                    </button>
-                    <button
-                      type="button"
-                      className={BTN}
-                      disabled={idle <= 0}
-                      onClick={() => setJobCount(job.id, count + 10)}
-                    >
-                      +10
-                    </button>
-                    {/* Max 是主操作：空闲人口 > 0 时为"可行动"，用语义色 ok（可分配）提示 */}
-                    <button
-                      type="button"
-                      className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${
-                        idle > 0
-                          ? 'text-ok hover:bg-ok/10'
-                          : 'cursor-not-allowed text-gray-600'
-                      }`}
-                      disabled={idle <= 0}
-                      onClick={() => assignAllIdle(job.id)}
-                    >
-                      Max
-                    </button>
-                  </div>
-                ) : (
-                  // 前置科技已研究但工具世代未到（猎人）：灰化 + 提示缺什么
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                    <Icon emoji="🔒" className="text-xs" />
-                    <span>{unlockHint(job)}</span>
-                  </div>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+      )}
 
       <p className="text-xs leading-relaxed text-gray-600">
         {/* 文案按时代分流：E3 起知识由书吏产出，"人口=经验来源"的表述不再成立；
@@ -374,6 +160,219 @@ export function JobPanel() {
         )}
       </p>
     </section>
+  );
+}
+
+/**
+ * 单个岗位方块（与建筑/贸易方块同构）。
+ *
+ * 常规态：图标 + 名称 + 人数（未解锁压暗 + 🔒，退役显示"转职中"）；
+ * 详情态（hover / 点击固定）：说明、人均/合计速率、进阶三态提示、
+ * 分配控件（-10/-1/数字输入/+1/+10/Max）。
+ */
+function JobTile({
+  job,
+  state,
+  view,
+  idle,
+}: {
+  job: JobDef;
+  state: GameState;
+  view: E1State;
+  idle: number;
+}) {
+  const [pinned, setPinned] = useState(false);
+  const count = state.jobs[job.id] ?? 0;
+  const unlocked = isJobUnlocked(job.id, view);
+  const retired = isJobRetired(job.id, view);
+  const assignable = unlocked && !retired;
+
+  // 可分配的方块亮起（空闲人口 > 0 时更明显），与建筑"可建亮起"同一语言
+  const lit = assignable && idle > 0;
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setPinned(true)}
+      onMouseLeave={() => setPinned(false)}
+    >
+      {/* ── 紧凑方块 ── */}
+      <button
+        type="button"
+        className={`flex w-full flex-col items-center gap-1 rounded-md border px-2 py-3 text-center transition-colors ${
+          !unlocked
+            ? 'cursor-default border-gray-800/60 bg-gray-900/20 opacity-40'
+            : retired
+              ? 'cursor-default border-amber-800/40 bg-amber-500/5'
+              : lit
+                ? 'cursor-pointer border-accent/50 bg-accent/10'
+                : 'cursor-pointer border-gray-700 bg-gray-900/40 hover:border-gray-600 hover:bg-gray-800/60'
+        }`}
+      >
+        <Icon emoji={job.icon} className="text-xl leading-none" />
+        <span
+          className={`w-full truncate text-xs font-medium ${unlocked ? 'text-gray-100' : 'text-gray-500'}`}
+        >
+          {job.name}
+        </span>
+        <span className="font-mono text-xs tabular-nums text-gray-300">
+          {retired ? '转职中' : unlocked ? `${count} 人` : '🔒 未解锁'}
+        </span>
+      </button>
+
+      {/* ── 悬浮详情卡 ── */}
+      {pinned && (
+        <div className="absolute left-1/2 top-full z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-md border border-gray-700 bg-gray-900 p-3 shadow-xl shadow-black/50">
+          {/* 标题行 */}
+          <div className="flex items-center gap-2">
+            <Icon emoji={job.icon} className="text-lg leading-none" />
+            <span className="text-sm font-semibold text-gray-100">{job.name}</span>
+            <span className="ml-auto rounded-md bg-gray-800/60 px-1.5 py-0.5 text-xs tabular-nums text-gray-400">
+              {count} 人
+            </span>
+          </div>
+
+          {/* 说明 */}
+          <p className="mt-2 text-xs leading-relaxed text-gray-400">{job.desc}</p>
+
+          {/* 速率 / 状态区 */}
+          {unlocked ? (
+            <div className="mt-2 space-y-0.5 border-t border-gray-800 pt-2 text-xs tabular-nums text-gray-400">
+              {(() => {
+                const outDef = RESOURCE_MAP[job.output];
+                const per = perPersonRate(job, view, count);
+                const totalOut = calcJobOutput(job.id, view);
+                return (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <Icon emoji={outDef.icon} className="text-xs" />
+                      <span>每人 {formatRate(per)}/秒</span>
+                    </div>
+                    <div className="text-gray-500">
+                      {count > 0
+                        ? `${count} 人合计 ${formatRate(totalOut)} ${outDef.name}/秒`
+                        : '尚未派人'}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="mt-2 flex items-center gap-1.5 border-t border-gray-800 pt-2 text-xs text-gray-500">
+              <Icon emoji="🔒" className="text-xs" />
+              <span>{unlockHint(job)}</span>
+            </div>
+          )}
+
+          {/* 进阶三态提示：机制不能悄悄存在（详见旧版注释） */}
+          {unlocked && job.upgradesTo && !retired && (
+            <JobUpgradeHint job={job} view={view} working={count > 0} />
+          )}
+          {retired && (
+            <div className="mt-2 border-t border-gray-800 pt-2 text-xs text-warn">
+              本职业已随时代取消，剩余 {count} 人正在转为
+              {job.upgradesTo ? JOB_MAP[job.upgradesTo.job].name : '新职业'}
+            </div>
+          )}
+
+          {/* 分配控件：-10/-1/数字输入/+1/+10/Max（仅可分配岗位） */}
+          {assignable && <JobControls jobId={job.id} count={count} idle={idle} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 岗位进阶三态提示（时代触发 / 科技触发两种门槛） */
+function JobUpgradeHint({ job, view, working }: { job: JobDef; view: E1State; working: boolean }) {
+  const up = job.upgradesTo!;
+  const target = JOB_MAP[up.job];
+  const techGate = up.trigger === 'tech' ? target.requires.tech : undefined;
+  const gateOpen = techGate ? !!view.techs[techGate] : eraDistance(target.era, view.era) >= 0;
+  const label = gateOpen ? '已取消' : techGate ? '职业进阶' : '时代演进';
+
+  return (
+    <div className={`mt-2 border-t border-gray-800 pt-2 text-xs ${working && gateOpen ? 'text-warn' : 'text-gray-600'}`}>
+      {label} → {target.name}：
+      {!gateOpen
+        ? techGate
+          ? `研究「${TECH_MAP[techGate]?.name ?? techGate}」后本职业取消，全员转为${target.name}`
+          : `进入${ERAS[target.era].name}后本职业取消，全员转为${target.name}`
+        : working
+          ? `全员转为${target.name}中（每 0.25 秒 1 人）`
+          : `已全部转为${target.name}`}
+    </div>
+  );
+}
+
+/**
+ * 分配控件：-10 / -1 / [数字输入] / +1 / +10 / Max。
+ * 输入框可直接敲数字，回车或失焦提交 —— store.setJobCount 会钳制到
+ * [0, 总人口 − 其他岗位在岗数]，越界输入自动落到合法值，无需 UI 再算上限。
+ */
+function JobControls({
+  jobId,
+  count,
+  idle,
+}: {
+  jobId: JobDef['id'];
+  count: number;
+  idle: number;
+}) {
+  const setJobCount = useStore(s => s.setJobCount);
+  const assignAllIdle = useStore(s => s.assignAllIdle);
+
+  // draft = 正在编辑的输入内容；null 表示未在编辑（显示真实人数）
+  const [draft, setDraft] = useState<string | null>(null);
+  const inputVal = draft ?? String(count);
+
+  const commit = () => {
+    if (draft === null) return;
+    const n = Math.floor(Number(draft));
+    if (Number.isFinite(n)) setJobCount(jobId, n);
+    setDraft(null);
+  };
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-gray-800 pt-2">
+      <button type="button" className={BTN} disabled={count <= 0} onClick={() => setJobCount(jobId, count - 10)}>
+        -10
+      </button>
+      <button type="button" className={BTN} disabled={count <= 0} onClick={() => setJobCount(jobId, count - 1)}>
+        -1
+      </button>
+      <input
+        value={inputVal}
+        onChange={e => setDraft(e.target.value.replace(/[^\d]/g, ''))}
+        onBlur={commit}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            commit();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        inputMode="numeric"
+        aria-label={`${jobId} 人数输入`}
+        className="h-8 w-14 rounded-md border border-gray-700 bg-gray-800 text-center font-mono text-xs tabular-nums text-gray-100 outline-none focus:border-gray-500"
+      />
+      <button type="button" className={BTN} disabled={idle <= 0} onClick={() => setJobCount(jobId, count + 1)}>
+        +1
+      </button>
+      <button type="button" className={BTN} disabled={idle <= 0} onClick={() => setJobCount(jobId, count + 10)}>
+        +10
+      </button>
+      {/* Max 是主操作：空闲人口 > 0 时用语义色 ok 提示"可分配" */}
+      <button
+        type="button"
+        className={`h-8 rounded-md px-2 text-xs font-medium transition-colors ${
+          idle > 0 ? 'text-ok hover:bg-ok/10' : 'cursor-not-allowed text-gray-600'
+        }`}
+        disabled={idle <= 0}
+        onClick={() => assignAllIdle(jobId)}
+      >
+        Max
+      </button>
+    </div>
   );
 }
 

@@ -127,24 +127,24 @@ function BuildingTile({
       onMouseEnter={() => setPinned(true)}
       onMouseLeave={() => setPinned(false)}
     >
-      {/* ── 紧凑方块：可负担时可点击建造 ── */}
+      {/* ── 紧凑方块：可负担的"亮起"，不可负担的压暗 —— 一眼分清能建什么 ── */}
       <button
         type="button"
         disabled={!affordable}
         onClick={() => build(b.id)}
         className={`flex w-full flex-col items-center gap-1 rounded-md border px-2 py-3 text-center transition-colors ${
           affordable
-            ? 'cursor-pointer border-gray-800 bg-gray-900/40 hover:border-gray-700 hover:bg-gray-800/60'
-            : 'cursor-not-allowed border-gray-800/60 bg-gray-900/20 opacity-50'
+            ? 'cursor-pointer border-accent/50 bg-accent/10 hover:border-accent hover:bg-accent/20'
+            : 'cursor-not-allowed border-gray-800/60 bg-gray-900/20 opacity-40'
         }`}
       >
         <Icon emoji={b.icon} className="text-xl leading-none" />
         <span
-          className={`w-full truncate text-xs font-medium ${affordable ? 'text-gray-200' : 'text-gray-500'}`}
+          className={`w-full truncate text-xs font-medium ${affordable ? 'text-gray-100' : 'text-gray-500'}`}
         >
           {b.name}
         </span>
-        <span className="font-mono text-xs tabular-nums text-gray-500">
+        <span className={`font-mono text-xs tabular-nums ${affordable ? 'text-gray-300' : 'text-gray-500'}`}>
           {owned > 0 ? `×${owned}` : '—'}
         </span>
       </button>

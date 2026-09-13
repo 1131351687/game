@@ -26,7 +26,6 @@ import { Icon } from './Icon';
 import { TechGrid } from './TechGrid';
 import { AdvancePanel } from './AdvancePanel';
 import { RecordPanel } from './RecordPanel';
-import { TechTreeView } from './TechTreeView';
 
 export function CivilizationPanel() {
   const s = useStore();
@@ -108,15 +107,10 @@ export function CivilizationPanel() {
           RecordPanel 自带可折叠外壳：未研究「楔形文字」时整节不渲染。 */}
       <RecordPanel className="mx-auto max-w-4xl" />
 
-      {/* ── 视图区：紧凑方块网格（替代原来的分类 / 树状图长文案） ── */}
-      <div>
-        <TechGrid />
-      </div>
-
-      {/* ── 科技树（依赖结构视图；与 TechGrid 的方块列表并存，强调前置关系）──
-          自带可折叠外壳与底部留白，避免被 fixed 消息栏遮挡。 */}
+      {/* ── 视图区：科技网格 —— 已学科技区内置「列表 | 图谱」双形态切换
+          （2026-09-13：外置的独立科技树已删除，依赖结构收进图谱模式） ── */}
       <div className="pb-40">
-        <TechTreeView />
+        <TechGrid />
       </div>
     </div>
   );
