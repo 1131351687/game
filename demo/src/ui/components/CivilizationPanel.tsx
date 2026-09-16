@@ -16,7 +16,7 @@
 //   · 所有 emoji 经 <Icon> 渲染（纯文字模式），间距用 gap 建立，不依赖图标宽度
 
 import { useStore, toEngineState } from '../../state/store';
-import { calcExperienceOutput, getAdminLoad, getGovernanceCoverage, getStabilityRate, getOrderRegime } from '../../game/engine';
+import { calcExperienceOutput, CODE_ARTICLE_TECH, getAdminLoad, getGovernanceCoverage, getLegacyBonus, getStabilityRate, getOrderRegime } from '../../game/engine';
 import { E4 } from '../../data/constants';
 import { isModuleUnlocked } from '../../game/reveal';
 import { techsUpToEra } from '../../data/techs';
@@ -34,6 +34,7 @@ function EmpireDashboard() {
   const load = getAdminLoad(view);
   const coverage = getGovernanceCoverage(view);
   const stability = getStabilityRate(view);
+  const legacyBonus = getLegacyBonus(view);
   const regime = getOrderRegime(view);
   const n = Math.max(1, s.territory);
   const coinCost = Math.ceil(E4.EXPANSION_COIN_BASE * n ** E4.EXPANSION_COIN_EXP);
@@ -55,6 +56,7 @@ function EmpireDashboard() {
         <span>版图 <b className="text-gray-200">{s.territory}/{E4.MAX_TERRITORY}</b></span>
         <span>铁 <b className="text-gray-200">{formatNumber(s.iron, 0)}</b></span>
         <span>铸币 <b className="text-amber-300">{formatNumber(s.coin, 0)}</b></span>
+        {s.p1Unlocked && <span>遗产 <b className="text-cyan-300">{s.legacyPoints} 点 · ×{legacyBonus.toFixed(2)}</b></span>}
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <button
@@ -69,13 +71,24 @@ function EmpireDashboard() {
           {pending ? `平定中（目标版图 ${pending.targetN}）` : `扩张至 ${s.territory + 1}（${formatNumber(coinCost, 0)} 铸币 / ${formatNumber(ironCost, 0)} 铁）`}
         </button>
         {pending && <span className="text-gray-500">预计剩余 {Math.max(0, Math.ceil(pending.until - s.eraElapsedSec))} 秒</span>}
+        {s.territory > 1 && (
+          <button
+            type="button"
+            disabled={!!pending}
+            onClick={() => s.abandonTerritory()}
+            title="放弃一格边缘版图，秩序 -5，不返还扩张成本"
+            className="rounded border border-red-900 px-2 py-1 text-red-300 hover:border-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            放弃一格
+          </button>
+        )}
         <span className="mx-1 text-gray-700">|</span>
         <span className="text-gray-500">政体：{s.polity ? polityNames[s.polity] : '未选择'}</span>
         {(['monarchy', 'republic', 'theocracy'] as const).map(p => (
           <button
             key={p}
             type="button"
-            disabled={s.polity === p || s.polityCooldownUntil > 0 || s.order < E4.POLITY_SWITCH_ORDER_COST || s.coin < E4.POLITY_SWITCH_COIN_COST}
+            disabled={s.polity === p || s.polityCooldownUntil > 0 || s.coin < E4.POLITY_SWITCH_COIN_COST}
             onClick={() => s.switchPolity(p)}
             className="rounded border border-gray-700 px-2 py-1 text-gray-400 hover:border-gray-500 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -87,17 +100,23 @@ function EmpireDashboard() {
       <div className="border-t border-gray-800 pt-2 text-xs">
         <div className="mb-2 flex items-center gap-3">
           <span className="font-semibold text-gray-300">法典</span>
-          <span className="text-gray-500">已用 {s.codeArticles.length} / {(s.buildings.code_stele ?? 0) * 2} 槽位</span>
+          <span className="text-gray-500">已用 {s.codeArticles.length} / {Math.min(8, 2 + (s.buildings.code_stele ?? 0))} 槽位</span>
+          {s.codeArticlesCooldownSec > 0 && <span className="text-amber-400">冷却 {Math.ceil(s.codeArticlesCooldownSec)}秒</span>}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {[
-            ['written_law', '成文法', '治理效率 +10%'],
-            ['census', '编户齐民', '版图承载 +15%'],
-            ['imperial_standard', '统一法度', '秩序恢复 +15%'],
-            ['military_merit', '军功爵', '军团与扩张治理 +10%'],
+            ['written_law', '成文法', '治理 +10%，铸币 -10%'],
+            ['census', '编户齐民', '治理 +5%，版图承载 +4/格，俸禄 +15%'],
+            ['military_merit', '军功爵', '军团配额 +30%，食物 -10%'],
+            ['unified_measures', '度量衡统一', '铸币 +20%，需对应科技'],
+            ['central_mint', '中央铸币', '铸币 +15%，秩序恢复 +20%'],
+            ['faith_tolerance', '信仰宽容', '治理阈值降至 0.65，研究/军团 -10%'],
+            ['tenant_binding', '佃农绑定', '食物 +15%，人口增长 -10%'],
+            ['salt_iron_monopoly', '盐铁专营', '铸币 +15%，秩序 -1/秒'],
+            ['merchant_charter', '商路特许', '铸币 +25%，秩序恢复 -15%'],
           ].map(([id, name, desc]) => {
             const checked = s.codeArticles.includes(id);
-            const available = !!s.techs[id];
+            const available = !!s.techs[CODE_ARTICLE_TECH[id]];
             return (
               <label key={id} className={available ? 'cursor-pointer text-gray-300' : 'cursor-not-allowed text-gray-700'} title={desc}>
                 <input

@@ -781,6 +781,20 @@ export function getPopulationGrowth(state: E1State): number {
   // 季节增长率乘数：E1 无季节恒为 1.0；E2+ 用非负乘数（冬季放慢但不反号）。
   const seasonMult = getSeasonGrowthMultiplier(state);
 
+  // E4 人口增长把治理覆盖率纳入增长率：扩张后的行政压力会先反映为
+  // 人口增长放慢，再通过秩序和产出形成反馈。
+  if (state.era === 'E4') {
+    const polityMul = state.polity === 'republic' ? 1.1 : state.polity === 'theocracy' ? 0.85 : 0.9;
+    const coverageFactor = 0.5 + 0.5 * Math.min(1, Math.max(0, getGovernanceCoverage(state)));
+    const articleMul = hasCodeArticle(state, 'tenant_binding') ? 0.9 : 1;
+    return applyLogisticGrowth(
+      state,
+      0.004 * polityMul * coverageFactor * articleMul * seasonMult,
+      P,
+      K,
+    );
+  }
+
   // 火种系统尚未开启（还没研究「掌握火」）：
   // 此时不存在"熄灭惩罚"，火源因子按中性 1.0 处理。
   // —— 否则开局 fire=0 会被误判为"火灭了"，人口在几秒内死光。
@@ -885,7 +899,7 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
   let total = 0;
 
   if (state.era === 'E4' && resourceId === 'iron') {
-    return (state.jobs.iron_miner ?? 0) * E4.IRON_MINER_RATE * eff.ironOutputMul * getOrderRegime(state).outputMultiplier;
+    return (state.jobs.iron_miner ?? 0) * E4.IRON_MINER_RATE * eff.ironOutputMul * getOrderRegime(state).outputMultiplier * getTerritoryOutputMultiplier(state) * getNetImperialOutputMultiplier(state);
   }
   if (state.era === 'E4' && resourceId === 'coin') {
     const mintWorkers = Math.min(
@@ -895,7 +909,13 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
     const gross = mintWorkers * E4.COIN_MINT_RATE * getOrderRegime(state).outputMultiplier;
     const ironAvailable = Math.max(0, state.iron ?? 0);
     const ironRate = mintWorkers * E4.COIN_MINT_RATE * E4.MINT_IRON_PER_COIN;
-    return ironRate > 0 ? gross * eff.coinOutputMul * Math.min(1, ironAvailable / ironRate) : gross;
+    const articleMul =
+      (hasCodeArticle(state, 'unified_measures') ? 1.2 : 1) *
+      (hasCodeArticle(state, 'central_mint') ? 1.15 : 1) *
+      (hasCodeArticle(state, 'salt_iron_monopoly') ? 1.15 : 1) *
+      (hasCodeArticle(state, 'merchant_charter') ? 1.25 : 1) *
+      (hasCodeArticle(state, 'written_law') ? 0.9 : 1);
+    return ironRate > 0 ? gross * eff.coinOutputMul * articleMul * Math.min(1, ironAvailable / ironRate) * getTerritoryOutputMultiplier(state) * getNetImperialOutputMultiplier(state) : 0;
   }
 
   for (const job of JOBS) {
@@ -906,8 +926,11 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
   if (resourceId === 'food') {
     total *= 1 + getFireFoodBonus(state);
     total *= eff.foodMultiplier;
+    if (hasCodeArticle(state, 'tenant_binding')) total *= 1.15;
+    if (hasCodeArticle(state, 'military_merit')) total *= 0.9;
   }
   if (resourceId === 'stone') total *= eff.stoneMultiplier;
+  if (state.era === 'E4') total *= getOrderRegime(state).outputMultiplier * getTerritoryOutputMultiplier(state) * getNetImperialOutputMultiplier(state);
 
   // ── E2 ──
   // 「食物总产出 ×N」类科技（原 grainMultiplier，谷物合并前的作用对象）
@@ -990,14 +1013,33 @@ export function getStabilityRate(state: E1State): number {
   if (state.era !== 'E4') return 0;
   const load = getAdminLoad(state);
   const uncovered = Math.max(0, 1 - getGovernanceCoverage(state));
-  return 0.8 * load / (load + 240) * (1 + 0.6 * uncovered);
+  return Math.min(1, 0.8 * load / (load + 240) * (1 + 0.6 * uncovered));
+}
+
+/** E4 维稳成本后的可用产出比例；rho 不是只展示的仪表盘数值。 */
+export function getNetImperialOutputMultiplier(state: E1State): number {
+  return state.era === 'E4' ? Math.max(0, 1 - getStabilityRate(state)) * getLegacyBonus(state) : 1;
+}
+
+/** P1 遗产收益：每点基础 +3%，边际按平方根递减；未解锁时完全中性。 */
+export function getLegacyBonus(state: E1State): number {
+  if (!state.p1Unlocked) return 1;
+  const points = Math.max(0, state.legacyPoints ?? 0);
+  return 1 + 0.03 * Math.sqrt(points);
+}
+
+/** E4 版图物产收益：规模带来额外产出，但与行政负荷分开计算。 */
+export function getTerritoryOutputMultiplier(state: E1State): number {
+  if (state.era !== 'E4') return 1;
+  const territory = Math.max(1, state.territory ?? 1);
+  return 1 + 0.1 * territory ** 0.6;
 }
 
 export function getOrderDelta(state: E1State): number {
   if (state.era !== 'E4') return 0;
   const articles = state.codeArticles ?? [];
   const recovery = (state.polity === 'theocracy' ? 1.6 : 1) *
-    (articles.includes('imperial_standard') ? 1.15 : 1) *
+    (articles.includes('unified_measures') ? 1.15 : 1) *
     (articles.includes('central_mint') ? 1.2 : 1) *
     (articles.includes('merchant_charter') ? 0.85 : 1);
   const pressure = articles.includes('salt_iron_monopoly') ? -1 : 0;
@@ -1007,6 +1049,7 @@ export function getOrderDelta(state: E1State): number {
 
 export function getOrderRegime(state: E1State): OrderRegime {
   let order = state.order ?? 70;
+  if (state.era === 'E4' && state.polity === 'monarchy' && order >= 80) order = 79.99;
   if (order <= 0) return { id: 'collapse', name: '崩解', outputMultiplier: 0.3, researchMultiplier: 0.3, canExpand: false };
   if (order < 20) return { id: 'rebellion', name: '叛乱', outputMultiplier: 0.5, researchMultiplier: 0.5, canExpand: false };
   if (order < 50) return { id: 'unrest', name: '骚动', outputMultiplier: 0.8, researchMultiplier: 0.7, canExpand: false };
@@ -1033,6 +1076,19 @@ export function getCodeArticleSlots(state: E1State): number {
 export function hasCodeArticle(state: E1State, article: string): boolean {
   return state.era === 'E4' && (state.codeArticles ?? []).includes(article);
 }
+
+/** 设计文档中的条款是制度选择，不必在科技表中各自占一个节点。 */
+export const CODE_ARTICLE_TECH: Record<string, string> = {
+  written_law: 'written_law',
+  census: 'census',
+  military_merit: 'military_merit',
+  unified_measures: 'imperial_standard',
+  central_mint: 'coinage',
+  faith_tolerance: 'codification',
+  tenant_binding: 'heavy_plow',
+  salt_iron_monopoly: 'coinage',
+  merchant_charter: 'road_building',
+};
 
 export function getTerritoryCapacity(state: E1State): number {
   if (state.era !== 'E4') return 0;
@@ -1116,7 +1172,8 @@ export function calcExperienceOutput(state: E1State): number {
   // 由人口与政体研究系数共同决定，避免新增同义 knowledge 状态。
   if (state.era === 'E4') {
     const researchMul = state.polity === 'republic' ? 1.15 : state.polity === 'theocracy' ? 0.8 : 0.9;
-    return state.population * 0.012 * researchMul * getOrderRegime(state).researchMultiplier;
+    return state.population * 0.012 * researchMul * getOrderRegime(state).researchMultiplier * getLegacyBonus(state) *
+      (hasCodeArticle(state, 'tenant_binding') ? 0.9 : 1);
   }
 
   return state.population * POPULATION.EXP_PER_PERSON * eff.expMultiplier;
@@ -1226,8 +1283,14 @@ export function canAffordCost(
 export function getJobSlotCapacity(jobId: JobId, state: E1State): number {
   if (state.era === 'E4') {
     if (jobId === 'mint_worker') return Math.max(0, (state.buildings.mint ?? 0) * E4.MINT_WORKERS_PER_BUILDING);
-    if (jobId === 'official') return Math.max(0, (state.buildings.government_office ?? 0) * 10);
-    if (jobId === 'legion') return Math.max(0, (state.buildings.legion_camp ?? 0) * 20);
+    if (jobId === 'official') return Math.max(0, (state.buildings.government_office ?? 0) * 12);
+    if (jobId === 'legion') {
+      const buildingSlots = (state.buildings.legion_camp ?? 0) * 20;
+      const polityQuota = state.polity === 'monarchy' ? 1.4 : state.polity === 'republic' ? 0.8 : state.polity === 'theocracy' ? 0.65 : 1;
+      const articleQuota = hasCodeArticle(state, 'military_merit') ? 1.3 : 1;
+      const populationQuota = state.population * 0.02 * polityQuota * articleQuota;
+      return Math.max(0, Math.min(buildingSlots, Math.floor(populationQuota)));
+    }
     return Number.POSITIVE_INFINITY;
   }
   switch (jobId) {
@@ -2053,8 +2116,11 @@ export function tick(
     }
   }
 
-  // E4 资源产出暂由下一批规则接入；这里先保证模拟结果完整透传，
-  // 避免新增状态在每个 tick 中丢失。
+  // E4 资源也必须在 tick 末统一应用库存上限，避免产出层与资源栏显示脱节。
+  if (state.era === 'E4') {
+    iron = Math.max(0, Math.min(iron, getResourceStorage('iron', state)));
+    coin = Math.max(0, Math.min(coin, getResourceStorage('coin', state)));
+  }
 
   // E3 资源仓储上限（food/wood/stone 与铜锡青铜共用 GetCapacity 体系）
   if (state.era === 'E3') {

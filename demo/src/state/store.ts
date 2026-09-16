@@ -249,6 +249,8 @@ export interface GameState {
   breachContract: (neighborId: string) => boolean;
   /** E4 版图扩张：支付资源后进入平定期，完成后增加一格。返回失败原因或空字符串。 */
   expandTerritory: () => string;
+  /** E4 放弃最外层版图，不返还扩张成本，但立即解除一格行政负荷。 */
+  abandonTerritory: () => boolean;
   /** E4 政体切换。 */
   switchPolity: (polity: engine.PolityId) => boolean;
   /** E4 法典条款设置，供已解锁条款面板使用。 */
@@ -1134,6 +1136,9 @@ export const useStore = create<GameState>((set, get) => ({
     const flatSec = (E4.EXPANSION_FLAT_BASE_SEC + E4.EXPANSION_FLAT_PER_TERRITORY_SEC * n) * engine.aggregateEffects(engineView(s)).expansionFlatMul;
     const legionNeed = Math.ceil(0.15 * n ** 1.15);
     const legions = s.jobs.legion ?? s.legions;
+    if (s.polity === 'republic' && (s.buildings.government_office ?? 0) < Math.ceil(n / 3)) {
+      return `共和制审议不足（官署需 ${Math.ceil(n / 3)} 座）`;
+    }
     if (legions < legionNeed) return `军团不足（需 ${legionNeed}，当前 ${legions}）`;
     if (s.coin < coinCost) return `铸币不足（需 ${coinCost}）`;
     if (s.iron < ironCost) return `铁不足（需 ${ironCost}）`;
@@ -1145,19 +1150,26 @@ export const useStore = create<GameState>((set, get) => ({
     get().addMessage(`开始平定第 ${n + 1} 块版图：铸币 -${coinCost}、铁 -${ironCost}，预计 ${flatSec} 秒完成`, 'event', true);
     return '';
   },
+  abandonTerritory: () => {
+    const s = get();
+    if (s.era !== 'E4' || s.territory <= 1 || s.expansionPending) return false;
+    set({ territory: s.territory - 1, order: Math.max(0, s.order - 5) });
+    get().addMessage('已放弃一格边缘版图：秩序 -5，扩张成本不返还', 'warn', true);
+    return true;
+  },
   switchPolity: (polity) => {
     const s = get();
     if (s.era !== 'E4') return false;
     if (!['monarchy', 'republic', 'theocracy'].includes(polity)) return false;
     if (s.polity === polity || s.polityCooldownUntil > 0) return false;
-    if (s.order < E4.POLITY_SWITCH_ORDER_COST || s.coin < E4.POLITY_SWITCH_COIN_COST) {
-      get().addMessage(`切换政体需要秩序 ≥${E4.POLITY_SWITCH_ORDER_COST} 且铸币 ≥${E4.POLITY_SWITCH_COIN_COST}`, 'warn');
+    if (s.coin < E4.POLITY_SWITCH_COIN_COST) {
+      get().addMessage(`切换政体需要铸币 ≥${E4.POLITY_SWITCH_COIN_COST}`, 'warn');
       return false;
     }
     set({
       polity,
       coin: s.coin - E4.POLITY_SWITCH_COIN_COST,
-      order: Math.max(0, s.order - 10),
+      order: Math.max(0, s.order - E4.POLITY_SWITCH_ORDER_COST),
       polityCooldownUntil: E4.POLITY_SWITCH_COOLDOWN_SEC,
     });
     get().addMessage(`政体已切换为${polity === 'monarchy' ? '君主制' : polity === 'republic' ? '共和制' : '神权制'}`, 'event', true);
@@ -1166,10 +1178,18 @@ export const useStore = create<GameState>((set, get) => ({
   setCodeArticles: (articles) => {
     if (get().era !== 'E4') return;
     const s = get();
-    const slots = Math.max(0, (s.buildings.code_stele ?? 0) * 2);
-    const allowed = new Set(['written_law', 'census', 'imperial_standard', 'military_merit']);
-    const next = [...new Set(articles)].filter(id => allowed.has(id) && !!s.techs[id]).slice(0, slots);
-    set({ codeArticles: next });
+    if (s.codeArticlesCooldownSec > 0) {
+      get().addMessage(`立法冷却中：还需 ${Math.ceil(s.codeArticlesCooldownSec)} 秒`, 'warn');
+      return;
+    }
+    const slots = engine.getCodeArticleSlots(engineView(s));
+    const next = [...new Set(articles)].filter(id => {
+      const techId = engine.CODE_ARTICLE_TECH[id];
+      return !!techId && !!s.techs[techId];
+    }).slice(0, slots);
+    if (JSON.stringify(next) === JSON.stringify(s.codeArticles)) return;
+    set({ codeArticles: next, codeArticlesCooldownSec: 180, order: Math.max(0, s.order - 5) });
+    get().addMessage('法典条款已修改：秩序 -5，立法冷却 180 秒', 'event', true);
     if (next.length < [...new Set(articles)].length) {
       get().addMessage(`法典条款已按 ${slots} 个槽位和已研究科技截取`, 'warn');
     }

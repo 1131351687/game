@@ -1,6 +1,6 @@
 import { createRngState } from '../core/rng/seeded';
 import { E3, E4 } from '../data/constants';
-import { calcExperienceOutput, canResearch, checkAdvance, getAdminLoad, getGovernanceCoverage, getOrderRegime, getResourceStorage, tick, type E1State } from '../game/engine';
+import { calcExperienceOutput, canResearch, checkAdvance, CODE_ARTICLE_TECH, getAdminLoad, getCodeArticleSlots, getGovernanceCoverage, getLegacyBonus, getOrderRegime, getResourceStorage, getTerritoryOutputMultiplier, hasCodeArticle, tick, type E1State } from '../game/engine';
 import { computeEraTransition } from '../game/transition';
 import { simulate } from '../game/simulation/simulate';
 import { advancePopulation } from '../game/systems/population';
@@ -197,6 +197,12 @@ function run(): void {
     buildings: { mint: 1 },
     techs: { iron_tools: true, minting: true },
   });
+  assert(getCodeArticleSlots(e4) === 2, 'E4 初始法典带宽应为 2 槽');
+  assert(getCodeArticleSlots({ ...e4, buildings: { code_stele: 3 } }) === 5, '法典碑应每座增加 1 个条款槽位');
+  const lawState = { ...e4, techs: { written_law: true, census: true, tenant_binding: true }, codeArticles: ['written_law', 'census', 'tenant_binding'] };
+  assert(hasCodeArticle(lawState, 'written_law'), '已颁布法典条款应可被引擎读取');
+  assert(getResourceStorage('iron', e4) === 1000, 'E4 铁库存应有明确基础上限');
+  assert(getResourceStorage('iron', { ...e4, buildings: { government_office: 2 } }) > 1000, '官署应扩充铁库存上限');
   const e4Tick = tick(e4, 10, () => 0.5, 100);
   assert(e4Tick.iron > e4.iron, 'E4 铁矿工应产铁');
   assert(e4Tick.coin > e4.coin && e4Tick.iron < e4.iron + 10 * E4.IRON_MINER_RATE * 10, '铸币应由铁供应并消耗铁');
@@ -206,6 +212,13 @@ function run(): void {
   assert(getGovernanceCoverage(governed) > 0, '官吏应提供治理覆盖率');
   assert(getAdminLoad({ ...governed, territory: 1 }) < getAdminLoad(governed), '版图扩大应提高行政负荷');
   assert(getOrderRegime({ ...e4, order: 10 }).id === 'rebellion', '低秩序应进入叛乱档');
+  assert(getOrderRegime({ ...e4, polity: 'monarchy', order: 90 }).id === 'stable', '君主制不应进入太平档');
+  assert(getCodeArticleSlots({ ...e4, buildings: { code_stele: 9 } }) === 8, '法典槽位上限应为 8');
+  assert(E4.POLITY_SWITCH_COIN_COST === 200000 && E4.POLITY_SWITCH_ORDER_COST === 25 && E4.POLITY_SWITCH_COOLDOWN_SEC === 900, '政体切换成本应符合 E4 规格');
+  assert(getLegacyBonus({ ...e4, p1Unlocked: false, legacyPoints: 10 }) === 1, 'P1 未解锁时遗产收益应保持中性');
+  assert(getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 4 }) > getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 1 }), '遗产点应提高实际产出倍率');
+  assert(CODE_ARTICLE_TECH.unified_measures === 'imperial_standard', '法典条款应映射到正式科技节点');
+  assert(getTerritoryOutputMultiplier({ ...e4, territory: 5 }) > getTerritoryOutputMultiplier({ ...e4, territory: 1 }), '版图扩大应提高物产收益');
   const collapse = tick({ ...e4, order: 0, territory: 3, eraElapsedSec: 9, population: 100 }, 2, () => 0.5, 100);
   assert(collapse.territory < 3 && collapse.population < 100, '崩解应丢失版图并造成持续人口损失');
   console.log('E3 regression: passed');

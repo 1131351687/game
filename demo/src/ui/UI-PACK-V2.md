@@ -4,7 +4,7 @@
 
 ## 一句话说明
 
-**新增一个文件 `demo/src/ui/AppShellV2.tsx`，改 `main.tsx` 一行 import 就生效。**
+**当前入口已使用 `demo/src/ui/AppShellV2.tsx`；后续 UI 改动应在该基线上增量进行。**
 不删除、不改动任何既有文件（包括旧的 `App.tsx` / `AppResponsiveB.tsx`）。
 
 ## 接入步骤
@@ -17,7 +17,7 @@
 demo/src/ui/AppShellV2.tsx
 ```
 
-### 第 2 步：改入口（唯一一处修改）
+### 第 2 步：确认入口
 
 打开 `demo/src/main.tsx`，找到第 7 行附近：
 

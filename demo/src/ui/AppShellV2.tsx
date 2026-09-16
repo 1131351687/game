@@ -38,6 +38,11 @@ import {
 import { isResourceRevealed, isModuleUnlocked } from '../game/reveal';
 import {
   calcExperienceOutput,
+  getAdminLoad,
+  getGovernanceCoverage,
+  getLegacyBonus,
+  getOrderRegime,
+  getStabilityRate,
   getNetResourceRate,
   getResourceStorage,
   getCapacity,
@@ -322,10 +327,25 @@ function ResourceList() {
  * 因此这里无需再做条件判断（判断反而会与组件内部逻辑重复、易漏改）。
  */
 function StatusChips() {
+  const s = useStore();
+  const view = toEngineState(s);
+  const e4Status = s.era === 'E4' ? (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-gray-800 px-4 py-2 text-xs text-gray-500">
+      <span className="font-semibold text-accent">帝国治理</span>
+      <span>秩序 <b className={s.order >= 80 ? 'text-green-400' : s.order >= 50 ? 'text-amber-300' : 'text-red-400'}>{Math.round(s.order)}</b></span>
+      <span>状态 <b className="text-gray-300">{getOrderRegime(view).name}</b></span>
+      <span>覆盖 κ <b className="text-gray-300">{getGovernanceCoverage(view).toFixed(2)}</b></span>
+      <span>维稳 ρ <b className="text-gray-300">{(getStabilityRate(view) * 100).toFixed(0)}%</b></span>
+      <span>负荷 <b className="text-gray-300">{getAdminLoad(view).toFixed(1)}</b></span>
+      <span>版图 <b className="text-gray-300">{s.territory}</b></span>
+      {s.p1Unlocked && <span>遗产 <b className="text-cyan-300">{s.legacyPoints} · ×{getLegacyBonus(view).toFixed(2)}</b></span>}
+    </div>
+  ) : null;
   return (
     <>
       <FireDashboard />
       <SeasonBar />
+      {e4Status}
     </>
   );
 }

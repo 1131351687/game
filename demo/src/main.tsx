@@ -4,7 +4,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 // 响应式双模式 UI（竖屏抽屉 / 横屏常驻）。
 // 回退原版布局：把下行换成 `import App from './App';` 即可。
-import App from './ui/AppResponsiveB';
+import App from './ui/AppShellV2';
 import { startClock, stopClock, loadGame, saveGame, applyOfflineProgress } from './core/clock/scheduler';
 import { useStore, applyTheme } from './state/store';
 import { TECH_MAP } from './data/techs';
