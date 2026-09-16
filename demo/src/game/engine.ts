@@ -403,7 +403,9 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     // ⚠️ 时代门控：E1/E2 没有记录系统（recorded 恒空、recordingEnabled=false），
     // 此处必须零影响，否则 E1/E2 基线（1163s/1920s）会被整体腰斩。
     // recordingOn 由循环前预扫描得出（见上方），与遍历顺序无关，修复顺序依赖 bug。
-    const isOral = recordingOn && !state.recorded.includes(tech.id);
+    // E3 的口头/刻录机制只约束 E3 科技。进入 E4 后制度与工程科技
+    // 由新的治理体系承载，不应因为没有 E3 的泥板记录而再次减半。
+    const isOral = recordingOn && tech.era === 'E3' && !state.recorded.includes(tech.id);
     const oralMul = isOral ? 0.5 : 1;
     /** 乘数衰减 × 刻录口径：口头再 ×0.5 */
     const mulR = (m: number): number => mul(m) * oralMul;

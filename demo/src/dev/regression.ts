@@ -202,6 +202,8 @@ function run(): void {
   const lawState = { ...e4, techs: { written_law: true, census: true, tenant_binding: true }, codeArticles: ['written_law', 'census', 'tenant_binding'] };
   assert(hasCodeArticle(lawState, 'written_law'), '已颁布法典条款应可被引擎读取');
   assert(getResourceStorage('iron', e4) === 1000, 'E4 铁库存应有明确基础上限');
+  const steelEffects = aggregateEffects({ ...e4, techs: { iron: true, steel: true } });
+  assert(steelEffects.ironOutputMul > 1.09, 'E4 钢铁效果不应被 E3 刻录惩罚错误减半');
   assert(getResourceStorage('iron', { ...e4, buildings: { government_office: 2 } }) > 1000, '官署应扩充铁库存上限');
   const e4Tick = tick(e4, 10, () => 0.5, 100);
   assert(e4Tick.iron > e4.iron, 'E4 铁矿工应产铁');
