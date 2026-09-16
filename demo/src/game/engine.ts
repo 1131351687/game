@@ -1037,9 +1037,10 @@ export function getTerritoryOutputMultiplier(state: E1State): number {
 
 export function getOrderDelta(state: E1State): number {
   if (state.era !== 'E4') return 0;
+  const eff = aggregateEffects(state);
   const articles = state.codeArticles ?? [];
   const recovery = (state.polity === 'theocracy' ? 1.6 : 1) *
-    (articles.includes('unified_measures') ? 1.15 : 1) *
+    eff.orderRecoveryMul *
     (articles.includes('central_mint') ? 1.2 : 1) *
     (articles.includes('merchant_charter') ? 0.85 : 1);
   const pressure = articles.includes('salt_iron_monopoly') ? -1 : 0;
