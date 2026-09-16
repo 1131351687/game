@@ -26,7 +26,6 @@
 //   ⑧ 无障碍：Tab 用 role="tablist"，当前项 aria-selected
 //
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import { useStore, toEngineState } from '../state/store';
 import { TopBar, E2_RESOURCE_ORDER, E3_RESOURCE_ORDER, E4_RESOURCE_ORDER } from './components/TopBar';
 import {
@@ -148,49 +147,6 @@ function useEscape(onEscape: () => void): void {
 // ─────────────────────────────────────────────
 // 小组件
 // ─────────────────────────────────────────────
-
-/**
- * 状态抽屉（点击展开）。
- *
- * 竖屏专用：屏幕窄，常驻面板会把主内容挤没，所以状态类信息收进抽屉。
- * `summary` 在收起态显示一行摘要（如「秋 · 农业 ×2.5」），
- * 避免"收起来就完全看不见当前季节"这个信息盲区。
- */
-function Drawer({
-  title,
-  icon,
-  summary,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  icon?: string;
-  summary?: string;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  return (
-    <div className="border-b border-gray-800">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-gray-400 transition-colors hover:text-gray-100"
-      >
-        <Icon emoji={icon ?? ''} className="text-sm" />
-        <span className="shrink-0 font-medium">{title}</span>
-        {!open && summary && (
-          <span className="min-w-0 flex-1 truncate text-xs text-gray-500">{summary}</span>
-        )}
-        <span className={`shrink-0 text-xs text-gray-600 ${open ? '' : 'ml-auto'}`}>
-          {open ? '收起 ▴' : '展开 ▾'}
-        </span>
-      </button>
-      {open && <div className="space-y-2 px-3 pb-3">{children}</div>}
-    </div>
-  );
-}
 
 /** 布局切换：自动 → 竖屏 → 横屏 循环 */
 function LayoutToggle({ pref, onChange }: { pref: LayoutPref; onChange: (p: LayoutPref) => void }) {
@@ -326,10 +282,12 @@ function ResourceList() {
  *   SeasonBar     → 未开启季节循环时为 null
  * 因此这里无需再做条件判断（判断反而会与组件内部逻辑重复、易漏改）。
  */
-function StatusChips() {
+function E4StatusChips() {
   const s = useStore();
   const view = toEngineState(s);
-  const e4Status = s.era === 'E4' ? (
+  if (s.era !== 'E4') return null;
+
+  return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-gray-800 px-4 py-2 text-xs text-gray-500">
       <span className="font-semibold text-accent">帝国治理</span>
       <span>秩序 <b className={s.order >= 80 ? 'text-green-400' : s.order >= 50 ? 'text-amber-300' : 'text-red-400'}>{Math.round(s.order)}</b></span>
@@ -340,12 +298,15 @@ function StatusChips() {
       <span>版图 <b className="text-gray-300">{s.territory}</b></span>
       {s.p1Unlocked && <span>遗产 <b className="text-cyan-300">{s.legacyPoints} · ×{getLegacyBonus(view).toFixed(2)}</b></span>}
     </div>
-  ) : null;
+  );
+}
+
+function StatusChips() {
   return (
     <>
       <FireDashboard />
       <SeasonBar />
-      {e4Status}
+      <E4StatusChips />
     </>
   );
 }
@@ -547,6 +508,7 @@ export default function AppShellV2() {
               <div className="space-y-2 px-3 pb-3">
                 {s.era === 'E1' && fireUnlocked && <FireDashboard />}
                 <SeasonBar />
+                <E4StatusChips />
               </div>
             )}
           </div>
@@ -583,14 +545,6 @@ export default function AppShellV2() {
           <ResourceList />
         </div>
 
-        {/* 横屏下季节/火种已提到顶部芯片条，这里只兜底 E1 火种详情 */}
-        {s.era === 'E1' && fireUnlocked && (
-          <div className="px-3 pb-3">
-            <Drawer title="火种详情" icon="🔥" summary="燃料 · 加成">
-              <FireDashboard />
-            </Drawer>
-          </div>
-        )}
       </aside>
 
       <RailResizer onDrag={handleRailDrag} />
