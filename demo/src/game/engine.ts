@@ -1044,7 +1044,7 @@ export function getOrderDelta(state: E1State): number {
     (articles.includes('merchant_charter') ? 0.85 : 1);
   const pressure = articles.includes('salt_iron_monopoly') ? -1 : 0;
   const threshold = articles.includes('faith_tolerance') ? 0.65 : 0.8;
-  return Math.max(-8, Math.min(3, 15 * (getGovernanceCoverage(state) - threshold))) * recovery + pressure;
+  return Math.max(-8, Math.min(3, 15 * (getGovernanceCoverage(state) - threshold) * recovery + pressure));
 }
 
 export function getOrderRegime(state: E1State): OrderRegime {

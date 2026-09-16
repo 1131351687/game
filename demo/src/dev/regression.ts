@@ -1,6 +1,6 @@
 import { createRngState } from '../core/rng/seeded';
 import { E3, E4 } from '../data/constants';
-import { calcExperienceOutput, canResearch, checkAdvance, CODE_ARTICLE_TECH, getAdminLoad, getCodeArticleSlots, getGovernanceCoverage, getLegacyBonus, getOrderRegime, getResourceStorage, getTerritoryOutputMultiplier, hasCodeArticle, tick, type E1State } from '../game/engine';
+import { calcExperienceOutput, canResearch, checkAdvance, CODE_ARTICLE_TECH, getAdminLoad, getCodeArticleSlots, getGovernanceCoverage, getLegacyBonus, getOrderDelta, getOrderRegime, getResourceStorage, getTerritoryOutputMultiplier, hasCodeArticle, tick, type E1State } from '../game/engine';
 import { computeEraTransition } from '../game/transition';
 import { simulate } from '../game/simulation/simulate';
 import { advancePopulation } from '../game/systems/population';
@@ -210,6 +210,7 @@ function run(): void {
 
   const governed = { ...e4, jobs: { official: 20 }, buildings: { government_office: 2 } };
   assert(getGovernanceCoverage(governed) > 0, '官吏应提供治理覆盖率');
+  assert(getOrderDelta({ ...governed, jobs: { official: 1000 }, buildings: { government_office: 4 } }) <= 3, '秩序恢复应受 +3/s 上限约束');
   assert(getAdminLoad({ ...governed, territory: 1 }) < getAdminLoad(governed), '版图扩大应提高行政负荷');
   assert(getOrderRegime({ ...e4, order: 10 }).id === 'rebellion', '低秩序应进入叛乱档');
   assert(getOrderRegime({ ...e4, polity: 'monarchy', order: 90 }).id === 'stable', '君主制不应进入太平档');
