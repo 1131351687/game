@@ -28,6 +28,19 @@ function baseState(overrides: Partial<E1State> = {}): E1State {
     tin: 100,
     bronze: 0,
     lapis: 0,
+    iron: 0,
+    coin: 0,
+    order: 70,
+    territory: 1,
+    polity: null,
+    officials: 0,
+    legions: 0,
+    codeArticles: [],
+    polityCooldownUntil: 0,
+    codeArticlesCooldownSec: 0,
+    expansionPending: null,
+    p1Unlocked: false,
+    legacyPoints: 0,
     recorded: [],
     recordedOnce: [],
     tradeRoutes: [],
@@ -189,7 +202,7 @@ function run(): void {
     era: 'E4',
     population: 1000,
     food: 10000,
-    iron: 1000,
+    iron: 0,
     coin: 0,
     order: 70,
     territory: 3,
@@ -224,6 +237,23 @@ function run(): void {
   assert(getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 4 }) > getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 1 }), '遗产点应提高实际产出倍率');
   assert(CODE_ARTICLE_TECH.unified_measures === 'imperial_standard', '法典条款应映射到正式科技节点');
   assert(getTerritoryOutputMultiplier({ ...e4, territory: 5 }) > getTerritoryOutputMultiplier({ ...e4, territory: 1 }), '版图扩大应提高物产收益');
+  const pendingExpansion = tick({
+    ...e4,
+    eraElapsedSec: 19,
+    territory: 1,
+    expansionPending: { until: 20, targetN: 2 },
+  }, 1, () => 0.5, 100);
+  assert(pendingExpansion.territory === 2 && pendingExpansion.expansionPending === null, '平定期到期应完成一格版图扩张');
+  const e5Ready = {
+    ...e4,
+    techs: { printing: true },
+    territory: 20,
+    coin: 150000,
+    order: 80,
+    buildings: { government_office: 6 },
+  };
+  assert(checkAdvance(e5Ready).ok, 'E4 五项门槛满足时应允许进入 E5 交接');
+  assert(!checkAdvance({ ...e5Ready, order: 79 }).ok, 'E4 秩序低于 80 时不得进入 E5');
   const collapse = tick({ ...e4, order: 0, territory: 3, eraElapsedSec: 9, population: 100 }, 2, () => 0.5, 100);
   assert(collapse.territory < 3 && collapse.population < 100, '崩解应丢失版图并造成持续人口损失');
   console.log('E3 regression: passed');

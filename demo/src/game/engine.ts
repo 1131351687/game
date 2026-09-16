@@ -1997,8 +1997,10 @@ export function tick(
 
   if (state.era === 'E4') {
     const ironGain = calcResourceOutput('iron', state) * dt;
-    const coinGain = calcResourceOutput('coin', state) * dt;
     iron = Math.min(iron + ironGain, getResourceStorage('iron', state));
+    // 铸币应能消费本 tick 刚开采的铁，避免铁矿工与铸币工首次同时上岗时
+    // 出现一拍的假性停产；仍由 calcResourceOutput 按库存比例限制实际铸币量。
+    const coinGain = calcResourceOutput('coin', { ...state, iron }) * dt;
     coin = Math.min(coin + coinGain, getResourceStorage('coin', state));
     // 铸币不是凭空生成：按实际产出的铸币量消耗铁，缺铁时产出已按比例降速。
     iron = Math.max(0, iron - coinGain * E4.MINT_IRON_PER_COIN);
