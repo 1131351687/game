@@ -219,6 +219,7 @@ function run(): void {
   assert(getOrderRegime({ ...e4, polity: 'monarchy', order: 90 }).id === 'stable', '君主制不应进入太平档');
   assert(getCodeArticleSlots({ ...e4, buildings: { code_stele: 9 } }) === 8, '法典槽位上限应为 8');
   assert(E4.POLITY_SWITCH_COIN_COST === 200000 && E4.POLITY_SWITCH_ORDER_COST === 25 && E4.POLITY_SWITCH_COOLDOWN_SEC === 900, '政体切换成本应符合 E4 规格');
+  assert(!e4.techs.provincial_system, '回归基准应默认锁定政体，直到研究郡县制');
   assert(getLegacyBonus({ ...e4, p1Unlocked: false, legacyPoints: 10 }) === 1, 'P1 未解锁时遗产收益应保持中性');
   assert(getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 4 }) > getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 1 }), '遗产点应提高实际产出倍率');
   assert(CODE_ARTICLE_TECH.unified_measures === 'imperial_standard', '法典条款应映射到正式科技节点');

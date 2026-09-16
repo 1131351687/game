@@ -1161,6 +1161,10 @@ export const useStore = create<GameState>((set, get) => ({
     const s = get();
     if (s.era !== 'E4') return false;
     if (!['monarchy', 'republic', 'theocracy'].includes(polity)) return false;
+    if (!s.techs['provincial_system']) {
+      get().addMessage('切换政体需要先研究「郡县制」', 'warn');
+      return false;
+    }
     if (s.polity === polity || s.polityCooldownUntil > 0) return false;
     if (s.coin < E4.POLITY_SWITCH_COIN_COST) {
       get().addMessage(`切换政体需要铸币 ≥${E4.POLITY_SWITCH_COIN_COST}`, 'warn');
