@@ -50,8 +50,6 @@ export interface EraMeta {
     minTerritory?: number;
     /** E4 铸币最低存量 */
     minCoin?: number;
-    /** E4 秩序最低值 */
-    minOrder?: number;
   };
 }
 
@@ -112,12 +110,11 @@ export const ERAS: Record<EraId, EraMeta> = {
     id: 'E4',
     name: '帝国时代',
     index: 3,
-    gateTech: 'printing',
+    gateTech: 'unification',
     advanceConditions: {
       minTerritory: 20,
       minCoin: 150000,
-      minOrder: 80,
-      minBuildings: { government_office: 6 },
+      minBuildings: { legion_camp: 4 },
     },
   },
 };

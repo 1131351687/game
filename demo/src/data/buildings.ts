@@ -4,7 +4,7 @@
 import type { EraId } from './era';
 import type { ResourceId } from './resources';
 
-export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard' | 'warehouse' | 'government_office' | 'royal_road' | 'mint' | 'legion_camp' | 'code_stele';
+export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard' | 'warehouse' | 'royal_road' | 'mint' | 'legion_camp' | 'armory';
 
 export interface BuildingDef {
   id: BuildingId;
@@ -207,11 +207,10 @@ export const BUILDINGS: BuildingDef[] = [
     era: 'E3',
     desc: '扩容木材/石料各 +200、铜/锡/青铜各 +400、食物 +600 储存上限，金属时代的物资底气。',
   },
-  { id: 'government_office', name: '官署', icon: '🏛️', cost: { wood: 2000, iron: 800 }, costMultiplier: 1.22, requires: { tech: 'provincial_system' }, limit: 'population', era: 'E4', desc: '提供官吏编制与治理效率。' },
   { id: 'royal_road', name: '驰道', icon: '🛣️', cost: { wood: 1500, iron: 1200 }, costMultiplier: 1.2, requires: { tech: 'road_building' }, limit: 'trade', era: 'E4', desc: '降低版图行政半径惩罚。' },
-  { id: 'mint', name: '铸币厂', icon: '🪙', cost: { wood: 1200, iron: 1500 }, costMultiplier: 1.18, requires: { tech: 'minting' }, limit: 'output', era: 'E4', desc: '提供铸币工工位。' },
-  { id: 'legion_camp', name: '军团营垒', icon: '🛡️', cost: { wood: 1000, iron: 2000 }, costMultiplier: 1.18, requires: { tech: 'legion_organization' }, limit: 'population', era: 'E4', desc: '提供军团容量。' },
-  { id: 'code_stele', name: '法典碑', icon: '🗿', cost: { iron: 3000, coin: 5000 }, costMultiplier: 1.25, requires: { tech: 'codification' }, limit: 'record', era: 'E4', desc: '提供法典条款槽位。' },
+  { id: 'mint', name: '铸币厂', icon: '🪙', cost: { wood: 1200, iron: 600 }, costMultiplier: 1.18, requires: { tech: 'minting' }, limit: 'output', era: 'E4', desc: '提供铸币工工位。' },
+  { id: 'legion_camp', name: '军团营垒', icon: '🛡️', cost: { wood: 1000, iron: 800 }, costMultiplier: 1.18, requires: { tech: 'legion_organization' }, limit: 'population', era: 'E4', desc: '提供军团容量。' },
+  { id: 'armory', name: '武库', icon: '🏹', cost: { wood: 800, iron: 1800 }, costMultiplier: 1.18, requires: { tech: 'iron_weapons' }, limit: 'output', era: 'E4', desc: '储备兵器与军械：铁库存 +1200，并扩充军团装备编制。' },
 ];
 
 export const BUILDING_MAP: Record<BuildingId, BuildingDef> = Object.fromEntries(

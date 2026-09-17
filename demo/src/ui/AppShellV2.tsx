@@ -37,11 +37,9 @@ import {
 import { isResourceRevealed, isModuleUnlocked } from '../game/reveal';
 import {
   calcExperienceOutput,
-  getAdminLoad,
-  getGovernanceCoverage,
+  getCoinSpendPerSec,
+  getExpansionRequirement,
   getLegacyBonus,
-  getOrderRegime,
-  getStabilityRate,
   getNetResourceRate,
   getResourceStorage,
   getCapacity,
@@ -59,6 +57,7 @@ import { SettingsMenu } from './components/SettingsMenu';
 import { MessageLog } from './components/MessageLog';
 import { Icon } from './components/Icon';
 import { ERAS } from '../data/era';
+import { E4 } from '../data/constants';
 
 // ─────────────────────────────────────────────
 // 类型与常量
@@ -287,15 +286,24 @@ function E4StatusChips() {
   const view = toEngineState(s);
   if (s.era !== 'E4') return null;
 
+  const req = getExpansionRequirement(view);
+  const legions = s.jobs.legion ?? s.legions;
+  const tone = (ok: boolean) => ok ? 'text-emerald-400' : 'text-amber-300';
+
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-gray-800 px-4 py-2 text-xs text-gray-500">
-      <span className="font-semibold text-accent">帝国治理</span>
-      <span>秩序 <b className={s.order >= 80 ? 'text-green-400' : s.order >= 50 ? 'text-amber-300' : 'text-red-400'}>{Math.round(s.order)}</b></span>
-      <span>状态 <b className="text-gray-300">{getOrderRegime(view).name}</b></span>
-      <span>覆盖 κ <b className="text-gray-300">{getGovernanceCoverage(view).toFixed(2)}</b></span>
-      <span>维稳 ρ <b className="text-gray-300">{(getStabilityRate(view) * 100).toFixed(0)}%</b></span>
-      <span>负荷 <b className="text-gray-300">{getAdminLoad(view).toFixed(1)}</b></span>
-      <span>版图 <b className="text-gray-300">{s.territory}</b></span>
+      <span className="font-semibold text-accent">统一战争</span>
+      <span>版图 <b className="text-gray-300">{s.territory}/{E4.MAX_TERRITORY}</b></span>
+      <span>军团 <b className={tone(req ? legions >= req.legionNeed : legions > 0)}>{legions}</b></span>
+      {req && (
+        <>
+          <span>下一战兵力 <b className={tone(legions >= req.legionNeed)}>{req.legionNeed}</b></span>
+          <span>铸币 <b className={tone(s.coin >= req.coinCost)}>{formatNumber(req.coinCost, 0)}</b></span>
+          <span>铁 <b className={tone(s.iron >= req.ironCost)}>{formatNumber(req.ironCost, 0)}</b></span>
+          <span>平定 <b className="text-gray-300">{s.expansionPending ? `${Math.max(0, Math.ceil(s.expansionPending.until - s.eraElapsedSec))} 秒` : `${req.flatSec} 秒`}</b></span>
+        </>
+      )}
+      <span>军饷 <b className="text-amber-300">{formatRate(getCoinSpendPerSec(view))}</b></span>
       {s.p1Unlocked && <span>遗产 <b className="text-cyan-300">{s.legacyPoints} · ×{getLegacyBonus(view).toFixed(2)}</b></span>}
     </div>
   );

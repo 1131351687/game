@@ -16,7 +16,16 @@
 //   · 所有 emoji 经 <Icon> 渲染（纯文字模式），间距用 gap 建立，不依赖图标宽度
 
 import { useStore, toEngineState } from '../../state/store';
-import { calcExperienceOutput, checkAdvance, CODE_ARTICLE_TECH, getAdminLoad, getGovernanceCoverage, getGovernanceEfficiency, getGovernanceSupply, getLegacyBonus, getStabilityRate, getOrderRegime } from '../../game/engine';
+import {
+  calcExperienceOutput,
+  checkAdvance,
+  getArmoryLegionBonus,
+  getCoinSpendPerSec,
+  getExpansionRequirement,
+  getLegacyBonus,
+  getLegionPower,
+  getTerritoryOutputMultiplier,
+} from '../../game/engine';
 import { E4 } from '../../data/constants';
 import { isModuleUnlocked } from '../../game/reveal';
 import { techsUpToEra } from '../../data/techs';
@@ -41,132 +50,140 @@ function CheckRow({ label, done, detail }: { label: string; done: boolean; detai
   );
 }
 
+/**
+ * E4 帝国面板：只回答四个问题。
+ *   1. 下一块版图需要什么？
+ *   2. 军团能不能打，军饷和军粮是否供得上？
+ *   3. 版图扩张怎样影响生产与承载？
+ *   4. 距离“统一”还差哪几项？
+ */
 function EmpireDashboard() {
   const s = useStore();
   const view = toEngineState(s);
-  const load = getAdminLoad(view);
-  const coverage = getGovernanceCoverage(view);
-  const stability = getStabilityRate(view);
-  const legacyBonus = getLegacyBonus(view);
-  const regime = getOrderRegime(view);
-  const supply = getGovernanceSupply(view);
-  const efficiency = getGovernanceEfficiency(view);
-  const officialsNeeded = Math.ceil(load / Math.max(0.01, efficiency));
-  const n = Math.max(1, s.territory);
-  const coinCost = Math.ceil(E4.EXPANSION_COIN_BASE * n ** E4.EXPANSION_COIN_EXP);
-  const ironCost = Math.ceil(E4.EXPANSION_IRON_BASE * n ** E4.EXPANSION_IRON_EXP);
-  const legionNeed = Math.ceil(0.15 * n ** 1.15);
+  const req = getExpansionRequirement(view);
   const pending = s.expansionPending;
+  const legions = s.jobs.legion ?? s.legions;
   const advance = checkAdvance(view);
-  const polityUnlocked = !!s.techs['provincial_system'];
-  const polityNames: Record<NonNullable<typeof s.polity>, string> = { monarchy: '君主制', republic: '共和制', theocracy: '神权制' };
-  const articleDefs: [string, string, string][] = [
-    ['written_law', '成文法', '治理 +10%，铸币 -10%'],
-    ['census', '编户齐民', '治理 +5%，版图承载增强，俸禄 +15%'],
-    ['military_merit', '军功爵', '军团配额 +30%，食物 -10%'],
-    ['unified_measures', '度量衡统一', '铸币 +20%'],
-    ['central_mint', '中央铸币', '铸币 +15%，秩序恢复 +20%'],
-    ['faith_tolerance', '信仰宽容', '治理阈值降至 0.65'],
-    ['tenant_binding', '佃农绑定', '食物 +15%，人口增长 -10%'],
-    ['salt_iron_monopoly', '盐铁专营', '铸币 +15%，秩序 -1/秒'],
-    ['merchant_charter', '商路特许', '铸币 +25%，秩序恢复 -15%'],
-  ];
+  const legacyBonus = getLegacyBonus(view);
+  const territoryOutput = getTerritoryOutputMultiplier(view);
+  const legionPower = getLegionPower(view);
+  const armoryBonus = getArmoryLegionBonus(view);
+  const coinUpkeep = getCoinSpendPerSec(view);
+  const foodUpkeep = legions * E4.LEGION_FOOD_PER_SEC;
+  const territoryProgress = `${s.territory} / ${E4.MAX_TERRITORY}`;
+
+  const tone = (ok: boolean) => ok ? 'text-emerald-400' : 'text-amber-300';
+  const costWidth = (owned: number, needed: number) =>
+    `${Math.min(100, needed > 0 ? (owned / needed) * 100 : 100)}%`;
 
   return (
     <section className="space-y-5 border-y border-gray-800 py-4">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-        <span className="font-semibold text-accent">帝国治理</span>
-        <StatusValue label="秩序" value={`${Math.round(s.order)} · ${regime.name}`} tone={s.order >= 80 ? 'text-emerald-400' : s.order >= 50 ? 'text-amber-300' : 'text-red-400'} />
-        <StatusValue label="覆盖 κ" value={coverage.toFixed(2)} />
-        <StatusValue label="维稳 ρ" value={`${(stability * 100).toFixed(0)}%`} />
-        <StatusValue label="行政负荷" value={load.toFixed(1)} />
-        <StatusValue label="版图" value={`${s.territory}/${E4.MAX_TERRITORY}`} />
-        <StatusValue label="铁" value={formatNumber(s.iron, 0)} />
-        <StatusValue label="铸币" value={formatNumber(s.coin, 0)} tone="text-amber-300" />
+        <span className="font-semibold text-accent">统一战争</span>
+        <StatusValue label="版图" value={territoryProgress} />
+        <StatusValue label="物产" value={`×${territoryOutput.toFixed(2)}`} />
+        <StatusValue label="军团" value={`${legions} · 战力 ×${legionPower.toFixed(2)}`} tone={legions > 0 ? 'text-emerald-400' : 'text-gray-400'} />
+        <StatusValue label="军饷" value={`${formatRate(coinUpkeep)}铸币/秒`} tone={coinUpkeep > 0 ? 'text-amber-300' : 'text-gray-400'} />
+        <StatusValue label="军粮" value={`${formatRate(foodUpkeep)}食物/秒`} tone={foodUpkeep > 0 ? 'text-amber-300' : 'text-gray-400'} />
         {s.p1Unlocked && <StatusValue label="遗产" value={`${s.legacyPoints} 点 · ×${legacyBonus.toFixed(2)}`} tone="text-cyan-300" />}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(18rem,0.9fr)]">
         <section className="min-w-0">
           <div className="mb-2 flex items-center justify-between text-xs">
-            <h3 className="font-semibold text-gray-200">治理供给</h3>
-            <span className={coverage >= 1 ? 'text-emerald-400' : 'text-amber-300'}>{Math.floor(supply)} / {Math.ceil(load)} 供给 / 负荷</span>
+            <h3 className="font-semibold text-gray-200">下一块版图</h3>
+            <span className="text-gray-500">{req ? `目标 ${req.targetN} / ${E4.MAX_TERRITORY}` : '已推进到当前上限'}</span>
           </div>
-          <div className="mb-2 h-1.5 overflow-hidden bg-gray-800">
-            <div className={`h-full ${coverage >= 1 ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, coverage * 100)}%` }} />
-          </div>
-          <div className="grid gap-x-4 gap-y-1 text-xs text-gray-500 sm:grid-cols-2">
-            <span>官吏 {s.jobs.official ?? 0} 人 · 效率 ×{efficiency.toFixed(2)}</span>
-            <span>{coverage >= 1 ? '治理余量充足' : `还需约 ${Math.max(0, officialsNeeded - (s.jobs.official ?? 0))} 名官吏`}</span>
-            <span>军团 {s.jobs.legion ?? 0} 人 · 压制规模负荷</span>
-            <span>遗产倍率 ×{legacyBonus.toFixed(2)} · 产出已计入</span>
-          </div>
-        </section>
 
-        <section className="min-w-0">
-          <div className="mb-2 flex items-center justify-between text-xs">
-            <h3 className="font-semibold text-gray-200">版图控制</h3>
-            <span className="text-gray-500">{s.territory} / {E4.MAX_TERRITORY} 格</span>
-          </div>
-          <div className="mb-2 grid grid-cols-10 gap-1" aria-label="版图占用">
+          <div className="mb-3 grid grid-cols-10 gap-1" aria-label="版图占用">
             {Array.from({ length: E4.MAX_TERRITORY }, (_, i) => (
               <span key={i} className={`h-2 ${i < s.territory ? 'bg-accent' : 'bg-gray-800'}`} title={`版图 ${i + 1}`} />
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-            <StatusValue label="下格铁" value={formatNumber(ironCost, 0)} tone={s.iron >= ironCost ? 'text-emerald-400' : 'text-red-300'} />
-            <StatusValue label="下格铸币" value={formatNumber(coinCost, 0)} tone={s.coin >= coinCost ? 'text-emerald-400' : 'text-red-300'} />
-            <StatusValue label="军团" value={`${s.jobs.legion ?? 0}/${legionNeed}`} tone={(s.jobs.legion ?? 0) >= legionNeed ? 'text-emerald-400' : 'text-red-300'} />
-            <StatusValue label="秩序" value={`${Math.round(s.order)}/50`} tone={s.order >= 50 ? 'text-emerald-400' : 'text-red-300'} />
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-            <button type="button" disabled={!!pending || regime.canExpand === false || s.territory >= E4.MAX_TERRITORY} onClick={() => { const reason = s.expandTerritory(); if (reason) s.addMessage(`扩张失败：${reason}`, 'warn'); }} className="rounded bg-accent px-3 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-600">
-              {pending ? `平定中（目标 ${pending.targetN}）` : `扩张至 ${s.territory + 1}`}
-            </button>
-            {pending && <span className="text-gray-500">剩余 {Math.max(0, Math.ceil(pending.until - s.eraElapsedSec))} 秒</span>}
-            {s.territory > 1 && <button type="button" disabled={!!pending} onClick={() => s.abandonTerritory()} className="rounded border border-red-900 px-2 py-1 text-red-300 disabled:opacity-40">放弃一格</button>}
-          </div>
-        </section>
-      </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section className="min-w-0 border-t border-gray-800 pt-3">
-          <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
-            <h3 className="font-semibold text-gray-200">政体</h3>
-            <span className="text-gray-500">当前：{s.polity ? polityNames[s.polity] : '未选择'}</span>
-            {s.polityCooldownUntil > 0 && <span className="text-amber-300">冷却 {Math.ceil(s.polityCooldownUntil)} 秒</span>}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {(['monarchy', 'republic', 'theocracy'] as const).map(p => (
-              <button key={p} type="button" disabled={!polityUnlocked || s.polity === p || s.polityCooldownUntil > 0 || s.coin < E4.POLITY_SWITCH_COIN_COST} onClick={() => s.switchPolity(p)} className={`min-w-0 border px-2 py-2 text-left text-xs ${s.polity === p ? 'border-accent text-gray-100' : 'border-gray-800 text-gray-500 hover:border-gray-600'} disabled:cursor-not-allowed disabled:opacity-50`} title={!polityUnlocked ? '需先研究「郡县制」' : undefined}>
-                <span className="block font-semibold">{polityNames[p]}</span>
-                <span className="mt-1 block text-[11px]">切换 -{E4.POLITY_SWITCH_COIN_COST.toLocaleString()} 铸币 / 秩序 -{E4.POLITY_SWITCH_ORDER_COST}</span>
-              </button>
-            ))}
-            {!polityUnlocked && <span className="text-[11px] text-gray-600">研究「郡县制」后解锁政体切换</span>}
-          </div>
+          {req ? (
+            <div className="space-y-2 text-xs">
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <span className="text-gray-500">军团兵力</span>
+                  <span className={tone(legions >= req.legionNeed)}>{legions} / {req.legionNeed}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden bg-gray-800">
+                  <div className={legions >= req.legionNeed ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'} style={{ width: costWidth(legions, req.legionNeed) }} />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <span className="text-gray-500">铸币</span>
+                  <span className={tone(s.coin >= req.coinCost)}>{formatNumber(s.coin, 0)} / {formatNumber(req.coinCost, 0)}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden bg-gray-800">
+                  <div className={s.coin >= req.coinCost ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'} style={{ width: costWidth(s.coin, req.coinCost) }} />
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-3">
+                  <span className="text-gray-500">铁</span>
+                  <span className={tone(s.iron >= req.ironCost)}>{formatNumber(s.iron, 0)} / {formatNumber(req.ironCost, 0)}</span>
+                </div>
+                <div className="h-1.5 overflow-hidden bg-gray-800">
+                  <div className={s.iron >= req.ironCost ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'} style={{ width: costWidth(s.iron, req.ironCost) }} />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={!!pending}
+                  onClick={() => {
+                    const reason = s.expandTerritory();
+                    if (reason) s.addMessage(`扩张失败：${reason}`, 'warn');
+                  }}
+                  className="rounded bg-accent px-3 py-1.5 font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-600"
+                >
+                  {pending ? `平定中（目标 ${pending.targetN}）` : `出兵夺取第 ${req.targetN} 块版图`}
+                </button>
+                {pending && <span className="text-gray-500">剩余 {Math.max(0, Math.ceil(pending.until - s.eraElapsedSec))} 秒</span>}
+                <span className="text-gray-500">预计平定 {req.flatSec} 秒</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="text-emerald-400">版图扩张已完成。</span>
+              {s.territory > 1 && <button type="button" disabled={!!pending} onClick={() => s.abandonTerritory()} className="rounded border border-red-900 px-2 py-1 text-red-300 disabled:opacity-40">放弃一格</button>}
+            </div>
+          )}
         </section>
 
-        <section className="min-w-0 border-t border-gray-800 pt-3">
-          <div className="mb-2 flex items-center gap-3 text-xs">
-            <h3 className="font-semibold text-gray-200">法典</h3>
-            <span className="text-gray-500">{s.codeArticles.length} / {Math.min(8, 2 + (s.buildings.code_stele ?? 0))} 槽位</span>
-            {s.codeArticlesCooldownSec > 0 && <span className="text-amber-300">冷却 {Math.ceil(s.codeArticlesCooldownSec)} 秒</span>}
+        <section className="min-w-0">
+          <div className="mb-2 flex items-center justify-between text-xs">
+            <h3 className="font-semibold text-gray-200">军团与军需</h3>
+            <span className="text-gray-500">营垒编制与人口配额共同限制兵力</span>
           </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-            {articleDefs.map(([id, name, desc]) => {
-              const checked = s.codeArticles.includes(id);
-              const available = !!s.techs[CODE_ARTICLE_TECH[id]];
-              return <label key={id} className={available ? 'cursor-pointer text-gray-300' : 'cursor-not-allowed text-gray-700'} title={desc}><input type="checkbox" className="mr-1 accent-orange-500" checked={checked} disabled={!available} onChange={event => { const next = event.target.checked ? [...s.codeArticles, id] : s.codeArticles.filter(article => article !== id); s.setCodeArticles(next); }} />{name}</label>;
-            })}
+          <div className="grid gap-x-4 gap-y-1 text-xs text-gray-500 sm:grid-cols-2">
+            <span>军团兵 {legions} 人</span>
+            <span>军团营垒 {s.buildings.legion_camp ?? 0} 座</span>
+            <span>武库 {s.buildings.armory ?? 0} 座 · 战力 +{(armoryBonus * 100).toFixed(0)}%</span>
+            <span>武库军饷折扣 {s.buildings.armory ? `-${Math.min(15, (s.buildings.armory ?? 0) * 3)}%` : '0%'}</span>
+            <span>总战力倍率 ×{legionPower.toFixed(2)}</span>
+            <span>军粮 {formatRate(foodUpkeep)}/秒 · 军饷 {formatRate(coinUpkeep)}/秒</span>
           </div>
+          {req && (
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <StatusValue label="所需兵力" value={String(req.legionNeed)} tone={tone(legions >= req.legionNeed)} />
+              <StatusValue label="战力抵兵" value={`${Math.max(0, Math.round((1 - 1 / Math.max(1, legionPower)) * 100))}%`} tone="text-cyan-300" />
+              <StatusValue label="营垒影响" value="编制上限" />
+              <StatusValue label="武库影响" value="战力 / 铁储 / 军饷" />
+            </div>
+          )}
+          {s.territory > 1 && <button type="button" disabled={!!pending} onClick={() => s.abandonTerritory()} className="mt-3 rounded border border-red-900 px-2 py-1 text-xs text-red-300 disabled:opacity-40">放弃一格边缘版图</button>}
         </section>
       </div>
 
       <section className="border-t border-gray-800 pt-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <h3 className="font-semibold text-gray-200">E4 → E5 交接门槛</h3>
-          <span className={advance.ok ? 'text-emerald-400' : 'text-gray-500'}>{advance.ok ? '全部满足，可跃迁' : '继续建设帝国'}</span>
+          <h3 className="font-semibold text-gray-200">统一天下</h3>
+          <span className={advance.ok ? 'text-emerald-400' : 'text-gray-500'}>{advance.ok ? '全部满足，可以完成 E4' : '继续征战与整备'}</span>
         </div>
         <div className="grid gap-x-5 sm:grid-cols-2">
           {advance.items.map(item => <CheckRow key={item.label} label={item.label} done={item.done} detail={item.detail} />)}
@@ -263,7 +280,7 @@ export function CivilizationPanel() {
       <div className="pb-40">
         <TechGrid />
       </div>
-      </div>
+    </div>
   );
 }
 

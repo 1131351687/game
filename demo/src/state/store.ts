@@ -8,7 +8,7 @@ import type { EraId } from '../data/era';
 import type { ResourceId } from '../data/resources';
 import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
-import { INITIAL_STATE, LOOP, E2, E3, E4 } from '../data/constants';
+import { INITIAL_STATE, LOOP, E2, E3 } from '../data/constants';
 import * as engine from '../game/engine';
 import * as engineRecord from '../game/record';
 import { isJobRetired } from '../game/reveal';
@@ -126,23 +126,12 @@ export interface GameState {
   lapis: number;
   /** 铁：E4 铁器与帝国建设材料 */
   iron: number;
-  /** 铸币：E4 官吏、军团和扩张的支付媒介 */
+  /** 铸币：E4 军团和扩张的支付媒介 */
   coin: number;
-  /** E4 秩序仪表盘 */
-  order: number;
   /** E4 版图格数 */
   territory: number;
-  /** E4 政体 */
-  polity: engine.PolityId | null;
-  /** E4 官吏与军团编制 */
-  officials: number;
+  /** E4 军团编制 */
   legions: number;
-  /** E4 已颁布法典条款 */
-  codeArticles: string[];
-  /** E4 政体切换冷却（秒时间戳） */
-  polityCooldownUntil: number;
-  /** E4 法典条款改动冷却剩余秒数 */
-  codeArticlesCooldownSec: number;
   /** E4 领土扩张平定期 */
   expansionPending: { until: number; targetN: number } | null;
   /** P1 文明重启状态 */
@@ -249,18 +238,15 @@ export interface GameState {
   breachContract: (neighborId: string) => boolean;
   /** E4 版图扩张：支付资源后进入平定期，完成后增加一格。返回失败原因或空字符串。 */
   expandTerritory: () => string;
-  /** E4 放弃最外层版图，不返还扩张成本，但立即解除一格行政负荷。 */
+  /** E4 放弃最外层版图，不返还扩张成本。 */
   abandonTerritory: () => boolean;
-  /** E4 政体切换。 */
-  switchPolity: (polity: engine.PolityId) => boolean;
-  /** E4 法典条款设置，供已解锁条款面板使用。 */
-  setCodeArticles: (articles: string[]) => void;
 }
 
 // v7：废除矿脉随机制（localOre 字段删除）+ 岗位 copper_miner → miner（科技驱动产出）
 // v8：建筑分类规则落地（2026-09-13 用户拍板）——退役建筑（retireAfterEra，如火塘）
 //     在已越过退役时代的存档里拆除；住所链升级为玩家主动操作，无存档结构变化
-const SAVE_VERSION = 8;
+// v9：删除秩序/政体/官吏/法典内部经营结构，E4 状态收敛为版图、军团与遗产。
+const SAVE_VERSION = 9;
 
 const initialState = () => ({
   running: false,
@@ -281,14 +267,8 @@ const initialState = () => ({
   lapis: 0,
   iron: 0,
   coin: 0,
-  order: 70,
   territory: 1,
-  polity: null,
-  officials: 0,
   legions: 0,
-  codeArticles: [],
-  polityCooldownUntil: 0,
-  codeArticlesCooldownSec: 0,
   expansionPending: null,
   p1Unlocked: false,
   legacyPoints: 0,
@@ -326,14 +306,8 @@ function engineView(s: GameState): engine.EraState {
     lapis: s.lapis,
     iron: s.iron,
     coin: s.coin,
-    order: s.order,
     territory: s.territory,
-    polity: s.polity,
-    officials: s.officials,
     legions: s.legions,
-    codeArticles: s.codeArticles,
-    polityCooldownUntil: s.polityCooldownUntil,
-    codeArticlesCooldownSec: s.codeArticlesCooldownSec,
     expansionPending: s.expansionPending,
     p1Unlocked: s.p1Unlocked,
     legacyPoints: s.legacyPoints,
@@ -395,7 +369,6 @@ export const useStore = create<GameState>((set, get) => ({
     const jobs = { ...s.jobs, [jobId]: clamped };
     set({
       jobs,
-      ...(s.era === 'E4' && jobId === 'official' ? { officials: clamped } : {}),
       ...(s.era === 'E4' && jobId === 'legion' ? { legions: clamped } : {}),
     });
   },
@@ -409,7 +382,6 @@ export const useStore = create<GameState>((set, get) => ({
     const nextCount = Math.min(slotLimit, (s.jobs[jobId] ?? 0) + Math.floor(idle));
     set({
       jobs: { ...s.jobs, [jobId]: nextCount },
-      ...(s.era === 'E4' && jobId === 'official' ? { officials: nextCount } : {}),
       ...(s.era === 'E4' && jobId === 'legion' ? { legions: nextCount } : {}),
     });
   },
@@ -418,7 +390,7 @@ export const useStore = create<GameState>((set, get) => ({
     const s = get();
     set({
       jobs: { ...s.jobs, ...Object.fromEntries(JOBS.map(j => [j.id, 0])) },
-      ...(s.era === 'E4' ? { officials: 0, legions: 0 } : {}),
+      ...(s.era === 'E4' ? { legions: 0 } : {}),
     });
   },
 
@@ -584,19 +556,13 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: r.lapis,
       iron: r.iron,
       coin: r.coin,
-      order: r.order,
       territory: r.territory,
-      polity: r.polity,
-      codeArticles: r.codeArticles,
-      polityCooldownUntil: r.polityCooldownUntil,
-      codeArticlesCooldownSec: r.codeArticlesCooldownSec,
       expansionPending: r.expansionPending,
       p1Unlocked: r.p1Unlocked,
       legacyPoints: r.legacyPoints,
       tradeRoutes: r.tradeRoutes,
       reputation: r.reputation,
       jobs: jobsAfterTick,
-      officials: jobsAfterTick.official ?? r.officials,
       legions: jobsAfterTick.legion ?? r.legions,
       rng: step.rng,
     });
@@ -708,14 +674,8 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: s.lapis,
       iron: s.iron,
       coin: s.coin,
-      order: s.order,
       territory: s.territory,
-      polity: s.polity,
-      officials: s.officials,
       legions: s.legions,
-      codeArticles: s.codeArticles,
-      polityCooldownUntil: s.polityCooldownUntil,
-      codeArticlesCooldownSec: s.codeArticlesCooldownSec,
       expansionPending: s.expansionPending,
       p1Unlocked: s.p1Unlocked,
       legacyPoints: s.legacyPoints,
@@ -820,14 +780,8 @@ export const useStore = create<GameState>((set, get) => ({
       lapis: data.lapis ?? 0,
       iron: data.iron ?? 0,
       coin: data.coin ?? 0,
-      order: data.order ?? 70,
       territory: data.territory ?? 1,
-      polity: data.polity ?? null,
-      officials: data.officials ?? 0,
       legions: data.legions ?? 0,
-      codeArticles: data.codeArticles ?? [],
-      polityCooldownUntil: data.polityCooldownUntil ?? 0,
-      codeArticlesCooldownSec: data.codeArticlesCooldownSec ?? 0,
       expansionPending: data.expansionPending ?? null,
       p1Unlocked: data.p1Unlocked ?? false,
       legacyPoints: data.legacyPoints ?? 0,
@@ -940,14 +894,8 @@ export const useStore = create<GameState>((set, get) => ({
       // E4 专属状态只在进入 E4 时初始化；E4→E5 目前不可用，但保持契约明确。
       iron: s.era === 'E3' ? (t.iron ?? s.iron) : s.iron,
       coin: s.era === 'E3' ? (t.coin ?? s.coin) : s.coin,
-      order: nextEraId === 'E4' && s.era !== 'E4' ? 70 : s.order,
       territory: nextEraId === 'E4' && s.era !== 'E4' ? 1 : s.territory,
-      polity: nextEraId === 'E4' && s.era !== 'E4' ? null : s.polity,
-      officials: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.officials,
       legions: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.legions,
-      codeArticles: nextEraId === 'E4' && s.era !== 'E4' ? [] : s.codeArticles,
-      polityCooldownUntil: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.polityCooldownUntil,
-      codeArticlesCooldownSec: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.codeArticlesCooldownSec,
       expansionPending: nextEraId === 'E4' && s.era !== 'E4' ? null : s.expansionPending,
       p1Unlocked: nextEraId === 'E4' && s.era !== 'E4' ? true : s.p1Unlocked,
       legacyPoints: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.legacyPoints,
@@ -1128,75 +1076,26 @@ export const useStore = create<GameState>((set, get) => ({
     const s = get();
     if (s.era !== 'E4') return '仅帝国时代可扩张版图';
     if (s.expansionPending) return '已有一块版图正在平定';
-    const n = Math.max(1, s.territory);
-    if (n >= E4.MAX_TERRITORY) return '版图已达当前上限';
-    if (s.order < 50) return `秩序不足（需 ≥50，当前 ${Math.round(s.order)}）`;
-    const coinCost = Math.ceil(E4.EXPANSION_COIN_BASE * n ** E4.EXPANSION_COIN_EXP);
-    const ironCost = Math.ceil(E4.EXPANSION_IRON_BASE * n ** E4.EXPANSION_IRON_EXP);
-    const flatSec = (E4.EXPANSION_FLAT_BASE_SEC + E4.EXPANSION_FLAT_PER_TERRITORY_SEC * n) * engine.aggregateEffects(engineView(s)).expansionFlatMul;
-    const legionNeed = Math.ceil(0.15 * n ** 1.15);
+    const req = engine.getExpansionRequirement(engineView(s));
+    if (!req) return '版图已达当前上限';
     const legions = s.jobs.legion ?? s.legions;
-    if (s.polity === 'republic' && (s.buildings.government_office ?? 0) < Math.ceil(n / 3)) {
-      return `共和制审议不足（官署需 ${Math.ceil(n / 3)} 座）`;
-    }
-    if (legions < legionNeed) return `军团不足（需 ${legionNeed}，当前 ${legions}）`;
-    if (s.coin < coinCost) return `铸币不足（需 ${coinCost}）`;
-    if (s.iron < ironCost) return `铁不足（需 ${ironCost}）`;
+    if (legions < req.legionNeed) return `军团不足（需 ${req.legionNeed}，当前 ${legions}）`;
+    if (s.coin < req.coinCost) return `铸币不足（需 ${req.coinCost}）`;
+    if (s.iron < req.ironCost) return `铁不足（需 ${req.ironCost}）`;
     set({
-      coin: s.coin - coinCost,
-      iron: s.iron - ironCost,
-      expansionPending: { until: s.eraElapsedSec + flatSec, targetN: n + 1 },
+      coin: s.coin - req.coinCost,
+      iron: s.iron - req.ironCost,
+      expansionPending: { until: s.eraElapsedSec + req.flatSec, targetN: req.targetN },
     });
-    get().addMessage(`开始平定第 ${n + 1} 块版图：铸币 -${coinCost}、铁 -${ironCost}，预计 ${flatSec} 秒完成`, 'event', true);
+    get().addMessage(`开始平定第 ${req.targetN} 块版图：铸币 -${req.coinCost}、铁 -${req.ironCost}，预计 ${req.flatSec} 秒完成`, 'event', true);
     return '';
   },
   abandonTerritory: () => {
     const s = get();
     if (s.era !== 'E4' || s.territory <= 1 || s.expansionPending) return false;
-    set({ territory: s.territory - 1, order: Math.max(0, s.order - 5) });
-    get().addMessage('已放弃一格边缘版图：秩序 -5，扩张成本不返还', 'warn', true);
+    set({ territory: s.territory - 1 });
+    get().addMessage('已放弃一格边缘版图，扩张成本不返还', 'warn', true);
     return true;
-  },
-  switchPolity: (polity) => {
-    const s = get();
-    if (s.era !== 'E4') return false;
-    if (!['monarchy', 'republic', 'theocracy'].includes(polity)) return false;
-    if (!s.techs['provincial_system']) {
-      get().addMessage('切换政体需要先研究「郡县制」', 'warn');
-      return false;
-    }
-    if (s.polity === polity || s.polityCooldownUntil > 0) return false;
-    if (s.coin < E4.POLITY_SWITCH_COIN_COST) {
-      get().addMessage(`切换政体需要铸币 ≥${E4.POLITY_SWITCH_COIN_COST}`, 'warn');
-      return false;
-    }
-    set({
-      polity,
-      coin: s.coin - E4.POLITY_SWITCH_COIN_COST,
-      order: Math.max(0, s.order - E4.POLITY_SWITCH_ORDER_COST),
-      polityCooldownUntil: E4.POLITY_SWITCH_COOLDOWN_SEC,
-    });
-    get().addMessage(`政体已切换为${polity === 'monarchy' ? '君主制' : polity === 'republic' ? '共和制' : '神权制'}`, 'event', true);
-    return true;
-  },
-  setCodeArticles: (articles) => {
-    if (get().era !== 'E4') return;
-    const s = get();
-    if (s.codeArticlesCooldownSec > 0) {
-      get().addMessage(`立法冷却中：还需 ${Math.ceil(s.codeArticlesCooldownSec)} 秒`, 'warn');
-      return;
-    }
-    const slots = engine.getCodeArticleSlots(engineView(s));
-    const next = [...new Set(articles)].filter(id => {
-      const techId = engine.CODE_ARTICLE_TECH[id];
-      return !!techId && !!s.techs[techId];
-    }).slice(0, slots);
-    if (JSON.stringify(next) === JSON.stringify(s.codeArticles)) return;
-    set({ codeArticles: next, codeArticlesCooldownSec: 180, order: Math.max(0, s.order - 5) });
-    get().addMessage('法典条款已修改：秩序 -5，立法冷却 180 秒', 'event', true);
-    if (next.length < [...new Set(articles)].length) {
-      get().addMessage(`法典条款已按 ${slots} 个槽位和已研究科技截取`, 'warn');
-    }
   },
 }));
 

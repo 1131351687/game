@@ -1,6 +1,7 @@
 import { createRngState } from '../core/rng/seeded';
 import { E3, E4 } from '../data/constants';
-import { aggregateEffects, calcExperienceOutput, canResearch, checkAdvance, CODE_ARTICLE_TECH, getAdminLoad, getCodeArticleSlots, getGovernanceCoverage, getLegacyBonus, getOrderDelta, getOrderRegime, getResourceStorage, getTerritoryOutputMultiplier, hasCodeArticle, tick, type E1State } from '../game/engine';
+import { aggregateEffects, calcExperienceOutput, canResearch, checkAdvance, getExpansionRequirement, getLegacyBonus, getLegionPower, getResourceStorage, getTerritoryOutputMultiplier, tick, type E1State } from '../game/engine';
+import { getBuildingCost } from '../game/engine';
 import { computeEraTransition } from '../game/transition';
 import { simulate } from '../game/simulation/simulate';
 import { advancePopulation } from '../game/systems/population';
@@ -30,14 +31,8 @@ function baseState(overrides: Partial<E1State> = {}): E1State {
     lapis: 0,
     iron: 0,
     coin: 0,
-    order: 70,
     territory: 1,
-    polity: null,
-    officials: 0,
     legions: 0,
-    codeArticles: [],
-    polityCooldownUntil: 0,
-    codeArticlesCooldownSec: 0,
     expansionPending: null,
     p1Unlocked: false,
     legacyPoints: 0,
@@ -204,38 +199,43 @@ function run(): void {
     food: 10000,
     iron: 0,
     coin: 0,
-    order: 70,
     territory: 3,
     jobs: { iron_miner: 10, mint_worker: 10 },
     buildings: { mint: 1 },
     techs: { iron_tools: true, minting: true },
   });
-  assert(getCodeArticleSlots(e4) === 2, 'E4 初始法典带宽应为 2 槽');
-  assert(getCodeArticleSlots({ ...e4, buildings: { code_stele: 3 } }) === 5, '法典碑应每座增加 1 个条款槽位');
-  const lawState = { ...e4, techs: { written_law: true, census: true, tenant_binding: true }, codeArticles: ['written_law', 'census', 'tenant_binding'] };
-  assert(hasCodeArticle(lawState, 'written_law'), '已颁布法典条款应可被引擎读取');
-  assert(getResourceStorage('iron', e4) === 1000, 'E4 铁库存应有明确基础上限');
+  const baseIronStorage = E4.IRON_STORAGE_BASE + (e4.territory - 1) * E4.IRON_STORAGE_PER_TERRITORY;
+  const opening = baseState({
+    era: 'E4',
+    territory: 1,
+    wood: 2000,
+    iron: E4.IRON_STORAGE_BASE,
+  });
+  assert(getBuildingCost('mint', opening).iron! <= E4.IRON_STORAGE_BASE, '首座铸币厂必须能在初始铁上限内建造');
+  assert(getBuildingCost('legion_camp', opening).iron! <= E4.IRON_STORAGE_BASE, '首座军团营垒必须能在初始铁上限内建造');
+  assert(getBuildingCost('mint', opening).wood! <= opening.wood, '首座铸币厂必须能在 E4 开局木材内建造');
+  assert(getBuildingCost('legion_camp', opening).wood! <= opening.wood, '首座军团营垒必须能在 E4 开局木材内建造');
+  assert(getResourceStorage('iron', e4) === baseIronStorage, 'E4 铁库存由基础储量与版图共同决定');
+  assert(getResourceStorage('iron', { ...e4, buildings: { armory: 2 } }) > baseIronStorage, '武库应扩充铁库存上限');
   const steelEffects = aggregateEffects({ ...e4, techs: { iron: true, steel: true } });
   assert(steelEffects.ironOutputMul > 1.09, 'E4 钢铁效果不应被 E3 刻录惩罚错误减半');
-  assert(getResourceStorage('iron', { ...e4, buildings: { government_office: 2 } }) > 1000, '官署应扩充铁库存上限');
   const e4Tick = tick(e4, 10, () => 0.5, 100);
   assert(e4Tick.iron > e4.iron, 'E4 铁矿工应产铁');
   assert(e4Tick.coin > e4.coin && e4Tick.iron < e4.iron + 10 * E4.IRON_MINER_RATE * 10, '铸币应由铁供应并消耗铁');
   assert(getResourceStorage('iron', e4) >= e4Tick.iron, '铁应受 E4 存储上限约束');
 
-  const governed = { ...e4, jobs: { official: 20 }, buildings: { government_office: 2 } };
-  assert(getGovernanceCoverage(governed) > 0, '官吏应提供治理覆盖率');
-  assert(aggregateEffects({ ...governed, techs: { imperial_standard: true } }).orderRecoveryMul > 1, '统一法度科技应提高秩序恢复系数');
-  assert(getOrderDelta({ ...governed, jobs: { official: 1000 }, buildings: { government_office: 4 } }) <= 3, '秩序恢复应受 +3/s 上限约束');
-  assert(getAdminLoad({ ...governed, territory: 1 }) < getAdminLoad(governed), '版图扩大应提高行政负荷');
-  assert(getOrderRegime({ ...e4, order: 10 }).id === 'rebellion', '低秩序应进入叛乱档');
-  assert(getOrderRegime({ ...e4, polity: 'monarchy', order: 90 }).id === 'stable', '君主制不应进入太平档');
-  assert(getCodeArticleSlots({ ...e4, buildings: { code_stele: 9 } }) === 8, '法典槽位上限应为 8');
-  assert(E4.POLITY_SWITCH_COIN_COST === 200000 && E4.POLITY_SWITCH_ORDER_COST === 25 && E4.POLITY_SWITCH_COOLDOWN_SEC === 900, '政体切换成本应符合 E4 规格');
-  assert(!e4.techs.provincial_system, '回归基准应默认锁定政体，直到研究郡县制');
+  const baseRequirement = getExpansionRequirement(e4);
+  assert(baseRequirement !== null && baseRequirement.targetN === 4, 'E4 应给出下一块版图的征伐要求');
+  assert(getExpansionRequirement({ ...e4, territory: E4.MAX_TERRITORY }) === null, '版图达到上限后不应再要求征伐');
+  const powered = {
+    ...e4,
+    buildings: { ...e4.buildings, legion_camp: 4, armory: 2 },
+    techs: { ...e4.techs, legion_organization: true, military_merit: true },
+  };
+  assert(getLegionPower(powered) > getLegionPower(e4), '军团科技与武库应提高综合战力');
+  assert(getExpansionRequirement(powered)!.legionNeed < baseRequirement!.legionNeed, '战力提升应降低征伐所需兵力');
   assert(getLegacyBonus({ ...e4, p1Unlocked: false, legacyPoints: 10 }) === 1, 'P1 未解锁时遗产收益应保持中性');
   assert(getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 4 }) > getLegacyBonus({ ...e4, p1Unlocked: true, legacyPoints: 1 }), '遗产点应提高实际产出倍率');
-  assert(CODE_ARTICLE_TECH.unified_measures === 'imperial_standard', '法典条款应映射到正式科技节点');
   assert(getTerritoryOutputMultiplier({ ...e4, territory: 5 }) > getTerritoryOutputMultiplier({ ...e4, territory: 1 }), '版图扩大应提高物产收益');
   const pendingExpansion = tick({
     ...e4,
@@ -246,17 +246,15 @@ function run(): void {
   assert(pendingExpansion.territory === 2 && pendingExpansion.expansionPending === null, '平定期到期应完成一格版图扩张');
   const e5Ready = {
     ...e4,
-    techs: { printing: true },
+    techs: { ...e4.techs, unification: true },
     territory: 20,
     coin: 150000,
-    order: 80,
-    buildings: { government_office: 6 },
+    buildings: { ...e4.buildings, legion_camp: 4 },
   };
-  assert(checkAdvance(e5Ready).ok, 'E4 五项门槛满足时应允许进入 E5 交接');
-  assert(!checkAdvance({ ...e5Ready, order: 79 }).ok, 'E4 秩序低于 80 时不得进入 E5');
-  const collapse = tick({ ...e4, order: 0, territory: 3, eraElapsedSec: 9, population: 100 }, 2, () => 0.5, 100);
-  assert(collapse.territory < 3 && collapse.population < 100, '崩解应丢失版图并造成持续人口损失');
-  console.log('E3 regression: passed');
+  assert(checkAdvance(e5Ready).ok, '统一条件满足时应允许完成 E4');
+  assert(!checkAdvance({ ...e5Ready, territory: 19 }).ok, '版图不足 20 时不得完成统一');
+  assert(!checkAdvance({ ...e5Ready, coin: 149999 }).ok, '铸币不足时不得完成统一');
+  console.log('E1-E4 regression: passed');
 }
 
 run();

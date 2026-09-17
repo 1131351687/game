@@ -18,6 +18,7 @@ import {
   canAffordBuilding,
   getBuildingCost,
   getResourceStorage,
+  getExpansionRequirement,
   getCapacity,
   isBuildingUnlocked,
   aggregateEffects,
@@ -26,7 +27,7 @@ import {
 import type { E1State } from '../game/engine';
 import { TECHS, techsOfEra } from '../data/techs';
 import { JOBS } from '../data/jobs';
-import { POPULATION, E2, E3 } from '../data/constants';
+import { POPULATION, E2, E3, E4 } from '../data/constants';
 import { SEASONS, getSeasonFromElapsed, getWinterConsumption } from '../game/season';
 import { computeEraTransition } from '../game/transition';
 import { NEIGHBORS, getRouteSlots } from '../game/trade';
@@ -604,8 +605,8 @@ function makeE3State(): { state: E1State } {
   return { state };
 }
 
-function autoplayE3(): E1State {
-  const STEP = 0.25;
+function autoplayE3(quiet = false): E1State {
+  const STEP = 1;
   const LOG_UNTIL = 3600;
   const HARD_CAP = 60000; // E3 是长线时代，上限放宽到 16.7 小时游戏时
 
@@ -820,6 +821,8 @@ function autoplayE3(): E1State {
     `青铜 ${String(Math.round(s.bronze)).padStart(5)} | 知识 ${s.experience.toFixed(0).padStart(6)} | ` +
     `刻录 ${s.recorded.length}/${getRecordCapacity(s).cap} | 路线 ${(s.tradeRoutes ?? []).length} | E3科技 ${countE3()}/${e3Techs.length}`;
 
+  const origLog = console.log;
+  console.log = quiet ? (() => {}) : origLog;
   console.log('=== E3 城邦时代自动试玩 ===\n');
   console.log(`（起始：人口 ${Math.floor(s.population)} / K=${getCapacity(s)} / E1+E2 科技全掌握）\n`);
 
@@ -872,6 +875,7 @@ function autoplayE3(): E1State {
   } else {
     console.log(`⛔ ${Math.round(t)}s 内未满足全部跃迁条件`);
   }
+  console.log = origLog;
   return s;
 }
 
@@ -885,13 +889,8 @@ function makeE4State(): E1State {
     ...t,
     iron: e3.iron ?? 0,
     coin: e3.coin ?? 0,
-    order: 70,
     territory: 1,
-    polity: null,
-    officials: 0,
     legions: 0,
-    codeArticles: [],
-    polityCooldownUntil: 0,
     expansionPending: null,
     p1Unlocked: true,
     legacyPoints: 0,
@@ -899,17 +898,24 @@ function makeE4State(): E1State {
 }
 
 function autoplayE4(): void {
-  const STEP = 0.25;
+  const STEP = 1;
   const HARD_CAP = 180000;
   const s = makeE4State();
   const e4Order = [
-    'steel', 'codification', 'iron_tools', 'heavy_plow', 'water_management',
-    'coinage', 'written_law', 'census', 'road_building', 'provincial_system',
-    'minting', 'legion_organization', 'administrative_records', 'imperial_standard',
-    'military_merit', 'fortification', 'logistics', 'frontier_command',
-    'standard_army', 'imperial_command', 'printing',
+    'steel', 'iron_tools', 'coinage', 'legion_organization', 'census',
+    'heavy_plow', 'water_management', 'minting', 'road_building',
+    'military_farms', 'provincial_system', 'military_merit',
+    'iron_weapons', 'administrative_records', 'cavalry', 'siegecraft',
+    'logistics', 'imperial_standard', 'standard_army', 'campaign_command',
+    'unification',
   ];
-  const buildingOrder = ['government_office', 'mint', 'legion_camp', 'royal_road', 'code_stele'];
+  const buildingOrder = ['mint', 'legion_camp', 'royal_road', 'armory'];
+  const buildingCaps: Record<(typeof buildingOrder)[number], number> = {
+    mint: 3,
+    legion_camp: 4,
+    royal_road: 3,
+    armory: 3,
+  };
   let elapsed = 0;
   let lastExpansion = 0;
   let researchCount = 0;
@@ -930,8 +936,17 @@ function autoplayE4(): void {
   };
   const build = (): void => {
     for (const id of buildingOrder) {
+      if ((s.buildings[id] ?? 0) >= buildingCaps[id]) continue;
       if (!isBuildingUnlocked(id as never, s) || !canAffordBuilding(id as never, s)) continue;
       const cost = getBuildingCost(id as never, s);
+      const nextCampaign = getExpansionRequirement(s);
+      const keepsCampaignReserve = (): boolean => {
+        if (!nextCampaign) return true;
+        const ironAfter = s.iron - (cost.iron ?? 0);
+        const coinAfter = s.coin - (cost.coin ?? 0);
+        return ironAfter >= nextCampaign.ironCost && coinAfter >= nextCampaign.coinCost;
+      };
+      if (!keepsCampaignReserve()) continue;
       for (const [resource, amount] of Object.entries(cost)) {
         const key = resource as keyof E1State;
         if (typeof s[key] === 'number') (s[key] as number) -= amount as number;
@@ -952,25 +967,20 @@ function autoplayE4(): void {
     };
     take('farmer', Math.ceil(pop * 0.3));
     take('woodcutter', Math.ceil(pop * 0.08));
-    take('iron_miner', Math.min(left, (s.buildings.government_office ?? 0) * 4 + 12));
+    take('iron_miner', Math.min(left, Math.max(20, Math.ceil(pop * 0.1))));
     take('mint_worker', Math.min(left, (s.buildings.mint ?? 0) * 20));
-    take('official', Math.min(left, (s.buildings.government_office ?? 0) * 10));
-    take('legion', Math.min(left, (s.buildings.legion_camp ?? 0) * 20));
+    take('legion', Math.min(left, (s.buildings.legion_camp ?? 0) * 20 + (s.buildings.armory ?? 0) * 5));
     take('gatherer', left);
     s.jobs = jobs;
-    s.officials = jobs.official ?? 0;
     s.legions = jobs.legion ?? 0;
   };
   const expand = (): void => {
-    if (s.expansionPending || s.territory >= 20 || elapsed - lastExpansion < 30) return;
-    const n = s.territory;
-    const coinCost = Math.ceil(800 * n ** 1.3);
-    const ironCost = Math.ceil(200 * n ** 1.1);
-    const needLegions = Math.ceil(0.15 * n ** 1.15);
-    if (s.order < 50 || s.coin < coinCost || s.iron < ironCost || (s.jobs.legion ?? 0) < needLegions) return;
-    s.coin -= coinCost;
-    s.iron -= ironCost;
-    s.expansionPending = { targetN: n + 1, until: elapsed + 15 + n * 2 };
+    if (s.expansionPending || s.territory >= E4.MAX_TERRITORY || elapsed - lastExpansion < 30) return;
+    const req = getExpansionRequirement(s);
+    if (!req || s.coin < req.coinCost || s.iron < req.ironCost || (s.jobs.legion ?? 0) < req.legionNeed) return;
+    s.coin -= req.coinCost;
+    s.iron -= req.ironCost;
+    s.expansionPending = { targetN: req.targetN, until: elapsed + req.flatSec };
     lastExpansion = elapsed;
     expansionCount += 1;
   };
@@ -984,14 +994,22 @@ function autoplayE4(): void {
     assign();
     expand();
     if (Math.round(elapsed) % 600 === 0 && Math.round(elapsed) > 0) {
-      console.log(`  ${Math.round(elapsed)}s | 人口 ${Math.floor(s.population)} | 版图 ${s.territory} | 秩序 ${Math.round(s.order)} | 铁 ${Math.round(s.iron)} | 铸币 ${Math.round(s.coin)} | 科技 ${researchCount} | 扩张 ${expansionCount}`);
+      console.log(`  ${Math.round(elapsed)}s | 人口 ${Math.floor(s.population)} | 版图 ${s.territory} | 军团 ${s.jobs.legion ?? 0} | 铁 ${Math.round(s.iron)} | 铸币 ${Math.round(s.coin)} | 科技 ${researchCount} | 扩张 ${expansionCount}`);
     }
     if (checkAdvance(s).ok) break;
   }
   const result = checkAdvance(s);
-  console.log(`\nE4 末态：人口 ${Math.floor(s.population)} | 版图 ${s.territory} | 秩序 ${Math.round(s.order)} | 铸币 ${Math.round(s.coin)}`);
+  console.log(`\nE4 末态：人口 ${Math.floor(s.population)} | 版图 ${s.territory} | 军团 ${s.jobs.legion ?? 0} | 铸币 ${Math.round(s.coin)}`);
   for (const item of result.items) console.log(`   ${item.done ? '✅' : '⬜'} ${item.label} —— ${item.detail}`);
   console.log(result.ok ? '→ 可以跃迁到 E5' : `→ 尚未满足（${Math.round(elapsed)}s 内）`);
+}
+
+// ─────────────────────────────────────────────
+// 诊断钩子（供 src/dev/diag-*.ts 复用真实链式状态，避免手工构造状态失真）
+// ─────────────────────────────────────────────
+/** 静默跑完整 E1→E2→E3 链式，返回真实 E3 末态 */
+export function autoplayForDiag(): E1State {
+  return autoplayE3(true);
 }
 
 const args = process.argv.slice(1);

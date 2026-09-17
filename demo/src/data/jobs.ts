@@ -5,7 +5,7 @@ import type { EraId } from './era';
 import type { ResourceId } from './resources';
 import type { BuildingId } from './buildings';
 
-export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'miner' | 'smelter' | 'scribe' | 'merchant' | 'iron_miner' | 'mint_worker' | 'official' | 'legion';
+export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'miner' | 'smelter' | 'scribe' | 'merchant' | 'iron_miner' | 'mint_worker' | 'legion';
 
 export interface JobDef {
   id: JobId;
@@ -203,7 +203,6 @@ export const JOBS: JobDef[] = [
   },
   { id: 'iron_miner', name: '铁矿工', icon: '⛏️', output: 'iron', outputRate: 0.4, requires: { tech: 'iron_tools' }, scaledByTool: false, era: 'E4', desc: '开采铁矿，产出铁。' },
   { id: 'mint_worker', name: '铸币工', icon: '🪙', output: 'coin', outputRate: 0.5, requires: { tech: 'minting' }, scaledByTool: false, era: 'E4', desc: '将金属投入铸币厂制成铸币。' },
-  { id: 'official', name: '官吏', icon: '⚖️', output: 'experience', outputRate: 0, requires: { tech: 'provincial_system' }, scaledByTool: false, era: 'E4', desc: '消耗人口与铸币，提供治理供给。' },
   { id: 'legion', name: '军团兵', icon: '🛡️', output: 'experience', outputRate: 0, requires: { tech: 'legion_organization' }, scaledByTool: false, era: 'E4', desc: '消耗粮食与铸币，提供扩张与压制能力。' },
 ];
 

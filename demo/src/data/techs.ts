@@ -202,7 +202,12 @@ export interface TechEffects {
   coinOutputMul?: number;
   roadLevelMax?: number;
   governanceMul?: number;
-  orderRecoveryMul?: number;
+  /** E4 军团战力：降低征伐所需兵力，并提高军团编制的有效容量 */
+  legionPowerMul?: number;
+  /** E4 征伐物资成本乘数（<1 为降低） */
+  expansionCostMul?: number;
+  /** E4 版图物产倍率（叠乘在版图基础产出之上） */
+  territoryOutputMul?: number;
   legionPayMul?: number;
   expansionFlatMul?: number;
   territoryCapacityMul?: number;
@@ -739,19 +744,19 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
     role: '分支 · 规模',
   },
   governance: {
-    name: '治理与行政',
+    name: '耕战与后勤',
     kind: 'branch',
     order: 11,
     color: '#60a5fa',
-    desc: '以法典、户籍和道路降低帝国的管理摩擦',
-    role: '分支 · 治理',
+    desc: '编户、驰道与军需簿册，为长期征伐提供后勤',
+    role: '分支 · 后勤',
   },
   military: {
-    name: '军团与边疆',
+    name: '军略与扩张',
     kind: 'branch',
     order: 12,
     color: '#ef4444',
-    desc: '用军团执行扩张、驻防与边疆压制',
+    desc: '以常备军、军功爵与攻城术推进统一',
     role: '分支 · 扩张',
   },
   gate: {
