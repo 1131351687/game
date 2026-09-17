@@ -335,7 +335,7 @@ population = assignedWorkers + idlePopulation + dependents
 提交前只允许包含设计文件：
 
 ```powershell
-cd D:\try\game
+cd D:\try\Civilis\game
 git diff --check
 git status --short
 git diff --stat -- design

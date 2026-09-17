@@ -74,7 +74,7 @@
 运行并记录：
 
 ```powershell
-cd D:\try\game\demo
+cd D:\try\Civilis\game\demo
 npx --yes tsx src/dev/simulate.ts autoplay e4
 ```
 

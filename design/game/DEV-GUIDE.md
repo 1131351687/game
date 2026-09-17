@@ -39,7 +39,7 @@ UI 层 ui/            组件与渲染。只读 state，通过 action 间接修�
 ### 2.1 工作区检查
 
 ```bash
-cd D:\try\game
+cd D:\try\Civilis\game
 git status -s                # 应为空（或只有你自己的改动）
 git log --oneline -3        # 确认 HEAD 是预期的
 npx tsc --noEmit            # 必须 0 error（基线）
@@ -70,7 +70,7 @@ echo ".worktrees/" >> .gitignore   # 如果还没加
 
 ⚠️ **worktree 需要 node_modules**：用 junction 链接主树的依赖（PowerShell）：
 ```powershell
-New-Item -ItemType Junction -Path ".worktrees\e{N}\demo\node_modules" -Target "D:\try\game\demo\node_modules" | Out-Null
+New-Item -ItemType Junction -Path ".worktrees\e{N}\demo\node_modules" -Target "D:\try\Civilis\game\demo\node_modules" | Out-Null
 ```
 
 ⚠️ **worktree 里的 `era.ts` 是分支创建时的旧版**。如果上一个时代的实现还未提交到 main，
