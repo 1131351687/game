@@ -141,7 +141,8 @@ function buildOne(): void {
       if (res === 'coin') return after >= nextCampaign.coinCost;
       return true;
     };
-    if (!leavesCampaignSupplies('iron') || !leavesCampaignSupplies('coin')) continue;
+    const isFirstMint = id === 'mint' && (s.buildings.mint ?? 0) === 0;
+    if (!isFirstMint && (!leavesCampaignSupplies('iron') || !leavesCampaignSupplies('coin'))) continue;
     for (const [res, amount] of Object.entries(cost)) {
       const key = res as keyof E1State;
       if (typeof s[key] === 'number') (s[key] as number) -= amount as number;

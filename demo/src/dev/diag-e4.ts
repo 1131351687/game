@@ -27,7 +27,7 @@ const s: E1State = {
 };
 
 console.log('=== E4 起始状态 ===');
-console.log(`era=${s.era} 人口=${Math.floor(s.population)} 食物=${s.food.toFixed(0)}`);
+console.log(`era=${s.era} 人口=${Math.floor(s.population)} 食物=${s.food.toFixed(0)} 木材=${s.wood.toFixed(0)} 铁=${s.iron.toFixed(0)} 铸币=${s.coin.toFixed(0)} 知识=${s.experience.toFixed(0)}`);
 console.log(`K=${getCapacity(s)} 火=${s.fire}`);
 const eff = aggregateEffects(s);
 console.log(`eff: seasonsEnabled=${eff.seasonsEnabled} fireEnabled=${eff.fireEnabled} scribesPerRoute=${eff.scribesPerRoute}`);

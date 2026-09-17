@@ -946,7 +946,10 @@ function autoplayE4(): void {
         const coinAfter = s.coin - (cost.coin ?? 0);
         return ironAfter >= nextCampaign.ironCost && coinAfter >= nextCampaign.coinCost;
       };
-      if (!keepsCampaignReserve()) continue;
+      // 首座铸币厂是 E4 货币链的启动设施：开局铸币为 0 时，
+      // 不能为了保留下一次征伐铸币而把它永久挡在建造队列之外。
+      const isFirstMint = id === 'mint' && (s.buildings.mint ?? 0) === 0;
+      if (!isFirstMint && !keepsCampaignReserve()) continue;
       for (const [resource, amount] of Object.entries(cost)) {
         const key = resource as keyof E1State;
         if (typeof s[key] === 'number') (s[key] as number) -= amount as number;

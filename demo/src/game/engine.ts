@@ -91,7 +91,7 @@ export interface EraState {
   lapis: number;
   /** 铁：E4 铁器与帝国建设材料 */
   iron: number;
-  /** 铸币：E4 官吏、军团和扩张的支付媒介 */
+  /** 铸币：E4 军团和扩张的支付媒介 */
   coin: number;
   /** 版图格数：E4 扩张规模，至少为 1 */
   territory: number;
@@ -777,7 +777,7 @@ export function getPopulationGrowth(state: E1State): number {
   // 季节增长率乘数：E1 无季节恒为 1.0；E2+ 用非负乘数（冬季放慢但不反号）。
   const seasonMult = getSeasonGrowthMultiplier(state);
 
-  // E4 的人口上限由版图、民居与军屯共同决定；不再用秩序/覆盖率直接压低增长。
+  // E4 的人口上限由版图、民居与军屯共同决定；已删除的秩序/覆盖率系统不参与计算。
   if (state.era === 'E4') {
     return applyLogisticGrowth(state, 0.004 * seasonMult, P, K);
   }
@@ -944,7 +944,7 @@ export function calcResourceOutput(resourceId: ResourceId, state: E1State): numb
 // -----------------------------------------------------------------------------
 // E4 帝国规则：所有函数均保持时代门控，E1-E3 返回中性值。
 // -----------------------------------------------------------------------------
-/** E4 的产出只受文明遗产影响；旧秩序/维稳系统不再压低产出。 */
+/** E4 的产出只受文明遗产影响；已删除的旧秩序/维稳系统不参与计算。 */
 export function getNetImperialOutputMultiplier(state: E1State): number {
   return state.era === 'E4' ? getLegacyBonus(state) : 1;
 }

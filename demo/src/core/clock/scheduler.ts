@@ -159,7 +159,7 @@ export function applyOfflineProgress(): OfflineResult | null {
     { mode: 'offline', efficiency: 1, maxStepSec: 1 },
   );
   // 离线结算必须推进存档锚点，否则下一次刷新会再次结算同一段时间。
-  // 同时把有效离线时长计入统计，保证 E4 的秩序/铸币/平定期结算与游玩记录一致。
+  // 同时把有效离线时长计入统计，保证 E4 的铸币/平定期结算与游玩记录一致。
   const current = useStore.getState();
   useStore.setState({
     ...result.state,

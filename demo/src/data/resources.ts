@@ -116,7 +116,7 @@ export const RESOURCES: ResourceDef[] = [
     icon: '⛏️',
     category: 'material',
     era: 'E4',
-    desc: '铁器时代的基础材料，用于官署、驰道、铸币厂与军团营垒。',
+    desc: '铁器时代的基础材料，用于驰道、铸币厂、军团营垒与武库。',
   },
   {
     id: 'coin',
@@ -124,7 +124,7 @@ export const RESOURCES: ResourceDef[] = [
     icon: '🪙',
     category: 'material',
     era: 'E4',
-    desc: '标准化支付媒介，用于官吏俸禄、军团军饷和领土扩张。',
+    desc: '标准化支付媒介，用于军团军饷和领土扩张。',
   },
 ];
 

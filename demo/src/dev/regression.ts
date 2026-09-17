@@ -1,6 +1,6 @@
 import { createRngState } from '../core/rng/seeded';
 import { E3, E4 } from '../data/constants';
-import { aggregateEffects, calcExperienceOutput, canResearch, checkAdvance, getExpansionRequirement, getLegacyBonus, getLegionPower, getResourceStorage, getTerritoryOutputMultiplier, tick, type E1State } from '../game/engine';
+import { aggregateEffects, calcExperienceOutput, canResearch, checkAdvance, getExpansionRequirement, getLegacyBonus, getLegionPower, getResourceStorage, getTerritoryOutputMultiplier, isBuildingUnlocked, tick, type E1State } from '../game/engine';
 import { getBuildingCost } from '../game/engine';
 import { computeEraTransition } from '../game/transition';
 import { simulate } from '../game/simulation/simulate';
@@ -215,6 +215,8 @@ function run(): void {
   assert(getBuildingCost('legion_camp', opening).iron! <= E4.IRON_STORAGE_BASE, '首座军团营垒必须能在初始铁上限内建造');
   assert(getBuildingCost('mint', opening).wood! <= opening.wood, '首座铸币厂必须能在 E4 开局木材内建造');
   assert(getBuildingCost('legion_camp', opening).wood! <= opening.wood, '首座军团营垒必须能在 E4 开局木材内建造');
+  assert(isBuildingUnlocked('mint', { ...opening, techs: { coinage: true } }), '铸币制度应解锁铸币厂');
+  assert(!isBuildingUnlocked('mint', opening), '未研究铸币制度时不应解锁铸币厂');
   assert(getResourceStorage('iron', e4) === baseIronStorage, 'E4 铁库存由基础储量与版图共同决定');
   assert(getResourceStorage('iron', { ...e4, buildings: { armory: 2 } }) > baseIronStorage, '武库应扩充铁库存上限');
   const steelEffects = aggregateEffects({ ...e4, techs: { iron: true, steel: true } });
