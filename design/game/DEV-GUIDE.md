@@ -176,11 +176,11 @@ npx tsx src/dev/tmp-render.tsx > /tmp/now.html
 |---|---|---|
 | 5 | E2 定居 | 谷物并入食物；旧跃迁映射还原 |
 | 6 | E3 城市 | +knowledge/copper/tin/bronze/recorded/tradeRoutes/reputation |
-| 7 | E4 帝国 | +iron/coin/order/territory/legacy |
-| 8 | E5 远洋 | +paper/books/researchPoints/literacy/ships |
-| 9 | E6 工业 | +coal/steam/mechanical/power/pollution/urbanization |
-| 10 | E7 电气 | +electricity/oil/fertilizer/assembly/petrol |
-| 11 | E8 信息 | +data/compute/automationLines/networkNodes |
+| 7 | E4 帝国（旧版） | +iron/coin/order/territory/legacy（order 已在 v9 删除） |
+| 8 | E5 远洋（旧规划） | +paper/books/researchPoints/literacy/ships |
+| 9 | E4 军事扩张重构 | E4 收敛为 iron/coin/territory/legions/expansionPending/legacy，删除 order/政体/官吏/法典 |
+| 10 | E5 远洋（预留） | +paper/books/researchPoints/literacy/ships |
+| 11 | E6 工业（预留） | +coal/steam/mechanical/power/pollution/urbanization |
 
 ### 5.2 迁移模板
 
@@ -196,7 +196,7 @@ if (oldVersion < 6) {
 
 // v6 → v7：E4 新字段
 if (oldVersion < 7) {
-  // iron = 0; coin = 0; order = 70; territory = 1; ...
+  // iron = 0; coin = 0; territory = 1; legions = 0; ...
 }
 ```
 
@@ -213,12 +213,12 @@ if (oldVersion < 7) {
 ```
 doTick(dt) 的标准执行顺序：
  1  资源产出（含季节/时代倍率）
- 2  资源消耗（人口吃粮 / 冶炼投料 / 军团军饷 / 官吏俸禄）
+ 2  资源消耗（人口吃粮 / 冶炼投料 / 军团军饷）
  3  贸易结算（如有；30 秒一轮）
  4  人口增长（依赖第 2 步的食物余额）
  5  知识/研究产出（依赖第 4 步的人口）
- 6  玩家手动操作的效果（刻录 / 建贸易路线 / 切政体）
- 7  限制检查（存储上限 / 秩序触发 / 污染累积）
+ 6  玩家手动操作的效果（刻录 / 建贸易路线 / 发动征伐）
+ 7  限制检查（存储上限 / 平定期 / 污染累积）
  8  消息与统计
 ```
 
