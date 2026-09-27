@@ -38,3 +38,6 @@ desktop.ini
 .eslintcache
 .vite/
 .worktrees/
+
+# 验证/演练用的临时转译目录（tsc --outDir 的产物，勿提交）
+.tmp-*/

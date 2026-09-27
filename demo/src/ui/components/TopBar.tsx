@@ -93,12 +93,39 @@ export const E4_RESOURCE_ORDER: ResourceId[] = [
   'food',
 ];
 
+/**
+ * E5 远洋时代资源排列。
+ *
+ * 本时代的核心仪表盘数值是**研究点**（复利的产出端，显示名由
+ * researchCurrencyName 切换为「研究点」）与印刷链的中间品（纸张 → 典籍），
+ * 这三者代表"知识生产线"，必须排在最前。
+ * 白银与异域物产是远航带回的，紧随其后；木材仍是造纸的原料，继续显示。
+ *
+ * 注：经验/知识（experience）不再单独显示 —— E5 的研究货币是研究点，
+ * 两者**并存但不换算**（E5-devplan §4.1）。旧字段仍在存档里，只是不上条。
+ */
+export const E5_RESOURCE_ORDER: ResourceId[] = [
+  'researchPoints',
+  'paper',
+  'books',
+  'silver',
+  'exoticGoods',
+  'wood',
+  'stone',
+  'food',
+  'iron',
+];
+
 export function TopBar() {
   const s = useStore();
   const view = toEngineState(s);
 
   const order =
-    s.era === 'E4' ? E4_RESOURCE_ORDER : s.era === 'E3' ? E3_RESOURCE_ORDER : s.era === 'E2' ? E2_RESOURCE_ORDER : MATERIAL_RESOURCES;
+    s.era === 'E5' ? E5_RESOURCE_ORDER
+    : s.era === 'E4' ? E4_RESOURCE_ORDER
+    : s.era === 'E3' ? E3_RESOURCE_ORDER
+    : s.era === 'E2' ? E2_RESOURCE_ORDER
+    : MATERIAL_RESOURCES;
   const shown = order.filter(id => isResourceRevealed(id, view));
   const popGrowth = getPopulationGrowth(view);
   const capacity = getCapacity(view);

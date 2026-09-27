@@ -4,7 +4,7 @@
 import type { EraId } from './era';
 import type { ResourceId } from './resources';
 
-export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard' | 'warehouse' | 'royal_road' | 'mint' | 'legion_camp' | 'armory';
+export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard' | 'warehouse' | 'royal_road' | 'mint' | 'legion_camp' | 'armory' | 'paper_mill' | 'printing_workshop' | 'university' | 'harbor' | 'library';
 
 export interface BuildingDef {
   id: BuildingId;
@@ -211,6 +211,20 @@ export const BUILDINGS: BuildingDef[] = [
   { id: 'mint', name: '铸币厂', icon: '🪙', cost: { wood: 1200, iron: 600 }, costMultiplier: 1.18, requires: { tech: 'coinage' }, limit: 'output', era: 'E4', desc: '提供铸币工工位。' },
   { id: 'legion_camp', name: '军团营垒', icon: '🛡️', cost: { wood: 1000, iron: 800 }, costMultiplier: 1.18, requires: { tech: 'legion_organization' }, limit: 'population', era: 'E4', desc: '提供军团容量。' },
   { id: 'armory', name: '武库', icon: '🏹', cost: { wood: 800, iron: 1800 }, costMultiplier: 1.18, requires: { tech: 'iron_weapons' }, limit: 'output', era: 'E4', desc: '储备兵器与军械：铁库存 +1200，并扩充军团装备编制。' },
+  // ── E5 远洋时代（按 E5-maritime.md §8 建筑集，共 5 座）──
+  // 同类型每重复一次成本 ×1.35（远高于 E4 的 1.18：印刷链是重资产，滚雪球更慢）。
+  //
+  // ⚠️ 白银成本的分工（2026 修正，原设计存在**死锁**）：
+  //   印书坊与大学的成本里都有白银 —— 这是刻意的，逼迫玩家至少远航一次。
+  //   但**航海港自己绝不能要白银**：白银唯一的来源是远航，而远航需要航海港。
+  //   港口若要 300 银，则「无银 → 造不了港 → 出不了海 → 永远无银」形成闭环死锁，
+  //   E5 在任何开局下都无法推进（已由 e5-autoplay 复现）。
+  //   因此港口改用纯木石铁——它是白银经济的**入口**，不是出口。
+  { id: 'paper_mill', name: '造纸坊', icon: '🏭', cost: { wood: 400, stone: 200 }, costMultiplier: 1.35, requires: { tech: 'papermaking' }, limit: 'output', era: 'E5', desc: '提供造纸工工位 +6，纸张产出 +15%。' },
+  { id: 'printing_workshop', name: '印书坊', icon: '🖨️', cost: { wood: 600, iron: 300, silver: 100 }, costMultiplier: 1.35, requires: { tech: 'printing' }, limit: 'output', era: 'E5', desc: '提供印刷工工位 +8，典籍产出 +20%。成本含白银，必须出海。' },
+  { id: 'university', name: '大学', icon: '🎓', cost: { stone: 500, silver: 400, books: 2000 }, costMultiplier: 1.35, requires: { tech: 'university_system' }, limit: 'output', era: 'E5', desc: '提供学者/教师工位 +5，识字率上限 +15%。成本含典籍，是印刷链的自食其力。' },
+  { id: 'harbor', name: '航海港', icon: '🧭', cost: { wood: 800, iron: 400 }, costMultiplier: 1.35, requires: { tech: 'compass' }, limit: 'trade', era: 'E5', desc: '解锁远航，船队容量 +1。白银经济的入口——它本身不要白银，否则永远出不了海。' },
+  { id: 'library', name: '图书馆', icon: '📚', cost: { books: 1500, stone: 600 }, costMultiplier: 1.35, requires: { tech: 'printing' }, limit: 'record', era: 'E5', desc: '典籍存储 +20000，研究速度 +5%。印刷链的第四个瓶颈：存储。' },
 ];
 
 export const BUILDING_MAP: Record<BuildingId, BuildingDef> = Object.fromEntries(

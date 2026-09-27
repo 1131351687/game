@@ -50,6 +50,11 @@ import { buildOutputTitle, buildStorageTitle } from './components/resourceToolti
 import { FireDashboard } from './components/FireDashboard';
 import { SeasonBar } from './components/SeasonBar';
 import { TradePanel } from './components/TradePanel';
+import { CompoundPanel } from './components/CompoundPanel';
+import { PrintChainPanel } from './components/PrintChainPanel';
+import { LiteracyPanel } from './components/LiteracyPanel';
+import { VoyagePanel } from './components/VoyagePanel';
+import { BankPanel } from './components/BankPanel';
 import { JobPanel } from './components/JobPanel';
 import { BuildingPanel } from './components/BuildingPanel';
 import { CivilizationPanel } from './components/CivilizationPanel';
@@ -63,7 +68,7 @@ import { E4 } from '../data/constants';
 // 类型与常量
 // ─────────────────────────────────────────────
 
-type TabId = 'work' | 'buildings' | 'trade' | 'civilization';
+type TabId = 'work' | 'buildings' | 'trade' | 'ocean' | 'civilization';
 type LayoutPref = 'auto' | 'vertical' | 'horizontal';
 
 const LAYOUT_KEY = 'civilis.layout';
@@ -417,6 +422,9 @@ export default function AppShellV2() {
   const showBuildings = isModuleUnlocked('buildings', view);
   const fireUnlocked = isModuleUnlocked('fire', view);
   const showTrade = !!s.techs['caravan_org'];
+  // E5 远洋时代：五块面板（复利/印刷链/识字率/远航/银行）整体在
+  // 核心科技「印刷术」研究完成后放出（见 reveal.isModuleUnlocked('e5')）。
+  const showOcean = isModuleUnlocked('e5', view);
 
   const [tab, setTab] = useState<TabId>('civilization');
   /** 竖屏状态抽屉的开关 —— 由 Esc 与标题按钮共同控制 */
@@ -428,9 +436,10 @@ export default function AppShellV2() {
     ];
     if (showBuildings) list.push({ id: 'buildings', label: '建筑', icon: '🏕️' });
     if (showTrade) list.push({ id: 'trade', label: '贸易', icon: '🐪' });
+    if (showOcean) list.push({ id: 'ocean', label: '远洋', icon: '⛵' });
     list.push({ id: 'civilization', label: '文明', icon: '🔬' });
     return list;
-  }, [showBuildings, showTrade]);
+  }, [showBuildings, showTrade, showOcean]);
 
   // 当前 Tab 在解锁状态变化后可能失效（如导入旧存档）→ 回落到文明
   useEffect(() => {
@@ -470,6 +479,16 @@ export default function AppShellV2() {
       {tab === 'work' && <JobPanel />}
       {tab === 'buildings' && <BuildingPanel />}
       {tab === 'trade' && <TradePanel />}
+      {tab === 'ocean' && (
+        <div className="space-y-3">
+          {/* 复利是 E5 的机制承载体，排在最前 */}
+          <CompoundPanel />
+          <PrintChainPanel />
+          <LiteracyPanel />
+          <VoyagePanel />
+          <BankPanel />
+        </div>
+      )}
       {tab === 'civilization' && <CivilizationPanel />}
     </>
   );

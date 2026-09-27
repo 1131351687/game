@@ -18,6 +18,17 @@ import {
 } from './season';
 import { settleTradeCycle } from './trade';
 import { advancePopulation } from './systems/population';
+// ── E5 远洋时代子系统（新机制集中在 game/e5/，不塞进 engine.ts）──
+import {
+  calcPrintChain,
+  describeBottleneck,
+  getBookStorage,
+  getPaperStorage,
+} from './e5/print';
+import { tickLiteracy, getLiteracyFactor } from './e5/literacy';
+import { advanceVoyage, rollVoyageEvent, ringName } from './e5/voyage';
+import { getCompoundMultiplier } from './e5/compound';
+import { tickBank } from './e5/bank';
 import {
   FIRE,
   FIRE_TIER_INFO,
@@ -27,6 +38,7 @@ import {
   E2,
   E3,
   E4,
+  E5,
   HUNT,
   getFireTier,
   getToolMultiplier,
@@ -113,6 +125,45 @@ export interface EraState {
   tradeRoutes: TradeRoute[];
   /** 声望 0–100，初始 50 */
   reputation: number;
+
+  // ── E5 远洋时代 ──
+  // 印刷链：木材 →(造纸工)→ 纸张 →(印刷工)→ 典籍 →(学者)→ 研究点
+  /** 纸张：造纸链中间品 */
+  paper: number;
+  /** 典籍：印刷工产出、学者消耗（消耗品，库存下降是设计） */
+  books: number;
+  /** 白银：远航带回，印书坊与大学的成本项 */
+  silver: number;
+  /** 研究点：E5 起的研究货币（与 experience「知识」并存不换算） */
+  researchPoints: number;
+  /** 异域物产：只增不减，用于兑换永久加成 */
+  exoticGoods: number;
+  /** 识字率 0–100：**状态值，不是资源** */
+  literacy: number;
+  /** 进行中的远航船队 */
+  voyages: Voyage[];
+  /** 当前未还贷款（白银） */
+  loan: number;
+}
+
+/**
+ * 一支远航船队。
+ *
+ * E5 的远航是**三环**结构（近海 / 远洋 / 环球），每环有各自的
+ * 时长、物料与船员要求；progress 到 target 即结算一次事件。
+ * 定义见 design/game/eras/E5-maritime.md §11.6。
+ */
+export interface Voyage {
+  /** 环数：1 近海 / 2 远洋 / 3 环球 */
+  ring: 1 | 2 | 3;
+  /** 已推进进度 */
+  progress: number;
+  /** 完成所需进度（= 环时长 × 水手速率基准） */
+  target: number;
+  /** 该船队占用的水手数 */
+  sailors: number;
+  /** 是否已触发「发现新大陆」里程碑（第 2 环首次完成时置位，全局只触发一次） */
+  newWorldFound: boolean;
 }
 
 /**
@@ -267,6 +318,24 @@ export interface AggregatedEffects {
   legionPayMul: number;
   expansionFlatMul: number;
   territoryCapacityMul: number;
+
+  // ── E5 远洋时代 ──
+  /** 复利系数 k 的加项总和（加法键）：印刷术 0.05 + 活字/大学/印坊分工/科学方法 */
+  compoundKAdd: number;
+  /** 典籍存储加成（加法键；图书馆是另一条来源） */
+  bookCapacityAdd: number;
+  /** 识字率上限加成（加法键；大学是另一条来源） */
+  literacyCapAdd: number;
+  /** 远航进度加成（加法键） */
+  voyageBonus: number;
+  /** 远航系统是否解锁（指南针） */
+  voyageEnabled: boolean;
+  /** 银行与信贷是否解锁 */
+  bankEnabled: boolean;
+  // E5 印刷链产出乘数
+  paperOutputMul: number;
+  printOutputMul: number;
+  researchOutputMul: number;
 }
 
 const DEFAULT_EFFECTS: AggregatedEffects = {
@@ -339,6 +408,17 @@ const DEFAULT_EFFECTS: AggregatedEffects = {
   legionPayMul: 1,
   expansionFlatMul: 1,
   territoryCapacityMul: 1,
+
+  // ── E5 远洋时代 ──
+  compoundKAdd: 0,
+  bookCapacityAdd: 0,
+  literacyCapAdd: 0,
+  voyageBonus: 0,
+  voyageEnabled: false,
+  bankEnabled: false,
+  paperOutputMul: 1,
+  printOutputMul: 1,
+  researchOutputMul: 1,
 };
 
 export function aggregateEffects(state: E1State): AggregatedEffects {
@@ -534,6 +614,24 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     if (e.conversionLoss !== undefined) {
       acc.conversionLoss = Math.min(acc.conversionLoss, e.conversionLoss);
     }
+
+    // ── E5 远洋时代 ──
+    //
+    // 复利系数 k 的加项走**加法键**并吃时代衰减：跨代之后旧加成按 eraDecay
+    // 被拉向 0，但 N（本时代已解锁科技数）会被归零，两套机制不冲突。
+    //
+    // ⚠️ 这里只聚合 k 的**加项**，绝不在引擎里缓存 R 本身。
+    //    R = 1 + k × N_eff 必须在每个 tick 由 game/e5/compound.ts 现算，
+    //    否则「刚研究完一项科技，下一 tick 研究速度立刻变大」不成立。
+    if (e.compoundKAdd) acc.compoundKAdd += addR(e.compoundKAdd);
+    if (e.bookCapacityAdd) acc.bookCapacityAdd += addR(e.bookCapacityAdd);
+    if (e.literacyCapAdd) acc.literacyCapAdd += addR(e.literacyCapAdd);
+    if (e.voyageBonus) acc.voyageBonus += addR(e.voyageBonus);
+    if (e.enableVoyage) acc.voyageEnabled = true;
+    if (e.enableBank) acc.bankEnabled = true;
+    if (e.paperOutputMul) acc.paperOutputMul *= mulR(e.paperOutputMul);
+    if (e.printOutputMul) acc.printOutputMul *= mulR(e.printOutputMul);
+    if (e.researchOutputMul) acc.researchOutputMul *= mulR(e.researchOutputMul);
   }
 
   return acc;
@@ -666,6 +764,32 @@ export function getCapacity(state: E1State): number {
       houses * POPULATION.CAPACITY_PER_HOUSE +
       villageHouses * E2.CAPACITY_PER_VILLAGE_HOUSE +
       Math.min(fields, Math.floor(farmers / E2.FIELD_MIN_FARMERS)) * E2.CAPACITY_PER_FIELD
+    );
+  }
+
+  // ── E5 远洋时代：人口模型切换（E5-maritime.md §11.4）──
+  //
+  // K = E5 基础 300 + 住所×60 + 新作物(马铃薯)×150 + 旧时代全部遗产
+  //
+  // ⚠️ 曾经漏掉这个分支，导致 E5 落回 E1/E2 的**默认公式**——
+  //    默认公式只数 house / village_house，不数 city_house 与版图，
+  //    于是从 E4（K 上千）跃迁到 E5 后 K 会**断崖式塌到几十**，
+  //    人口被逻辑斯谛曲线拖向新 K，表现为"进入 E5 后人口一路归零"。
+  //    跃迁不重置是这个项目的铁律（E2→E3→E4 都严格遵守），E5 必须一致。
+  if (state.era === 'E5') {
+    const cityHouses = state.buildings.city_house ?? 0;
+    const potatoK = state.techs['new_crops'] ? E5.POP_K_POTATO : 0;
+    const legacyHousing =
+      cityHouses * E3.POP_PER_CITY_HOUSE +
+      houses * POPULATION.CAPACITY_PER_HOUSE +
+      villageHouses * E2.CAPACITY_PER_VILLAGE_HOUSE +
+      Math.min(fields, Math.floor(farmers / E2.FIELD_MIN_FARMERS)) * E2.CAPACITY_PER_FIELD;
+    return (
+      E5.POP_K_BASE +
+      houses * E5.POP_K_PER_HOUSE +
+      potatoK +
+      legacyHousing +
+      getTerritoryCapacity(state)
     );
   }
 
@@ -1761,6 +1885,19 @@ export interface TickResult {
   tradeRoutes: TradeRoute[];
   reputation: number;
   tradeNotes: string[];
+  // ── E5 远洋时代 ──
+  paper: number;
+  books: number;
+  silver: number;
+  researchPoints: number;
+  exoticGoods: number;
+  literacy: number;
+  voyages: Voyage[];
+  loan: number;
+  /** E5 本 tick 的印刷链瓶颈文案（供 UI 直接显示，无瓶颈时为空串） */
+  printNote: string;
+  /** E5 本 tick 的远航事件消息 */
+  voyageNotes: string[];
 }
 
 export function tick(
@@ -1984,6 +2121,157 @@ export function tick(
     }
   }
 
+  // ─────────────────────────────────────────────
+  // 5.5) E5 远洋时代
+  // ─────────────────────────────────────────────
+  //
+  // 严格按 E5-devplan §3.3 的 tick 顺序：
+  //   印刷链产出 → 典籍被读掉（消耗）→ 识字率 → 远航结算 → ★复利研究点 → 银行
+  //
+  // ⚠️ 整块被 `state.era === 'E5'` 门控。E1–E4 走不进这里，
+  //    因此 1163s / 1920s 基线不受任何影响 —— 这是本块最重要的正确性约束。
+  let paper = state.paper ?? 0;
+  let books = state.books ?? 0;
+  let silver = state.silver ?? 0;
+  let researchPoints = state.researchPoints ?? 0;
+  let exoticGoods = state.exoticGoods ?? 0;
+  let literacy = state.literacy ?? E5.LITERACY_START;
+  let voyages = state.voyages ?? [];
+  let loan = state.loan ?? 0;
+  let printNote = '';
+  const voyageNotes: string[] = [];
+
+  if (state.era === 'E5') {
+    // ── 1) 印刷链产出（含输入约束）──
+    const chain = calcPrintChain(
+      {
+        era: state.era,
+        wood,
+        paper,
+        books,
+        jobs: state.jobs,
+        buildings: state.buildings,
+      },
+      {
+        paperOutputMul: eff.paperOutputMul,
+        printOutputMul: eff.printOutputMul,
+        researchOutputMul: eff.researchOutputMul,
+      }
+    );
+
+    // 造纸工先吃木
+    wood = Math.max(0, wood - chain.woodConsumed * dt);
+    paper += chain.paperRate * dt;
+    books += chain.bookRate * dt;
+    // 典籍被学者读掉 —— 这是**消耗**，不是转化
+    books = Math.max(0, books - chain.booksConsumed * dt);
+
+    printNote = chain.bottleneck === 'none' ? '' : describeBottleneck(chain.bottleneck);
+
+    // ── 2) 识字率（逻辑斯谛，受印刷产能与教师驱动）──
+    const teachers = state.jobs.teacher ?? 0;
+    const universities = state.buildings.university ?? 0;
+    literacy = tickLiteracy(
+      literacy,
+      dt,
+      chain.bookRate,
+      teachers,
+      universities,
+      eff.literacyCapAdd
+    );
+
+    // ── 3) 远航结算 ──
+    //
+    // 进度 = 水手 × 1.0/秒 × (1 + 科技加成 + 识字率加成)
+    // 每支船队占用水手；到 target 就结算一次事件并**重新开始航程**
+    // （船队不会消失：远航是持续投入，不是一次性抽卡）。
+    if (eff.voyageEnabled && voyages.length > 0) {
+      const lit01 = literacy / 100;
+      const sailorsPerVoyage = E5.VOYAGE_PROGRESS_PER_SAILOR > 0 ? 1 : 1;
+      void sailorsPerVoyage;
+      const totalSailors = state.jobs.sailor ?? 0;
+      // 水手在船队间均分：3 支船队、30 水手 → 每支 10 人
+      const perVoyage = voyages.length > 0 ? totalSailors / voyages.length : 0;
+
+      const next: Voyage[] = [];
+      for (const v of voyages) {
+        const stepped = advanceVoyage(
+          { ring: v.ring, progress: v.progress, target: v.target, newWorldFound: v.newWorldFound },
+          dt,
+          perVoyage,
+          eff.voyageBonus,
+          lit01
+        );
+
+        if (!stepped.completed) {
+          next.push({ ...v, progress: stepped.progress });
+          continue;
+        }
+
+        // 到岸：结算事件
+        const outcome = rollVoyageEvent(v.ring, rng);
+
+        // 首次完成第 2 环 → 强制「发现新大陆」（全局一次性）
+        const isFirstNewWorld = v.ring === 2 && outcome.newWorld === true && !v.newWorldFound;
+
+        if (outcome.reward.silver) silver += outcome.reward.silver;
+        if (outcome.reward.exoticGoods) exoticGoods += outcome.reward.exoticGoods;
+        if (outcome.reward.researchPoints) researchPoints += outcome.reward.researchPoints;
+        if (outcome.refundRatio) {
+          // 沉船：按比例返还本次出航的白银成本
+          silver += (E5.VOYAGE_COST[v.ring].silver ?? 0) * outcome.refundRatio;
+        }
+
+        if (isFirstNewWorld) {
+          const rw = E5.NEW_WORLD_REWARD;
+          exoticGoods += rw.exoticGoods;
+          silver += rw.silver;
+          researchPoints += rw.researchPoints;
+          voyageNotes.push(`🌍 发现新大陆！异域物产 +${rw.exoticGoods}，白银 +${rw.silver}，研究点 +${rw.researchPoints}`);
+        } else {
+          voyageNotes.push(`${ringName(v.ring)}航程结算：${outcome.label}`);
+        }
+
+        // 重新出海：进度归零，保留新大陆标记
+        next.push({
+          ...v,
+          progress: 0,
+          newWorldFound: v.newWorldFound || isFirstNewWorld,
+        });
+      }
+      voyages = next;
+    }
+
+    // ── 4) ★ 复利研究点产出（R 在此现算，绝不缓存）──
+    //
+    // 顺序很重要：本 tick 刚解锁的科技**立刻**影响本 tick 的产出，
+    // 这就是"研究完一项，下一 tick 变快"的手感来源。
+    const R = getCompoundMultiplier(state, { compoundKAdd: eff.compoundKAdd });
+    const litFactor = getLiteracyFactor(literacy / 100);
+
+    // 学者产出研究点。设计文档 §11.2：
+    //     研究速度 = 印刷产能 B × 复利倍率 R(N) × 识字率因子
+    //
+    // ⚠️ 这里必须是**完整相乘**，不能只加增量。
+    //    曾经写成 `researchPoints += base × (R−1)` + `base × (litFactor−1)`——
+    //    结果 R=1、litFactor<1 时研究点是**负数**（识字率 12% → 因子 0.772），
+    //    而 baseline（无科技、识字率不足）时学者完全不产出。都是错的。
+    //    `chain.researchRate` 本身已含输入约束（缺典籍时自动降速），
+    //    所以三个因子直接连乘即可，不需要额外裁剪。
+    const baseResearch = chain.researchRate;
+    researchPoints += baseResearch * R * litFactor * dt;
+
+    // ── 5) 银行利息 ──
+    if (eff.bankEnabled && loan > 0) {
+      loan = tickBank(loan, dt);
+    }
+
+    // ── 6) 库存上限（典籍/纸张是 E5 的存储瓶颈）──
+    const bookCap = getBookStorage(state, eff.bookCapacityAdd);
+    books = Math.max(0, Math.min(books, bookCap));
+    paper = Math.max(0, Math.min(paper, getPaperStorage(0)));
+  }
+
   // E4 资源也必须在 tick 末统一应用库存上限，避免产出层与资源栏显示脱节。
   if (state.era === 'E4') {
     iron = Math.max(0, Math.min(iron, getResourceStorage('iron', state)));
@@ -2025,6 +2313,17 @@ export function tick(
     tradeRoutes,
     reputation,
     tradeNotes,
+    // ── E5 远洋时代 ──
+    paper,
+    books,
+    silver,
+    researchPoints,
+    exoticGoods,
+    literacy,
+    voyages,
+    loan,
+    printNote,
+    voyageNotes,
   };
 }
 

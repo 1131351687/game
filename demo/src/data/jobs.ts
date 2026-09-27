@@ -5,7 +5,7 @@ import type { EraId } from './era';
 import type { ResourceId } from './resources';
 import type { BuildingId } from './buildings';
 
-export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'miner' | 'smelter' | 'scribe' | 'merchant' | 'iron_miner' | 'mint_worker' | 'legion';
+export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'miner' | 'smelter' | 'scribe' | 'merchant' | 'iron_miner' | 'mint_worker' | 'legion' | 'papermaker' | 'printer' | 'scholar' | 'teacher' | 'sailor';
 
 export interface JobDef {
   id: JobId;
@@ -204,6 +204,15 @@ export const JOBS: JobDef[] = [
   { id: 'iron_miner', name: '铁矿工', icon: '⛏️', output: 'iron', outputRate: 0.4, requires: { tech: 'iron_tools' }, scaledByTool: false, era: 'E4', desc: '开采铁矿，产出铁。' },
   { id: 'mint_worker', name: '铸币工', icon: '🪙', output: 'coin', outputRate: 0.5, requires: { tech: 'minting' }, scaledByTool: false, era: 'E4', desc: '将金属投入铸币厂制成铸币。' },
   { id: 'legion', name: '军团兵', icon: '🛡️', output: 'experience', outputRate: 0, requires: { tech: 'legion_organization' }, scaledByTool: false, era: 'E4', desc: '消耗粮食与铸币，提供扩张与压制能力。' },
+  // ── E5 远洋时代 ──
+  // 印刷链四段：木材 →(造纸工)→ 纸张 →(印刷工)→ 典籍 →(学者)→ 研究点，
+  // 外加教师（识字率）与水手（远航）。
+  // ⚠️ 这五个岗位**没有一个产出食物**——忍耐期之所以难熬，正是因为它抽走了食物链上的人。
+  { id: 'papermaker', name: '造纸工', icon: '📜', output: 'paper', outputRate: 1.2, requires: { tech: 'papermaking' }, scaledByTool: false, era: 'E5', desc: '以 0.5 木/秒 为料，产出纸张 1.2/秒。缺木按比例降速。' },
+  { id: 'printer', name: '印刷工', icon: '🖨️', output: 'books', outputRate: 0.6, requires: { tech: 'printing' }, scaledByTool: false, era: 'E5', desc: '以 0.8 纸/秒 为料，产出典籍 0.6/秒。工位由印书坊提供。' },
+  { id: 'scholar', name: '学者', icon: '🎓', output: 'researchPoints', outputRate: 2.0, requires: { tech: 'printing' }, scaledByTool: false, era: 'E5', desc: '以 0.5 典/秒 为料，产出研究点 2.0/秒。典籍被读掉即消失——这是消耗，不是转化。' },
+  { id: 'teacher', name: '教师', icon: '🧑🏫', output: 'researchPoints', outputRate: 0, requires: { tech: 'university_system' }, scaledByTool: false, era: 'E5', desc: '不直接产出资源，使识字率增长速度 ×1.3。识字率是全时代的隐性乘数。' },
+  { id: 'sailor', name: '水手', icon: '⛵', output: 'researchPoints', outputRate: 0, requires: { tech: 'compass' }, scaledByTool: false, era: 'E5', desc: '不产出资源，为远航船队提供 1.0 进度/秒。船队只有靠他们才能推进。' },
 ];
 
 export const JOB_MAP: Record<JobId, JobDef> = Object.fromEntries(

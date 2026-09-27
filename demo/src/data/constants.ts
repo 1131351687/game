@@ -452,3 +452,103 @@ export const E4 = {
   IRON_STORAGE_PER_TERRITORY: 350,
   ARMORY_IRON_STORAGE: 1200,
 } as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E5 远洋时代
+//
+// 数值依据：design/game/eras/E5-maritime.md §11（11.1–11.8）。
+// 核心机制是「知识复利」：研究速度 = 印刷产能 × 复利倍率 R(N) × 识字率因子，
+// 其中 R = 1 + k × N_eff，N 是**本时代**已解锁的 E5 科技数（跨代归零）。
+//
+// ⚠️ R 不得缓存进 state —— 它是 (N, k) 的纯函数，每个 tick 现算，
+//    这样「刚研究完一项科技，下一 tick 研究速度立刻变大」才成立。
+// TODO(balance)：以下数值取自设计文档 §11，尚未经 autoplay e5 实测校准。
+// ─────────────────────────────────────────────────────────────────────────────
+export const E5 = {
+  // ── §11.2 知识复利 ──
+  /** 复利系数基数 k（印刷术） */
+  COMPOUND_K_BASE: 0.05,
+  /** k 的加项总和上限：金属活字/大学制度/印坊分工/科学方法 */
+  COMPOUND_K_MAX_BONUS: 0.05,
+  /** 复利倍率绝对上限 ×4.20（§11.2 硬顶） */
+  COMPOUND_R_CAP: 4.2,
+  /** N_eff 第一段上限（N ≤ 20 时 N_eff = N） */
+  NEFF_SEG1_MAX: 20,
+  /** N_eff 第二段上限 */
+  NEFF_SEG2_MAX: 35,
+  /** 第二段斜率：每多 1 项科技只算 0.5 */
+  NEFF_SEG2_SLOPE: 0.5,
+  /** 第三段斜率：每多 1 项科技只算 0.25 */
+  NEFF_SEG3_SLOPE: 0.25,
+  /** N_eff 硬上限（闸门二） */
+  NEFF_CAP: 32,
+
+  // ── §11.3 识字率 ──
+  /** 识字率起始值（%）——不是 0，远洋时代不是文盲开局 */
+  LITERACY_START: 12,
+  /** 识字率基础增长速率（/秒） */
+  LITERACY_GROWTH: 0.0008,
+  /** 教师对识字率增长的乘数 */
+  LITERACY_TEACHER_MUL: 1.3,
+  /** 每座大学提升的识字率上限 */
+  LITERACY_CAP_PER_UNIVERSITY: 0.15,
+  /** 识字率上限基数 */
+  LITERACY_CAP_BASE: 0.15,
+  /** 识字率上限硬顶 */
+  LITERACY_CAP_MAX: 0.95,
+  /** 识字率因子：factor = 0.70 + 0.60 × lit */
+  LITERACY_FACTOR_BASE: 0.7,
+  LITERACY_FACTOR_SLOPE: 0.6,
+
+  // ── §11.4 人口 ──
+  /** E5 基础人口增长率（/秒） */
+  POP_GROWTH_BASE: 0.0012,
+  /** E5 基础 K 上限 */
+  POP_K_BASE: 300,
+  /** 每座住所提供的 K */
+  POP_K_PER_HOUSE: 60,
+  /** 新作物（马铃薯）提供的 K 上限加成 */
+  POP_K_POTATO: 150,
+
+  // ── §11.6 远航 ──
+  /** 各环时长（秒）：近海 / 远洋 / 环球 */
+  VOYAGE_DURATION: { 1: 60, 2: 180, 3: 480 } as Record<1 | 2 | 3, number>,
+  /** 每名水手每秒推进的进度 */
+  VOYAGE_PROGRESS_PER_SAILOR: 1.0,
+  /** 各环水手需求 */
+  VOYAGE_SAILORS: { 1: 5, 2: 12, 3: 25 } as Record<1 | 2 | 3, number>,
+  /** 各环物料成本 */
+  VOYAGE_COST: {
+    1: { wood: 40, iron: 20 },
+    2: { wood: 120, iron: 60, silver: 50 },
+    3: { wood: 300, iron: 150, silver: 200 },
+  } as Record<1 | 2 | 3, Record<string, number>>,
+  /** 识字率对远航成功率的加成（每 1.0 识字率） */
+  VOYAGE_LITERACY_BONUS: 0.1,
+  /** 首次完成第 2 环的「发现新大陆」奖励 */
+  NEW_WORLD_REWARD: {
+    exoticGoods: 80, silver: 300, researchPoints: 5000, foodMul: 1.15, kCapMul: 1.1,
+  },
+
+  // ── §11.5 印刷里程碑（按**累计产量**，不是当前库存）──
+  PRINT_MILESTONES: [
+    { at: 5000, id: 'alloy_type', desc: '铅锡锑合金：印刷 +20%' },
+    { at: 20000, id: 'workshop_division', desc: '印坊分工：印书坊工位 +4' },
+    { at: 60000, id: 'k_bonus_1', desc: 'k +0.01' },
+    { at: 200000, id: 'double_press', desc: '双人压印机：印刷 +50%' },
+    { at: 600000, id: 'k_bonus_2', desc: 'k +0.01' },
+  ],
+
+  // ── §11.7 建筑加成 ──
+  /** 图书馆提供的典籍存储 */
+  LIBRARY_BOOK_STORAGE: 20000,
+  /** 图书馆提供的研究速度加成 */
+  LIBRARY_RESEARCH_BONUS: 0.05,
+  /** 造纸坊 / 印书坊的产出加成 */
+  PAPER_MILL_BONUS: 0.15,
+  PRINTING_WORKSHOP_BONUS: 0.2,
+
+  // ── §11.8 跃迁 ──
+  /** 跃迁所需的远航最高环 */
+  ADVANCE_VOYAGE_RING: 2,
+} as const;

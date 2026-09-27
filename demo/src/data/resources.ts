@@ -2,7 +2,7 @@
 
 import { eraDistance, type EraId } from './era';
 
-export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin';
+export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin' | 'paper' | 'books' | 'silver' | 'researchPoints' | 'exoticGoods';
 
 export interface ResourceDef {
   id: ResourceId;
@@ -126,6 +126,52 @@ export const RESOURCES: ResourceDef[] = [
     era: 'E4',
     desc: '标准化支付媒介，用于军团军饷和领土扩张。',
   },
+  // ── E5 远洋时代（按 E5-maritime.md §6 资源集）──
+  {
+    id: 'paper',
+    name: '纸张',
+    icon: '📄',
+    category: 'material',
+    era: 'E5',
+    desc: '印刷链的中间品：造纸工以 0.5 木/秒 产出 1.2 纸/秒。受储存上限约束（图书馆扩容）。',
+  },
+  {
+    id: 'books',
+    name: '典籍',
+    icon: '📖',
+    category: 'material',
+    era: 'E5',
+    // 关键设计：典籍**不是积分**，而是被学者"读掉"的消耗品。
+    // 因此库存会因为学者在岗而下降——这是刻意的，不是 bug。
+    desc: '印刷工的产物，也是学者的口粮：0.5 典/秒 → 2.0 研究点/秒。被读掉即消失，不是积分。',
+  },
+  {
+    id: 'silver',
+    name: '白银',
+    icon: '💠',
+    category: 'material',
+    era: 'E5',
+    // 印书坊与大学都要白银 → 玩家必须至少远航一次，形成机制闭环。
+    desc: '远航带回的通货。印书坊与大学都要白银，逼迫玩家出海——单次远航本是亏本买卖。',
+  },
+  {
+    id: 'researchPoints',
+    name: '研究点',
+    icon: '🔬',
+    category: 'abstract',
+    era: 'E5',
+    // 与 E3/E4 的「知识」并存，不做换算（E5-devplan §4.1 推荐方案 A）。
+    desc: 'E5 起的研究货币，由学者产出。与「知识」并存，不做换算（旧字段保留不清零）。',
+  },
+  {
+    id: 'exoticGoods',
+    name: '异域物产',
+    icon: '🌶️',
+    category: 'abstract',
+    era: 'E5',
+    // 非消耗资源：只增不减，代表"已知的世界有多大"。
+    desc: '远航带回的见闻与物种。只增不减，用于兑换永久加成（物种交换）。',
+  },
 ];
 
 export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
@@ -133,7 +179,7 @@ export const RESOURCE_MAP: Record<ResourceId, ResourceDef> = Object.fromEntries(
 ) as Record<ResourceId, ResourceDef>;
 
 /** 可在 UI 资源栏显示的实体资源（排除人口，人口单独显示） */
-export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'livestock', 'fabric', 'copper', 'tin', 'bronze', 'lapis', 'iron', 'coin'];
+export const MATERIAL_RESOURCES: ResourceId[] = ['food', 'wood', 'stone', 'experience', 'livestock', 'fabric', 'copper', 'tin', 'bronze', 'lapis', 'iron', 'coin', 'paper', 'books', 'silver', 'researchPoints', 'exoticGoods'];
 
 /**
  * 返回指定时代的全部资源
@@ -145,8 +191,10 @@ export function resourcesOfEra(era: EraId): ResourceDef[] {
 
 /**
  * 研究货币的显示名。
- * E1/E2 叫「经验」，E3 起叫「知识」（用户拍板：改名即可，同一字段）。
+ * E1/E2 叫「经验」，E3/E4 叫「知识」，E5 起叫「研究点」。
+ * （用户拍板：改名即可，字段本身沿用 knowledge；E5 另有 researchPoints 字段，两者并存不换算。）
  */
 export function researchCurrencyName(era: EraId): string {
+  if (era === 'E5') return '研究点';
   return eraDistance('E3', era) >= 0 ? '知识' : '经验';
 }

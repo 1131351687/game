@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "regression": "npx --yes tsx src/dev/regression.ts",
+    "simulate": "npx --yes tsx src/dev/simulate.ts",
     "preview": "vite preview"
   },
   "dependencies": {

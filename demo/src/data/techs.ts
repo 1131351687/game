@@ -23,6 +23,12 @@ import { E4_TECHS_CORE } from './e4-techs-core';
 import { E4_TECHS_GOVERNANCE } from './e4-techs-governance';
 import { E4_TECHS_MILITARY } from './e4-techs-military';
 
+// E5 远洋时代科技片段（核心+支撑+门槛 9 项，三条分支 28 项效率科技）
+import { E5_TECHS_CORE } from './e5-techs-core';
+import { E5_TECHS_PRINTING } from './e5-techs-printing';
+import { E5_TECHS_NAVIGATION } from './e5-techs-navigation';
+import { E5_TECHS_SCIENCE } from './e5-techs-science';
+
 /**
  * 科技所属分支。
  *
@@ -46,6 +52,9 @@ export type TechBranch =
   | 'trade'
   | 'governance'
   | 'military'
+  | 'printing'
+  | 'navigation'
+  | 'science'
   | 'gate';
 
 /** 科技类型（设计规范：解锁 ≥40% / 质变 ≥25% / 数值 ≤25%） */
@@ -211,6 +220,37 @@ export interface TechEffects {
   legionPayMul?: number;
   expansionFlatMul?: number;
   territoryCapacityMul?: number;
+
+  // ─────────────────────────────────────────────
+  // E5 远洋时代（核心科技：印刷术）
+  //
+  // 命名沿用既有约定：*Mul 乘法键 / *Add 加法键 / 绝对设置键取最大
+  // ─────────────────────────────────────────────
+
+  /** 复利系数 k 的加项（加法键）——金属活字/大学制度/印坊分工/科学方法 */
+  compoundKAdd?: number;
+  /** 印刷产能乘数（纸张与典籍产量） */
+  printOutputMul?: number;
+  /** 造纸产能乘数（只影响纸张） */
+  paperOutputMul?: number;
+  /** 研究点产出乘数 */
+  researchOutputMul?: number;
+  /** 典籍存储加成（加法键；图书馆是另一条来源） */
+  bookCapacityAdd?: number;
+  /** 识字率上限加成（加法键；大学是另一条来源） */
+  literacyCapAdd?: number;
+  /** 识字率增长速度乘数 */
+  literacyGrowthMul?: number;
+  /** 人口承载力加成（加法键；住所与马铃薯是另外两条来源） */
+  carryCapacityAdd?: number;
+  /** 人口增长率乘数（解剖学、番茄与辣椒、金鸡纳树皮） */
+  popGrowthMul?: number;
+  /** 远航进度加成（加法键，直接加在推进速度上） */
+  voyageBonus?: number;
+  /** 解锁远航系统 */
+  enableVoyage?: boolean;
+  /** 解锁银行与信贷（白银预支） */
+  enableBank?: boolean;
 }
 
 export interface TechDef {
@@ -585,6 +625,10 @@ export const TECHS: TechDef[] = [
   ...E4_TECHS_CORE,
   ...E4_TECHS_GOVERNANCE,
   ...E4_TECHS_MILITARY,
+  ...E5_TECHS_CORE,
+  ...E5_TECHS_PRINTING,
+  ...E5_TECHS_NAVIGATION,
+  ...E5_TECHS_SCIENCE,
 ];
 
 export const TECH_MAP: Record<string, TechDef> = Object.fromEntries(
@@ -604,6 +648,9 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   trade: TECHS.filter(t => t.branch === 'trade'),
   governance: TECHS.filter(t => t.branch === 'governance'),
   military: TECHS.filter(t => t.branch === 'military'),
+  printing: TECHS.filter(t => t.branch === 'printing'),
+  navigation: TECHS.filter(t => t.branch === 'navigation'),
+  science: TECHS.filter(t => t.branch === 'science'),
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
 
@@ -759,6 +806,31 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
     desc: '以常备军、军功爵与攻城术推进统一',
     role: '分支 · 扩张',
   },
+  // ── E5 远洋时代的三条分支 ──
+  printing: {
+    name: '印刷与知识',
+    kind: 'branch',
+    order: 13,
+    color: '#c084fc',
+    desc: '纸、活字与印坊——把知识变成可复制、可累积、可复利的东西',
+    role: '分支 · 复利',
+  },
+  navigation: {
+    name: '远洋与航海',
+    kind: 'branch',
+    order: 14,
+    color: '#0ea5e9',
+    desc: '指南针与三角帆——白银、异域物产与新大陆都在海那边',
+    role: '分支 · 开拓',
+  },
+  science: {
+    name: '科学与开拓',
+    kind: 'branch',
+    order: 15,
+    color: '#10b981',
+    desc: '火药、银行与新作物——把复利换成真正改变规则的东西',
+    role: '分支 · 跃迁',
+  },
   gate: {
     name: '时代之门',
     kind: 'gate',
@@ -788,6 +860,9 @@ export const BRANCH_ORDER: TechBranch[] = [
   'trade',
   'governance',
   'military',
+  'printing',
+  'navigation',
+  'science',
   'gate',
 ];
 

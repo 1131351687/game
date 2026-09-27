@@ -14,7 +14,7 @@ import { aggregateEffects, countResearched, isBuildingUnlocked, type E1State } f
 // ─────────────────────────────────────────────
 // 顶层模块（Tab / 常驻面板）
 // ─────────────────────────────────────────────
-export type UiModule = 'fire' | 'production' | 'buildings' | 'advance';
+export type UiModule = 'fire' | 'production' | 'buildings' | 'advance' | 'e5';
 
 /**
  * 模块解锁条件：
@@ -48,6 +48,15 @@ export function isModuleUnlocked(m: UiModule, s: E1State): boolean {
       // （用户反馈："解锁了一次之后都出现，不适合"）。
       // 完成门槛科技才是"该考虑跃迁了"的信号，此时出现才有信息量。
       return !!s.techs[ERAS[s.era].gateTech];
+    case 'e5':
+      // E5 的五个面板（复利/识字率/印刷链/远航/银行）只在**核心科技「印刷术」
+      // 研究完成后**整体放出。
+      //
+      // 为什么不是一进 E5 就全放：E5 开局玩家手里没有任何 E5 建筑，
+      // 印刷链三段全是 0，复利 N=0 → R=1，识字率 12%。此时五块面板
+      // 全是"0 / ×1.00"的空壳，只会淹没"先去造造纸坊"这一件事。
+      // 印刷术是这一切的总开关，它点亮了才开始有东西可看。
+      return s.era === 'E5' && !!s.techs['printing'];
   }
 }
 
@@ -137,6 +146,22 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
     case 'iron':
     case 'coin':
       return eraDistance('E4', s.era) >= 0;
+
+    // ── E5 远洋时代 ──
+    //
+    // 五项 E5 资源都在**进入 E5 之后**才显示，且各自的解锁条件不同，
+    // 避免资源栏一进 E5 就凭空多出五项恒为 0 的条目。
+    //   · 纸张/典籍：印刷术（核心科技）研究后 —— 印刷链的两端
+    //   · 研究点：  同上（学者产出，是 E5 的研究货币）
+    //   · 白银：    指南针之后（远航带回；印书坊/大学的成本项）
+    //   · 异域物产：首次远航结算后才有意义，用白银同条件先放出
+    case 'paper':
+    case 'books':
+    case 'researchPoints':
+      return eraDistance('E5', s.era) >= 0 && !!s.techs['printing'];
+    case 'silver':
+    case 'exoticGoods':
+      return eraDistance('E5', s.era) >= 0 && !!s.techs['compass'];
 
     default:
       return false;

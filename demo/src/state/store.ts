@@ -16,6 +16,8 @@ import { computeEraTransition } from '../game/transition';
 import { saveGame } from '../core/clock/scheduler';
 import { NEIGHBOR_MAP, TRADABLE_RESOURCES } from '../game/trade';
 import { createRngState, type RngState } from '../core/rng/seeded';
+// ── E5 远洋时代：银行与信贷（纯函数在 game/e5/，store 只做校验与落库）──
+import { borrow, repay, LOAN_LIMIT } from '../game/e5/bank';
 import { simulateStep } from '../game/simulation/simulate';
 import type { GameEvent } from '../game/model/events';
 
@@ -150,6 +152,43 @@ export interface GameState {
   /** 声望 0–100，初始 50 */
   reputation: number;
 
+  // ── E5 远洋时代 ──
+  // 印刷链：木材 →(造纸工)→ 纸张 →(印刷工)→ 典籍 →(学者)→ 研究点
+  // 注：典籍是**消耗品**，会被学者读掉，库存下降是设计而非 bug。
+  /** 纸张：造纸工以 0.5 木/秒 产出 1.2 纸/秒 */
+  paper: number;
+  /** 典籍：印刷工产出、学者消耗 */
+  books: number;
+  /** 白银：远航带回；印书坊与大学的成本项，逼迫玩家出海 */
+  silver: number;
+  /**
+   * 研究点：E5 起的研究货币，由学者产出。
+   *
+   * 与 E3/E4 的 experience「知识」**并存但不换算**（E5-devplan §4.1 推荐方案 A）——
+   * 旧字段保留不清零，避免老存档的积累被一次性抹平。
+   */
+  researchPoints: number;
+  /** 异域物产：远航带回的见闻与物种，只增不减，用于兑换永久加成 */
+  exoticGoods: number;
+  /**
+   * 识字率 0–100。
+   *
+   * 这是**状态值，不是资源**——它不参与资源栏显示、不占储存上限，
+   * 且增长是逻辑斯谛的（越接近上限越慢）。因此绝不能并入 RESOURCES。
+   */
+  literacy: number;
+  /** 进行中的远航船队（每支占一个环位） */
+  voyages: engine.Voyage[];
+  /** 当前未还贷款（白银）；0 表示无贷款 */
+  loan: number;
+  /**
+   * 印刷链瓶颈的**上一次**提示内容。
+   *
+   * 仅用于去重：瓶颈每个 tick 都会算出同样的字符串，
+   * 不去重就会每 0.25 秒刷一条消息。不是游戏状态，不参与平衡。
+   */
+  printNoteCache: string;
+
   // 人口与火种
   /** 人口：始终为整数 */
   population: number;
@@ -240,13 +279,29 @@ export interface GameState {
   expandTerritory: () => string;
   /** E4 放弃最外层版图，不返还扩张成本。 */
   abandonTerritory: () => boolean;
+
+  // ── E5 远洋时代 ──
+  /**
+   * 借入白银（银行与信贷）。
+   *
+   * 额度上限 LOAN_LIMIT，超过则只借到额度为止（不产生"超额借款"状态）。
+   * 仅在「银行与信贷」科技解锁后可用。
+   */
+  borrowSilver: (amount: number) => void;
+  /**
+   * 偿还白银贷款。白银不足或欠款为 0 时不生效，且绝不还成负数。
+   */
+  repaySilver: (amount: number) => void;
 }
 
 // v7：废除矿脉随机制（localOre 字段删除）+ 岗位 copper_miner → miner（科技驱动产出）
 // v8：建筑分类规则落地（2026-09-13 用户拍板）——退役建筑（retireAfterEra，如火塘）
 //     在已越过退役时代的存档里拆除；住所链升级为玩家主动操作，无存档结构变化
 // v9：删除秩序/政体/官吏/法典内部经营结构，E4 状态收敛为版图、军团与遗产。
-const SAVE_VERSION = 9;
+// v10：E5 远洋时代 —— 新增 paper / books / silver / researchPoints / exoticGoods /
+//      literacy / voyages / loan；literacy 起始 12%，其余补零。
+//      注：E5-devplan §3.4 写的「v7 → v8」是旧编号，以本文件的版本链为准（DEV-GUIDE §十一）。
+const SAVE_VERSION = 10;
 
 const initialState = () => ({
   running: false,
@@ -276,6 +331,17 @@ const initialState = () => ({
   recordedOnce: [] as string[],
   tradeRoutes: [] as engine.TradeRoute[],
   reputation: 50,
+  // ── E5 远洋时代 ──
+  paper: 0,
+  books: 0,
+  silver: 0,
+  researchPoints: 0,
+  exoticGoods: 0,
+  // 识字率起始 12%（E5-maritime.md §11.1），不是 0 —— 远洋时代不是文盲开局
+  literacy: 12,
+  voyages: [] as engine.Voyage[],
+  loan: 0,
+  printNoteCache: '',
   population: INITIAL_STATE.population,
   populationProgress: 0,
   fire: INITIAL_STATE.fire,
@@ -315,6 +381,15 @@ function engineView(s: GameState): engine.EraState {
     recordedOnce: s.recordedOnce,
     tradeRoutes: s.tradeRoutes,
     reputation: s.reputation,
+    // ── E5 远洋时代 ──
+    paper: s.paper,
+    books: s.books,
+    silver: s.silver,
+    researchPoints: s.researchPoints,
+    exoticGoods: s.exoticGoods,
+    literacy: s.literacy,
+    voyages: s.voyages,
+    loan: s.loan,
     population: s.population,
     populationProgress: s.populationProgress,
     fire: s.fire,
@@ -562,10 +637,38 @@ export const useStore = create<GameState>((set, get) => ({
       legacyPoints: r.legacyPoints,
       tradeRoutes: r.tradeRoutes,
       reputation: r.reputation,
+      // ── E5 远洋时代 ──
+      paper: r.paper,
+      books: r.books,
+      silver: r.silver,
+      researchPoints: r.researchPoints,
+      exoticGoods: r.exoticGoods,
+      literacy: r.literacy,
+      voyages: r.voyages,
+      loan: r.loan,
       jobs: jobsAfterTick,
       legions: jobsAfterTick.legion ?? r.legions,
       rng: step.rng,
     });
+
+    // E5 远航事件消息（新大陆 / 香料海岸 / 沉船 …）
+    for (const note of r.voyageNotes) {
+      const text = '远航：' + note;
+      const messages = get().messages;
+      const latest = messages[messages.length - 1];
+      if (!latest || latest.text !== text) {
+        const bad = note.includes('风暴') || note.includes('沉船') || note.includes('病疫') || note.includes('哗变') || note.includes('失踪') || note.includes('海盗') || note.includes('触礁');
+        get().addMessage(text, bad ? 'warn' : 'event');
+      }
+    }
+
+    // E5 印刷链瓶颈只在**状态变化时**提示一次，否则每个 tick 都会刷屏。
+    if (r.printNote && r.printNote !== get().printNoteCache) {
+      get().addMessage('印刷：' + r.printNote, 'warn');
+      set({ printNoteCache: r.printNote });
+    } else if (!r.printNote && get().printNoteCache) {
+      set({ printNoteCache: '' });
+    }
 
     for (const note of r.tradeNotes) {
       const text = '贸易：' + note;
@@ -683,6 +786,15 @@ export const useStore = create<GameState>((set, get) => ({
       recordedOnce: s.recordedOnce,
       tradeRoutes: s.tradeRoutes,
       reputation: s.reputation,
+      // ── E5 远洋时代 ──
+      paper: s.paper,
+      books: s.books,
+      silver: s.silver,
+      researchPoints: s.researchPoints,
+      exoticGoods: s.exoticGoods,
+      literacy: s.literacy,
+      voyages: s.voyages,
+      loan: s.loan,
     };
   },
 
@@ -799,6 +911,24 @@ export const useStore = create<GameState>((set, get) => ({
             }))
         : [],
       reputation: data.reputation ?? 50,
+      // ── v10 起：E5 远洋时代状态字段 ──
+      //
+      // 全部用 ?? 兜底，旧存档（v9 及更早）补齐即可继续玩：
+      //   · 识字率补 12（起始值，不是 0 —— 远洋时代不是文盲开局）
+      //   · 其余资源补 0，船队补空数组
+      // ⚠️ researchPoints 与 experience **并存但不换算**（E5-devplan §4.1 方案 A）：
+      //    老存档的 experience 保留原值，不会被折算掉。
+      paper: data.paper ?? 0,
+      books: data.books ?? 0,
+      silver: data.silver ?? 0,
+      researchPoints: data.researchPoints ?? 0,
+      exoticGoods: data.exoticGoods ?? 0,
+      literacy: data.literacy ?? 12,
+      voyages: Array.isArray(data.voyages)
+        ? (data.voyages.filter(v => v && (v.ring === 1 || v.ring === 2 || v.ring === 3)) as engine.Voyage[])
+        : [],
+      loan: data.loan ?? 0,
+      printNoteCache: '',
     };
     set({ ...migrated, messages: [], running: false });
   },
@@ -1096,6 +1226,40 @@ export const useStore = create<GameState>((set, get) => ({
     set({ territory: s.territory - 1 });
     get().addMessage('已放弃一格边缘版图，扩张成本不返还', 'warn', true);
     return true;
+  },
+
+  // ── E5 远洋时代：银行与信贷 ──
+  //
+  // 额度与利息的全部规则在 game/e5/bank.ts 里，store 不重复实现公式，
+  // 只负责"校验门槛 → 调用纯函数 → 落库 → 发消息"。
+  borrowSilver: (amount) => {
+    const s = get();
+    // 门槛：银行与信贷科技解锁（与 engine 的 enableBank 同源）
+    if (!engine.aggregateEffects(engineView(s)).bankEnabled) {
+      get().addMessage('借款需要先研究「银行与信贷」', 'warn');
+      return;
+    }
+    const { loan, gained } = borrow(s.loan, amount, true);
+    if (gained <= 0) {
+      get().addMessage(`借款额度已用尽（上限 ${LOAN_LIMIT} 白银）`, 'warn');
+      return;
+    }
+    set({ loan, silver: s.silver + gained });
+    get().addMessage(`借入 ${Math.round(gained)} 白银（利息按秒滚入本金）`, 'warn', true);
+  },
+  repaySilver: (amount) => {
+    const s = get();
+    if (s.loan <= 0) return;
+    const { loan, spent } = repay(s.loan, s.silver, amount);
+    if (spent <= 0) {
+      get().addMessage('没有可用于还款的白银', 'warn');
+      return;
+    }
+    set({ loan, silver: s.silver - spent });
+    get().addMessage(
+      loan <= 0 ? '贷款已还清' : `偿还 ${Math.round(spent)} 白银，剩余欠款 ${Math.round(loan)}`,
+      'event'
+    );
   },
 }));
 

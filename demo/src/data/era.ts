@@ -4,7 +4,7 @@
 // 本文件只维护"时代"这一层，不做引擎与 UI 逻辑。
 
 /** 时代标识符 */
-export type EraId = 'E1' | 'E2' | 'E3' | 'E4';
+export type EraId = 'E1' | 'E2' | 'E3' | 'E4' | 'E5';
 
 /** 单个时代的元数据 */
 export interface EraMeta {
@@ -50,6 +50,14 @@ export interface EraMeta {
     minTerritory?: number;
     /** E4 铸币最低存量 */
     minCoin?: number;
+    /**
+     * 完成过的远航最低环数（E5 独有）。
+     *
+     * 对应 E5-maritime.md §11.8 的「完成 ≥1 次第 2 环远航」。
+     * 用「已达成过的最高环」而不是「当前是否有船在海上」来衡量 ——
+     * 后者取决于玩家此刻的操作时序，做毕业考试会变成手速测试。
+     */
+    minVoyageRing?: 1 | 2 | 3;
   };
 }
 
@@ -115,6 +123,25 @@ export const ERAS: Record<EraId, EraMeta> = {
       minTerritory: 20,
       minCoin: 150000,
       minBuildings: { legion_camp: 4 },
+    },
+  },
+  E5: {
+    id: 'E5',
+    name: '远洋时代',
+    index: 4,
+    // 门户科技：蒸汽机，通往 E6（工业时代）
+    // 门槛链：书写 → 钢铁 → 印刷术 → 蒸汽机
+    gateTech: 'steam_engine',
+    advanceConditions: {
+      // ── 按 E5-maritime.md §11.8 的八项条件 ──
+      /** 人口 ≥ 800 */
+      minPopulation: 800,
+      /** 白银 ≥ 5,000、典籍 ≥ 20,000（典籍是消耗品，此处考的是"存得住"） */
+      minResources: { silver: 5000, books: 20000 },
+      /** 印书坊 ≥3 座、大学 ≥2 座、航海港 ≥1 座 */
+      minBuildings: { printing_workshop: 3, university: 2, harbor: 1 },
+      /** 完成 ≥1 次第 2 环远航（发现新大陆） */
+      minVoyageRing: 2,
     },
   },
 };
