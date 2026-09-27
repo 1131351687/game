@@ -2,7 +2,7 @@
 
 import { eraDistance, type EraId } from './era';
 
-export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin' | 'paper' | 'books' | 'silver' | 'researchPoints' | 'exoticGoods';
+export type ResourceId = 'food' | 'wood' | 'stone' | 'experience' | 'population' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin' | 'paper' | 'books' | 'silver' | 'researchPoints' | 'exoticGoods' | 'coal' | 'steel' | 'electricity' | 'industrial';
 
 export interface ResourceDef {
   id: ResourceId;
@@ -171,6 +171,46 @@ export const RESOURCES: ResourceDef[] = [
     era: 'E5',
     // 非消耗资源：只增不减，代表"已知的世界有多大"。
     desc: '远航带回的见闻与物种。只增不减，用于兑换永久加成（物种交换）。',
+  },
+  // ── E6 机器时代（按 E6-machine.md §6 资源集）──
+  {
+    id: 'coal',
+    name: '煤',
+    icon: '⚫',
+    category: 'material',
+    era: 'E6',
+    // 能量链的**起点**，也是炼钢的还原剂 —— 两个需求会互相争夺同一批煤，
+    // 这是本代第一个瓶颈（煤荒）。
+    desc: '矿工采出。锅炉的燃料、炼钢的还原剂，能量链的起点。司炉工不足时烧不动它。',
+  },
+  {
+    id: 'steel',
+    name: '钢',
+    icon: '🔩',
+    category: 'material',
+    era: 'E6',
+    // 炼钢工耗煤产钢 → 与锅炉争夺煤，构成煤荒的第二个来源。
+    desc: '炼钢工以 0.15 钢/秒 产出，每产 1 钢耗 0.8 煤/秒。工业化的一切结构件都靠它。',
+  },
+  {
+    id: 'electricity',
+    name: '电',
+    icon: '⚡',
+    category: 'material',
+    era: 'E6',
+    // 电气化的门票：没有输电科技时 η₄ = 1 但发电厂本身要走 η₃，
+    // 且电网 ρ 会把发电不足如实反映成降速。
+    desc: '发电厂由机械能转换而来。电气化路径比直驱多两道损耗，却能摆脱传动轴的摩擦瓶颈。',
+  },
+  {
+    id: 'industrial',
+    name: '工业品',
+    icon: '🏭',
+    category: 'material',
+    era: 'E6',
+    // 按 devplan T1.1：工业品**不进 TopBar 主资源条**，它是"产能"，
+    // 显示在工厂/能量链面板。放这里只是为了让 ResourceId 联合类型完整。
+    desc: '工厂的产出：6 × 规模系数 × 供给率 × ρ。不进主资源条——它是产能读数，不是囤积物。',
   },
 ];
 

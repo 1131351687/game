@@ -4,7 +4,7 @@
 import type { EraId } from './era';
 import type { ResourceId } from './resources';
 
-export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard' | 'warehouse' | 'royal_road' | 'mint' | 'legion_camp' | 'armory' | 'paper_mill' | 'printing_workshop' | 'university' | 'harbor' | 'library';
+export type BuildingId = 'house' | 'hearth' | 'workshop' | 'village_house' | 'field' | 'granary' | 'animal_pen' | 'kiln' | 'city_house' | 'furnace' | 'academy' | 'trading_post' | 'standard' | 'warehouse' | 'royal_road' | 'mint' | 'legion_camp' | 'armory' | 'paper_mill' | 'printing_workshop' | 'university' | 'harbor' | 'library' | 'coal_mine' | 'boiler_house' | 'steam_engine_house' | 'factory' | 'power_plant' | 'worker_housing';
 
 export interface BuildingDef {
   id: BuildingId;
@@ -41,6 +41,21 @@ export interface BuildingDef {
    * 升级是**可选操作**——旧住所继续生效，不升级也不会坏。
    */
   upgradesTo?: BuildingId;
+  /**
+   * 首座样机成本（E6 机器时代专用，可缺省）。
+   *
+   * 设计出处：E6-machine.md §8 脚注。工业设施的第一座在史实上是**手工定制的样机**
+   * （作坊里敲出来的），不需要工业品或钢——那些恰恰要靠它才能生产。
+   *
+   * ⚠️ 这是**死锁防护**，不是数值美化：若第一座工厂也要工业品与钢，
+   *    则「无钢 → 造不了工厂 → 产不出工业品 → 永远无钢」形成闭环，
+   *    E6 在任何开局下都无法推进。航海港的白银死锁（E5）是同一个陷阱，
+   *    当时的教训是"入口建筑不能消耗它自己产出的东西"。
+   *
+   * 生效规则：该建筑**当前座数为 0** 时使用 protoCost，建成第 1 座后
+   * 改回 cost（且 cost 仍按 costMultiplier 随数量递增）。
+   */
+  protoCost?: Partial<Record<ResourceId, number>>;
 }
 
 /** 住所链升级的材料折扣：每座升级价 = 目标建筑基础成本 × 0.5（向上取整，不随数量递增） */
@@ -225,6 +240,24 @@ export const BUILDINGS: BuildingDef[] = [
   { id: 'university', name: '大学', icon: '🎓', cost: { stone: 500, silver: 400, books: 2000 }, costMultiplier: 1.35, requires: { tech: 'university_system' }, limit: 'output', era: 'E5', desc: '提供学者/教师工位 +5，识字率上限 +15%。成本含典籍，是印刷链的自食其力。' },
   { id: 'harbor', name: '航海港', icon: '🧭', cost: { wood: 800, iron: 400 }, costMultiplier: 1.35, requires: { tech: 'compass' }, limit: 'trade', era: 'E5', desc: '解锁远航，船队容量 +1。白银经济的入口——它本身不要白银，否则永远出不了海。' },
   { id: 'library', name: '图书馆', icon: '📚', cost: { books: 1500, stone: 600 }, costMultiplier: 1.35, requires: { tech: 'printing' }, limit: 'record', era: 'E5', desc: '典籍存储 +20000，研究速度 +5%。印刷链的第四个瓶颈：存储。' },
+
+  // ── E6 机器时代（按 E6-machine.md §8 建筑集，共 6 座）──
+  //
+  // 每座恰好对应能量链上的一个瓶颈方向：
+  //   煤矿 → 煤荒 / 锅炉房 → 压力与上限 / 蒸汽机 → 能量中枢
+  //   工厂 → 生产与规模 / 发电厂 → 电荒 / 工人住宅 → 城市化（K）
+  //
+  // ⚠️ **首座样机例外**（E6-machine.md §8 脚注）：
+  //   第一座煤矿/锅炉房/蒸汽机/工厂只需木材+石头（史实上是手工定制样机），
+  //   此后全部要工业品+钢。这是打破「无钢 → 造不了炼钢设施 → 永远无钢」
+  //   死锁的唯一手段 —— 与 E5 航海港的白银死锁同源问题，必须在这里堵住。
+  //   实现见 engine.getBuildingCost（count === 0 时用 protoCost）。
+  { id: 'coal_mine', name: '煤矿', icon: '⛏️', cost: { industrial: 800, steel: 400 }, protoCost: { wood: 1200, stone: 800 }, costMultiplier: 1.35, requires: { tech: 'coal_mining' }, limit: 'output', era: 'E6', desc: '提供煤矿工工位 +8，煤产出 +25%/座。能量链的起点。' },
+  { id: 'boiler_house', name: '锅炉房', icon: '🔥', cost: { industrial: 1000, steel: 600 }, protoCost: { wood: 1500, stone: 1000 }, costMultiplier: 1.35, requires: { tech: 'steam_engine_industry' }, limit: 'environment', era: 'E6', desc: '压力上限 +20，自然衰减 −15%/座。蒸汽压力的容器。' },
+  { id: 'steam_engine_house', name: '蒸汽机', icon: '⚙️', cost: { industrial: 1500, steel: 1200 }, protoCost: { wood: 2000, stone: 1200 }, costMultiplier: 1.35, requires: { tech: 'steam_engine_industry' }, limit: 'output', era: 'E6', desc: '每台 +110 kW 机械能。能量链的中枢——把煤的热变成轴上的转动。' },
+  { id: 'factory', name: '工厂', icon: '🏭', cost: { industrial: 2000, steel: 1500 }, protoCost: { wood: 1800, stone: 1000 }, costMultiplier: 1.35, requires: { tech: 'steam_engine_industry' }, limit: 'output', era: 'E6', desc: '耗 60 kW 机械能，产工业品。拥有规模效应：1 + 0.20×min(座数,15)。' },
+  { id: 'power_plant', name: '发电厂', icon: '🔌', cost: { industrial: 3000, steel: 2500 }, costMultiplier: 1.35, requires: { tech: 'electromagnetic_induction' }, limit: 'output', era: 'E6', desc: '每座 +190 kW 电。电气化路径的入口——多两道损耗，但摆脱传动轴瓶颈。' },
+  { id: 'worker_housing', name: '工人住宅', icon: '🏘️', cost: { industrial: 600, steel: 300 }, costMultiplier: 1.35, requires: { tech: 'steam_engine_industry' }, limit: 'population', era: 'E6', desc: 'K +200。城市化的载体——但拥挤系数与污染会反过来拖住人口增长。' },
 ];
 
 export const BUILDING_MAP: Record<BuildingId, BuildingDef> = Object.fromEntries(

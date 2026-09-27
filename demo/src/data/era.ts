@@ -4,7 +4,7 @@
 // 本文件只维护"时代"这一层，不做引擎与 UI 逻辑。
 
 /** 时代标识符 */
-export type EraId = 'E1' | 'E2' | 'E3' | 'E4' | 'E5';
+export type EraId = 'E1' | 'E2' | 'E3' | 'E4' | 'E5' | 'E6';
 
 /** 单个时代的元数据 */
 export interface EraMeta {
@@ -58,6 +58,25 @@ export interface EraMeta {
      * 后者取决于玩家此刻的操作时序，做毕业考试会变成手速测试。
      */
     minVoyageRing?: 1 | 2 | 3;
+    /**
+     * 电网供电率最低值（E6 独有）。
+     *
+     * 对应 E6-machine.md §11.10 的「ρ ≥ 0.90」。
+     * 这一项考的不是"你有没有发电厂"，而是**发电够不够带满全部工厂** ——
+     * 建了 15 座工厂却只配 3 座电厂时 ρ 会掉到 0.3 一带，
+     * 工厂虽然"建成了"，产出却被电网掐住。这是 E6 的核心权衡：
+     * 产能扩张必须与电力建设同步，否则造得越多跑得越慢。
+     */
+    minRho?: number;
+    /**
+     * 城市化率最低值（E6 独有，0–1）。
+     *
+     * 对应 E6-machine.md §11.10 的「城市化率 ≥ 70%」。
+     * 城市化不是免费的：它同时是**拥挤系数**与**污染**两个负向 r 因子的载体
+     * （§11.7），所以这一项实际在考"你能不能把城市的代价治住"，
+     * 而不是"你能堆多少工人住宅"。
+     */
+    minUrbanization?: number;
   };
 }
 
@@ -142,6 +161,27 @@ export const ERAS: Record<EraId, EraMeta> = {
       minBuildings: { printing_workshop: 3, university: 2, harbor: 1 },
       /** 完成 ≥1 次第 2 环远航（发现新大陆） */
       minVoyageRing: 2,
+    },
+  },
+  E6: {
+    id: 'E6',
+    name: '机器时代',
+    index: 5,
+    // 门户科技：电力（发电机与输配电网），通往 E7 电气时代
+    // 门槛链：书写 → 钢铁 → 印刷术 → 蒸汽机 → 电力
+    gateTech: 'electric_power',
+    advanceConditions: {
+      // ── 按 E6-machine.md §11.10 的六项条件 ──
+      /** 人口 ≥ 3,600 */
+      minPopulation: 3600,
+      /** 钢 ≥ 200,000（工业化的物质积累） */
+      minResources: { steel: 200000 },
+      /** 工厂 ≥ 15 座 */
+      minBuildings: { factory: 15 },
+      /** 电网供电率 ρ ≥ 0.90 —— 发电必须跟得上工厂 */
+      minRho: 0.9,
+      /** 城市化率 ≥ 70% —— 且必须把拥挤与污染的代价治住 */
+      minUrbanization: 0.7,
     },
   },
 };

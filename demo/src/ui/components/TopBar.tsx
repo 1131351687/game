@@ -116,12 +116,42 @@ export const E5_RESOURCE_ORDER: ResourceId[] = [
   'iron',
 ];
 
+/**
+ * E6 机器时代资源排列（E6-devplan §3.5 规定顺序）。
+ *
+ * 本时代的核心仪表盘数值是**能量链的四项**：煤 → 钢 → 电 → 工业品。
+ * 它们的顺序**不是随意排的，而是链条顺序**：
+ *   煤是燃料（也是炼钢还原剂）→ 钢是工业设施的结构件 →
+ *   电是电气化的中介 → 工业品是最终产能读数。
+ * 玩家顺着从左到右读，就复现了整条产业链。
+ *
+ * 紧随其后是知识（沿用 experience 字段，显示名由 researchCurrencyName
+ * 切换为「知识」）—— E6 的知识产出挂在人口上，是本代的科技推进货币。
+ * 木材/石头/食物是继承资源（建筑仍大量消耗木材与石头），继续显示。
+ *
+ * ⚠️ 工业品（industrial）虽在条上，但它**没有仓储上限**、
+ *    也不是建筑成本项 —— 它是"产能读数"而非"可囤积资源"。
+ *    这是刻意的：E6 的成败取决于**每秒能产多少**，不是仓库里存了多少。
+ *    若给它加上限，玩家会去堆仓库而不是优化能量链，偏离设计意图。
+ */
+export const E6_RESOURCE_ORDER: ResourceId[] = [
+  'coal',
+  'steel',
+  'electricity',
+  'industrial',
+  'experience',
+  'food',
+  'wood',
+  'stone',
+];
+
 export function TopBar() {
   const s = useStore();
   const view = toEngineState(s);
 
   const order =
-    s.era === 'E5' ? E5_RESOURCE_ORDER
+    s.era === 'E6' ? E6_RESOURCE_ORDER
+    : s.era === 'E5' ? E5_RESOURCE_ORDER
     : s.era === 'E4' ? E4_RESOURCE_ORDER
     : s.era === 'E3' ? E3_RESOURCE_ORDER
     : s.era === 'E2' ? E2_RESOURCE_ORDER
@@ -139,7 +169,24 @@ export function TopBar() {
         const amount =
           id === 'experience'
             ? s.experience
-            : (s[id as 'food' | 'wood' | 'stone' | 'livestock' | 'fabric' | 'copper' | 'tin' | 'bronze' | 'lapis' | 'iron' | 'coin'] as number);
+            : (s[
+                id as
+                  | 'food'
+                  | 'wood'
+                  | 'stone'
+                  | 'livestock'
+                  | 'fabric'
+                  | 'copper'
+                  | 'tin'
+                  | 'bronze'
+                  | 'lapis'
+                  | 'iron'
+                  | 'coin'
+                  | 'coal'
+                  | 'steel'
+                  | 'electricity'
+                  | 'industrial'
+              ] as number);
         // experience 的显示名按时代切换：E3 起「知识」，E1/E2「经验」。
         // 直接用 data 层的 researchCurrencyName，避免在本文件硬编码时代字符串。
         const displayName = id === 'experience' ? researchCurrencyName(s.era) : def.name;

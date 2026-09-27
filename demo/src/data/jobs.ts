@@ -5,7 +5,7 @@ import type { EraId } from './era';
 import type { ResourceId } from './resources';
 import type { BuildingId } from './buildings';
 
-export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'miner' | 'smelter' | 'scribe' | 'merchant' | 'iron_miner' | 'mint_worker' | 'legion' | 'papermaker' | 'printer' | 'scholar' | 'teacher' | 'sailor';
+export type JobId = 'gatherer' | 'woodcutter' | 'knapper' | 'hunter' | 'farmer' | 'herder' | 'weaver' | 'miner' | 'smelter' | 'scribe' | 'merchant' | 'iron_miner' | 'mint_worker' | 'legion' | 'papermaker' | 'printer' | 'scholar' | 'teacher' | 'sailor' | 'coal_miner' | 'stoker' | 'steelworker' | 'machinist' | 'electrician';
 
 export interface JobDef {
   id: JobId;
@@ -213,6 +213,25 @@ export const JOBS: JobDef[] = [
   { id: 'scholar', name: '学者', icon: '🎓', output: 'researchPoints', outputRate: 2.0, requires: { tech: 'printing' }, scaledByTool: false, era: 'E5', desc: '以 0.5 典/秒 为料，产出研究点 2.0/秒。典籍被读掉即消失——这是消耗，不是转化。' },
   { id: 'teacher', name: '教师', icon: '🧑🏫', output: 'researchPoints', outputRate: 0, requires: { tech: 'university_system' }, scaledByTool: false, era: 'E5', desc: '不直接产出资源，使识字率增长速度 ×1.3。识字率是全时代的隐性乘数。' },
   { id: 'sailor', name: '水手', icon: '⛵', output: 'researchPoints', outputRate: 0, requires: { tech: 'compass' }, scaledByTool: false, era: 'E5', desc: '不产出资源，为远航船队提供 1.0 进度/秒。船队只有靠他们才能推进。' },
+
+  // ── E6 机器时代 ──
+  //
+  // 能量链上的人：矿工采煤 → 司炉工烧煤升压 → 机械师把机械能接进工厂。
+  // 炼钢工与电工是两条分支（材料 / 输电）。
+  //
+  // ⚠️ 「机械师」的 output 必须是 0 且 outputRate 必须是 0 —— 这是刻意的：
+  //    他的产出**完全由能量链决定**（见 T2.3）。多派机械师而机械能不足是纯浪费，
+  //    这是本代最重要的"反直觉"教学点（UI 需提示"先看压力表"）。
+  //    若给他一个非零 outputRate，玩家就会以为"堆人 = 堆产能"，
+  //    E6 的核心矛盾（优化转化效率）当场失效。
+  //
+  // ⚠️ 矿工 id 用 'coal_miner' 而非 'miner' —— 后者已被 E3 的石料矿工占用。
+  //    两个岗位采的是完全不同的东西（石料 vs 煤），合并会破坏 E3 的既有数值。
+  { id: 'coal_miner', name: '煤矿工', icon: '⛏️', output: 'coal', outputRate: 0.6, requires: { tech: 'coal_mining' }, scaledByTool: false, era: 'E6', desc: '采煤 0.6/秒，每座煤矿 +25%。煤是能量链起点，也是炼钢的还原剂。' },
+  { id: 'stoker', name: '司炉工', icon: '🔥', output: 'coal', outputRate: 0, requires: { tech: 'steam_engine_industry' }, scaledByTool: false, era: 'E6', desc: '不产出资源。每名照看 5 煤/秒 投入锅炉，维持蒸汽压力。压力掉档会让总效率腰斩。' },
+  { id: 'steelworker', name: '炼钢工', icon: '🔩', output: 'steel', outputRate: 0.15, requires: { tech: 'bessemer' }, scaledByTool: false, era: 'E6', desc: '产钢 0.15/秒，每产 1 钢耗 0.8 煤/秒。与锅炉争夺同一批煤——这就是煤荒。' },
+  { id: 'machinist', name: '机械师', icon: '⚙️', output: 'industrial', outputRate: 0, requires: { tech: 'steam_engine_industry' }, scaledByTool: false, era: 'E6', desc: '**产出完全由能量链决定，本人不直接产出**。机械能不足时多派人纯属浪费——先看压力表。' },
+  { id: 'electrician', name: '电工', icon: '🔌', output: 'electricity', outputRate: 0, requires: { tech: 'electromagnetic_induction' }, scaledByTool: false, era: 'E6', desc: '不产出资源，每名降低输电损耗 1.5%（上限 −30%）。电气化的效率补丁。' },
 ];
 
 export const JOB_MAP: Record<JobId, JobDef> = Object.fromEntries(

@@ -12,6 +12,16 @@ import { TopBar } from './ui/components/TopBar';
 import { FireDashboard } from './ui/components/FireDashboard';
 import { RecordPanel } from './ui/components/RecordPanel';
 import { TradePanel } from './ui/components/TradePanel';
+// ── E6 机器时代 ──
+//
+// 挂载策略（E6-devplan §3.5）：
+//   SteamGaugePanel 是**本代的视觉主角**（地位＝E1 火种），放在常驻上部；
+//   EnergyChainPanel / GridPanel / CityPanel 是诊断型面板，放进文明 Tab，
+//   避免把常驻区堆成仪表盘墙（E5 印刷链面板同样是这个处理）。
+import { SteamGaugePanel } from './ui/components/SteamGaugePanel';
+import { EnergyChainPanel } from './ui/components/EnergyChainPanel';
+import { GridPanel } from './ui/components/GridPanel';
+import { CityPanel } from './ui/components/CityPanel';
 import { SeasonBar } from './ui/components/SeasonBar';
 import { JobPanel } from './ui/components/JobPanel';
 import { BuildingPanel } from './ui/components/BuildingPanel';
@@ -89,6 +99,11 @@ export default function App() {
           组件内部按 caravan_org 科技兜底，未开启时返回 null。 */}
       <TradePanel />
 
+      {/* ②‴ 蒸汽压力表 —— 机器时代（研究「蒸汽机(工业应用)」后）的常驻核心元素。
+          地位等同 E1 的火种仪表盘：这是本代玩家要盯的那块表。
+          组件内部按 era === 'E6' 与锅炉房数量兜底，未启用时返回 null。 */}
+      <SteamGaugePanel />
+
       {/* ③ 卡点提示（无卡点时不渲染） */}
       <HintBar />
 
@@ -122,7 +137,13 @@ export default function App() {
         )}
 
         {tab === 'buildings' && (
-          <div className="mx-auto max-w-4xl">
+          <div className="mx-auto max-w-4xl space-y-4">
+            {/* 机器时代：能量链 / 电网 / 城市三个诊断面板与建筑栏同屏，
+                因为「建什么」与「为什么产出上不去」必须能一眼对照。
+                三个组件均在内部按 era/buildings 兜底，非 E6 返回 null。 */}
+            <EnergyChainPanel />
+            <GridPanel />
+            <CityPanel />
             <BuildingPanel />
           </div>
         )}

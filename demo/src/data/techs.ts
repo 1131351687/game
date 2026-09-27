@@ -29,6 +29,11 @@ import { E5_TECHS_PRINTING } from './e5-techs-printing';
 import { E5_TECHS_NAVIGATION } from './e5-techs-navigation';
 import { E5_TECHS_SCIENCE } from './e5-techs-science';
 
+// E6 机器时代科技片段（核心 1 + 支撑 8 + 效率 14 + 门槛 1 = 24 项）
+import { E6_TECHS_CORE } from './e6-techs-core';
+import { E6_TECHS_EFF } from './e6-techs-eff';
+import { E6_TECHS_GATE } from './e6-techs-gate';
+
 /**
  * 科技所属分支。
  *
@@ -55,6 +60,10 @@ export type TechBranch =
   | 'printing'
   | 'navigation'
   | 'science'
+  // E6 机器时代：能量链/工厂体系/城市治理三条分支
+  // 「society」在 E1 已存在（群体与定居），E6 复用它承载城市治理两项
+  // —— 两者语义一致（都是"人如何组织起来"），无需新增分支名。
+  | 'efficiency'
   | 'gate';
 
 /** 科技类型（设计规范：解锁 ≥40% / 质变 ≥25% / 数值 ≤25%） */
@@ -251,6 +260,52 @@ export interface TechEffects {
   enableVoyage?: boolean;
   /** 解锁银行与信贷（白银预支） */
   enableBank?: boolean;
+
+  // ─────────────────────────────────────────────
+  // E6 机器时代（核心科技：蒸汽机(工业应用)）
+  //
+  // 命名沿用既有约定：*Mul 乘法键 / *Add 加法键 / 绝对设置键取最大
+  //
+  // ⚠️ 本代的键**全部围绕能量链的 η 乘法**。设计意图是让"效率"可被逐环观察：
+  //    玩家在能量链面板上看到五个 η，就知道自己该点哪一项科技。
+  //    因此这里刻意**不给"总效率 +X%"这种笼统键**——那会让面板失去诊断能力。
+  // ─────────────────────────────────────────────
+
+  /** 解锁能量链系统（蒸汽机(工业应用)核心科技） */
+  enableEnergyChain?: boolean;
+  /** 解锁电网 ρ（电磁感应·发电机） */
+  enableGrid?: boolean;
+  /** 解锁铁路工程升级系统 */
+  enableRailroad?: boolean;
+  /**
+   * η₁ 锅炉热效率加成（加法键，焦炭冶炼 +0.045）。
+   * 加法而非乘法：η₁ 是链条第一环，用加法更透明（0.45 → 0.495 一眼可见）。
+   */
+  boilerEtaAdd?: number;
+  /**
+   * η₂ 蒸汽机世代的**绝对档位**（取已研究科技中的最大档）。
+   * 取值 'I' | 'I5' | 'III' | 'IV'；未研究任何世代时能量链产 0。
+   */
+  steamGenTier?: string;
+  /** η₂ 世代的内部乘数（调速器/复式/表面冷凝等微调） */
+  steamGenMul?: number;
+  /**
+   * η₄ 输电档位（绝对设置，取最大）：'dc' | 'ac' | 'hvac'。
+   * 未研究任何输电时 η₄ = 1，但电气化路径因缺少"网"而不可行（发电厂仍可建）。
+   */
+  transmitTier?: string;
+  /** 工厂规模效应斜率加成（加法键；回转式/复式/标准化/流水线） */
+  scaleSlopeAdd?: number;
+  /** 工厂产出乘数（乘法键；流水线） */
+  factoryOutMul?: number;
+  /** 污染累积减免（加法键，上限 1.0；公共卫生法 0.25 / 城市排水 0.20） */
+  pollutionReduce?: number;
+  /** 拥挤系数缓解（加法键；城市排水系统） */
+  crowdingReduce?: number;
+  /** 铁路工程收益乘数（钢轨 1.25） */
+  railroadBonusMul?: number;
+  /** 每人知识产出加成（分析机彩蛋 +0.05） */
+  knowledgePerPopAdd?: number;
 }
 
 export interface TechDef {
@@ -629,6 +684,9 @@ export const TECHS: TechDef[] = [
   ...E5_TECHS_PRINTING,
   ...E5_TECHS_NAVIGATION,
   ...E5_TECHS_SCIENCE,
+  ...E6_TECHS_CORE,
+  ...E6_TECHS_EFF,
+  ...E6_TECHS_GATE,
 ];
 
 export const TECH_MAP: Record<string, TechDef> = Object.fromEntries(
@@ -651,6 +709,7 @@ export const TECHS_BY_BRANCH: Record<TechBranch, TechDef[]> = {
   printing: TECHS.filter(t => t.branch === 'printing'),
   navigation: TECHS.filter(t => t.branch === 'navigation'),
   science: TECHS.filter(t => t.branch === 'science'),
+  efficiency: TECHS.filter(t => t.branch === 'efficiency'),
   gate: TECHS.filter(t => t.branch === 'gate'),
 };
 
@@ -831,6 +890,15 @@ export const BRANCH_INFO: Record<TechBranch, BranchMeta> = {
     desc: '火药、银行与新作物——把复利换成真正改变规则的东西',
     role: '分支 · 跃迁',
   },
+  // ── E6 机器时代的效率分支 ──
+  efficiency: {
+    name: '能量与效率',
+    kind: 'branch',
+    order: 16,
+    color: '#f59e0b',
+    desc: '锅炉、蒸汽世代、输电与流水线——能量链每加一环就损耗一次，这里每一项都在减少损耗',
+    role: '分支 · 效率',
+  },
   gate: {
     name: '时代之门',
     kind: 'gate',
@@ -863,6 +931,7 @@ export const BRANCH_ORDER: TechBranch[] = [
   'printing',
   'navigation',
   'science',
+  'efficiency',
   'gate',
 ];
 

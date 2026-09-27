@@ -163,6 +163,27 @@ export function isResourceRevealed(id: ResourceId, s: E1State): boolean {
     case 'exoticGoods':
       return eraDistance('E5', s.era) >= 0 && !!s.techs['compass'];
 
+    // ── E6 机器时代 ──
+    //
+    // 与 E5 同理：资源栏不能一进 E6 就多出四项恒为 0 的条目。
+    // 各自的解锁条件不同，按"玩家第一次可能产出它"的时点放出：
+    //   · 煤：  采煤工业 —— 没有煤矿工就没有煤，此时才谈得上"煤"
+    //   · 钢：  贝塞麦炼钢法 —— 炼钢工的前提
+    //   · 电：  电磁感应·发电机 —— 没有发电厂就没有电
+    //   · 工业品：蒸汽机(工业应用) —— 核心科技，工厂在那之后才可建
+    //
+    // ⚠️ 工业品用**核心科技**而非贝塞麦做条件：它代表"工厂在转"，
+    //    而工厂的门槛正是核心科技。若挂到贝塞麦上，玩家会在
+    //    "有工业品这一栏但恒为 0、且连工厂都还没有"的状态里困惑。
+    case 'coal':
+      return eraDistance('E6', s.era) >= 0 && !!s.techs['coal_mining'];
+    case 'steel':
+      return eraDistance('E6', s.era) >= 0 && !!s.techs['bessemer'];
+    case 'electricity':
+      return eraDistance('E6', s.era) >= 0 && !!s.techs['electromagnetic_induction'];
+    case 'industrial':
+      return eraDistance('E6', s.era) >= 0 && !!s.techs['steam_engine_industry'];
+
     default:
       return false;
   }

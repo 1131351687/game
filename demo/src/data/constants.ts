@@ -552,3 +552,172 @@ export const E5 = {
   /** 跃迁所需的远航最高环 */
   ADVANCE_VOYAGE_RING: 2,
 } as const;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E6 机器时代
+//
+// 数值依据：design/game/eras/E6-machine.md §11 + E6-devplan.md §3.2。
+// 核心机制是「能量链」：煤 → 热 → 机械能 → 电 → 工厂，**每加一环损耗一次 η 乘法**。
+// 玩家优化的不是"有多少煤"，而是"每一环漏掉多少"——这是本代的主计分板。
+//
+// 两条路径（§3.2，devplan 已把 §1.2 链式效率与 §3.1 电网 G/D 统一为单一算法）：
+//   直驱：  总效率 = η₁ × η₂ × η_trans(n)，    η_trans = 1/(1 + 0.08n)
+//   电气化：总效率 = η₁ × η₂ × η₃ × η₄ × η₅
+// 其中 η_trans 随工厂数下降 —— 这是设计上的反直觉点：**直驱时厂越多越亏**
+// （瓦特 6 厂直驱 2.74% < 纽科门 1 厂 3.75%），逼玩家走电气化。
+//
+// TODO(balance)：以下数值取自设计文档 §11，尚未经 autoplay e6 实测校准。
+// ─────────────────────────────────────────────────────────────────────────────
+export const E6 = {
+  // ── §11.2 η 效率表（全部可在 UI 悬停查看来源）──
+  /** η₁ 锅炉热效率；研究「焦炭冶炼」后提升 */
+  ETA_BOILER: 0.45,
+  ETA_BOILER_COKE: 0.495,
+  /**
+   * η₂ 蒸汽机世代效率（含压力档位惩罚）。
+   *
+   * ⚠️ 这是能量链里**最陡的一段**：纽科门 2% → 高压复式 22%，整整 11 倍。
+   *    因此 E6 的效率科技（斯米顿/分离冷凝器/高压/复式）优先级远高于产能扩张。
+   */
+  ETA_STEAM: {
+    /** 纽科门机 —— 只能抽水，热效率惨不忍睹 */
+    I: 0.02,
+    /** 斯米顿改良 —— 单次改进就让效率翻倍有余 */
+    I5: 0.045,
+    /** 分离冷凝器（瓦特） */
+    III: 0.09,
+    /** 高压 + 复式膨胀 */
+    IV: 0.22,
+  } as Record<string, number>,
+  /** η₃ 发电机（法拉第电磁感应） */
+  ETA_GENERATOR: 0.85,
+  /** η₄ 输电效率：直流 / 交流 / 高压交流 */
+  ETA_TRANSMIT: { dc: 0.78, ac: 0.88, hvac: 0.94 } as Record<string, number>,
+  /** η₅ 电动机 */
+  ETA_MOTOR: 0.88,
+  /**
+   * 压力不足档位时的喘振惩罚。
+   *
+   * ⚠️ 设计意图：压力表是本代的"火种"——不是装饰。司炉工不足会让压力掉档，
+   *    η₂ 被拦腰砍到 40%，总效率骤降。这是唯一能同时体现"司炉工是必需岗位"
+   *    与"压力仪表盘值得盯"的机制，T5 需实测掉档曲线是否可感知。
+   */
+  SURGE_PENALTY: 0.4,
+
+  // ── §11.3 能量换算（统一口径，devplan 矛盾 2 已拍板）──
+  /** 1 煤 = 100 kW·秒 */
+  COAL_KW_PER_UNIT: 100,
+  /**
+   * 每座工厂的机械能需求（**轴端口径**）。
+   *
+   * ⚠️ 与 FACTORY_ELEC_KW 的分工（devplan §4.2 拍板）：60 是产能计算的真口径，
+   *    150 只是电网端含电动机/传输开销的读数。若两表各算一遍会**重复折扣**。
+   */
+  FACTORY_MECH_KW: 60,
+  /** 每座工厂耗电（电网端，含电动机/传输开销）——仅电气化模式计入 D */
+  FACTORY_ELEC_KW: 150,
+  /** 每台蒸汽机机械能产能（kW） */
+  STEAM_ENGINE_KW: 110,
+  /** 每座发电厂电力产能（kW） */
+  POWER_PLANT_KW: 190,
+  /** 直驱传动轴摩擦系数：η_trans = 1/(1 + 0.08n) */
+  LINE_SHAFT_FRICTION: 0.08,
+
+  // ── §11.4 蒸汽压力（本代视觉主角）──
+  /** 压力自然衰减速率（/秒），每座锅炉房减缓 15% */
+  PRESSURE_DECAY: 1.5,
+  /** 锅炉房对衰减的减免比例 */
+  PRESSURE_BOILER_RELIEF: 0.15,
+  /** 压力上限基数 */
+  PRESSURE_CAP_BASE: 100,
+  /** 每座锅炉房提升的压力上限 */
+  PRESSURE_CAP_PER_BOILER: 20,
+  /** 司炉工每人维持的煤流量（煤/秒）——同时也是烧煤上限 */
+  STOKER_COAL_PER_SEC: 5,
+  /**
+   * 压力档位阈值（§11.4）。
+   * 静止 0 / 微压 1–33 / 常压 34–66 / 高压 67–100。
+   * 各蒸汽机世代有**所需档位**：世代越高越吃压力，掉档即喘振。
+   */
+  PRESSURE_TIERS: { idle: 0, low: 33, normal: 66, high: 100 } as const,
+  /** 各蒸汽机世代所需的压力档位下限（低于此值触发喘振 ×0.4） */
+  PRESSURE_REQUIRED: { I: 1, I5: 34, III: 34, IV: 67 } as Record<string, number>,
+
+  // ── §11.5 电网 ρ（朴素版单区；E7 升级为主干多区）──
+  /** 每座工人住宅耗电（kW）——仅电气化模式计 */
+  HOUSING_ELEC_KW: 2,
+  /** 每座锅炉房耗电（kW）——仅电气化模式计 */
+  BOILER_ELEC_KW: 15,
+  /** ρ 满速阈值 */
+  RHO_FULL: 1,
+  /** ρ 降速阈值：0.6 ≤ ρ < 1 全厂 ×ρ */
+  RHO_BROWNOUT: 0.6,
+  /** ρ 拉闸阈值：0.2 ≤ ρ < 0.6 追加 r×0.7 */
+  RHO_BLACKOUT: 0.2,
+  /** 电网崩溃时的产出乘数（蒸汽冗余接管） */
+  RHO_COLLAPSE_OUTPUT: 0.3,
+  /** 拉闸时人口增长率 r 的额外惩罚 */
+  BROWNOUT_R_PENALTY: 0.7,
+
+  // ── §11.6 工厂产出 ──
+  /** 每座工厂的基础工业品产出（/秒，满供给时） */
+  FACTORY_BASE_OUTPUT: 6,
+  /** 规模系数斜率：1 + 0.20 × min(工厂数, 15) */
+  SCALE_SLOPE: 0.2,
+  /** 规模系数上限所对应的工厂数（第 16 座起不再增益） */
+  SCALE_MAX_FACTORIES: 15,
+
+  // ── §11.7 城市化与污染（r 的两个负向因子）──
+  /** 城市化拥挤系数表：U 上限 → 系数 */
+  CROWDING_TABLE: [
+    { maxU: 0.4, coef: 1.0 },
+    { maxU: 0.55, coef: 0.9 },
+    { maxU: 0.7, coef: 0.75 },
+    { maxU: 0.85, coef: 0.6 },
+    { maxU: 1.01, coef: 0.45 },
+  ] as ReadonlyArray<{ maxU: number; coef: number }>,
+  /** 每座工厂每秒钟的污染累积 */
+  POLLUTION_PER_FACTORY: 0.008,
+  /** 污染值上限（卫生因子 = 1 − Pol/250，故 100 时仍有 0.6） */
+  POLLUTION_CAP: 250,
+  /** 「公共卫生法」的污染减免 */
+  POLLUTION_REDUCE_SANITATION: 0.75,
+  /** 「城市排水系统」的污染减免 */
+  POLLUTION_REDUCE_SEWER: 0.8,
+  /** E6 基础人口增长率（/秒） */
+  POP_GROWTH_BASE: 0.02,
+  /** E6 基础 K */
+  POP_K_BASE: 900,
+  /** 每座工人住宅提供的 K */
+  POP_K_PER_HOUSING: 200,
+  /**
+   * E6 关闭季节摆动（工业不看天吃饭）。
+   * 食物因子仍按存量判定 —— 工业化不等于粮食无限。
+   */
+  SEASON_R: 1,
+
+  // ── §11.8 知识产出 ──
+  /** 每人知识产出基数 */
+  KNOWLEDGE_PER_POP: 0.3,
+  /** 复利斜率：1 + 0.03N（N = 已研究 E6 科技数，从 0 起步） */
+  KNOWLEDGE_COMPOUND_SLOPE: 0.03,
+
+  // ── §11.9 铁路工程（可升级工程系统，非点状建筑）──
+  RAILROAD: {
+    1: { transportLossReduce: 0.15, capacityBonus: 0.1, gridZones: 0 },
+    2: { transportLossReduce: 0.28, capacityBonus: 0.2, gridZones: 0 },
+    3: { transportLossReduce: 0.4, capacityBonus: 0.3, gridZones: 1 },
+  } as Record<number, { transportLossReduce: number; capacityBonus: number; gridZones: number }>,
+
+  // ── §11.10 跃迁（六项）──
+  /** 钢存量门槛 */
+  ADVANCE_STEEL: 200000,
+  /** 工厂座数门槛 */
+  ADVANCE_FACTORIES: 15,
+  /** 供电率门槛 */
+  ADVANCE_RHO: 0.9,
+  /** 人口门槛 */
+  ADVANCE_POPULATION: 3600,
+  /** 城市化率门槛 */
+  ADVANCE_URBANIZATION: 0.7,
+} as const;

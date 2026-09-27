@@ -8,7 +8,7 @@ import type { EraId } from '../data/era';
 import type { ResourceId } from '../data/resources';
 import { ERAS } from '../data/era';
 import { TECH_MAP } from '../data/techs';
-import { INITIAL_STATE, LOOP, E2, E3 } from '../data/constants';
+import { INITIAL_STATE, LOOP, E2, E3, E6 } from '../data/constants';
 import * as engine from '../game/engine';
 import * as engineRecord from '../game/record';
 import { isJobRetired } from '../game/reveal';
@@ -189,6 +189,37 @@ export interface GameState {
    */
   printNoteCache: string;
 
+  // ── E6 机器时代 ──
+  //
+  // 能量链：煤 → 热 → 机械能 → 电 → 工厂（每加一环损耗一次 η 乘法）。
+  // 前四项是资源（进 TopBar 的只有煤/钢/电，工业品是产能读数）；
+  // 后四项是独立状态值（压力/污染/城市化率/铁路等级），不进资源栏。
+  /** 煤：能量链起点，也是炼钢的还原剂（两者争夺 → 煤荒） */
+  coal: number;
+  /** 钢：炼钢工耗煤产出；工业设施与铁路的结构件 */
+  steel: number;
+  /** 电：发电厂由机械能转换；电气化路径驱动工厂 */
+  electricity: number;
+  /** 工业品：工厂产出；**不进主资源条**，属产能显示 */
+  industrial: number;
+  /**
+   * 蒸汽压力 0–100：本代的视觉主角（地位＝E1 火种）。
+   *
+   * ⚠️ 它是**积分态**（司炉工维持上升、自然衰减下降），必须存档；
+   *    而 η、供给率、ρ 等派生值不存档，每 tick 重算。
+   */
+  steamPressure: number;
+  /** 污染值 0–250：经卫生因子反噬人口增长率 r */
+  pollution: number;
+  /**
+   * 城市化率 0–1：U = min(1, 工人住宅承载 / max(人口, 1))。
+   *
+   * 定义公式的单一来源是 `game/e6/urban.getUrbanizationRate`。
+   */
+  urbanizationRate: number;
+  /** 铁路工程等级 0–3（可升级工程系统，非点状建筑） */
+  railroadLevel: number;
+
   // 人口与火种
   /** 人口：始终为整数 */
   population: number;
@@ -301,7 +332,11 @@ export interface GameState {
 // v10：E5 远洋时代 —— 新增 paper / books / silver / researchPoints / exoticGoods /
 //      literacy / voyages / loan；literacy 起始 12%，其余补零。
 //      注：E5-devplan §3.4 写的「v7 → v8」是旧编号，以本文件的版本链为准（DEV-GUIDE §十一）。
-const SAVE_VERSION = 10;
+// v11：E6 机器时代 —— 新增 coal / steel / electricity / industrial / steamPressure /
+//      pollution / urbanizationRate / railroadLevel，全部补零；城市化率按住宅承载推导。
+//      注：E6-devplan 头部写的「SAVE_VERSION 8 → 9」同样是旧编号（它按 E5 未实装的口径写），
+//      以本文件的版本链为准 —— 与 v10 那条是同一类偏差（DEV-GUIDE §十一）。
+const SAVE_VERSION = 11;
 
 const initialState = () => ({
   running: false,
@@ -342,6 +377,16 @@ const initialState = () => ({
   voyages: [] as engine.Voyage[],
   loan: 0,
   printNoteCache: '',
+  // ── E6 机器时代 ──
+  // 全部从 0 起步：E6 的机器是新造的，不继承 E5 的印刷链产量
+  coal: 0,
+  steel: 0,
+  electricity: 0,
+  industrial: 0,
+  steamPressure: 0,
+  pollution: 0,
+  urbanizationRate: 0,
+  railroadLevel: 0,
   population: INITIAL_STATE.population,
   populationProgress: 0,
   fire: INITIAL_STATE.fire,
@@ -390,6 +435,15 @@ function engineView(s: GameState): engine.EraState {
     literacy: s.literacy,
     voyages: s.voyages,
     loan: s.loan,
+    // ── E6 机器时代 ──
+    coal: s.coal,
+    steel: s.steel,
+    electricity: s.electricity,
+    industrial: s.industrial,
+    steamPressure: s.steamPressure,
+    pollution: s.pollution,
+    urbanizationRate: s.urbanizationRate,
+    railroadLevel: s.railroadLevel,
     population: s.population,
     populationProgress: s.populationProgress,
     fire: s.fire,
@@ -646,6 +700,14 @@ export const useStore = create<GameState>((set, get) => ({
       literacy: r.literacy,
       voyages: r.voyages,
       loan: r.loan,
+      // ── E6 机器时代 ──
+      coal: r.coal,
+      steel: r.steel,
+      electricity: r.electricity,
+      industrial: r.industrial,
+      steamPressure: r.steamPressure,
+      pollution: r.pollution,
+      urbanizationRate: r.urbanizationRate,
       jobs: jobsAfterTick,
       legions: jobsAfterTick.legion ?? r.legions,
       rng: step.rng,
@@ -795,6 +857,15 @@ export const useStore = create<GameState>((set, get) => ({
       literacy: s.literacy,
       voyages: s.voyages,
       loan: s.loan,
+      // ── E6 机器时代 ──
+      coal: s.coal,
+      steel: s.steel,
+      electricity: s.electricity,
+      industrial: s.industrial,
+      steamPressure: s.steamPressure,
+      pollution: s.pollution,
+      urbanizationRate: s.urbanizationRate,
+      railroadLevel: s.railroadLevel,
     };
   },
 
@@ -928,6 +999,33 @@ export const useStore = create<GameState>((set, get) => ({
         ? (data.voyages.filter(v => v && (v.ring === 1 || v.ring === 2 || v.ring === 3)) as engine.Voyage[])
         : [],
       loan: data.loan ?? 0,
+      // ── v11 起：E6 机器时代状态字段 ──
+      //
+      // 全部用 ?? 兜底。旧存档（v10 及更早）补齐即可继续玩：
+      //   · 煤/钢/电/工业品补 0 —— 机器还没造出来
+      //   · 蒸汽压力补 0 —— 锅炉还没点火
+      //   · 污染补 0 —— 工厂还没冒烟
+      //   · 城市化率按工人住宅承载**推导**（见下方注释）
+      //   · 铁路等级补 0
+      // ⚠️ 不折算任何旧资源：与 v10 迁移同理，文明的积累不清零。
+      coal: data.coal ?? 0,
+      steel: data.steel ?? 0,
+      electricity: data.electricity ?? 0,
+      industrial: data.industrial ?? 0,
+      steamPressure: data.steamPressure ?? 0,
+      pollution: data.pollution ?? 0,
+      // 城市化率的推导口径（devplan §3.4）：
+      //   旧存档没有这个字段，但可能已经建了工人住宅（理论上不会，因为 E6 才解锁，
+      //   但玩家可能从更新的版本回退）。用住宅承载推导一次，避免读档后
+      //   城市化率突然显示 0% 而住宅明明建了 —— 那看起来像 bug。
+      urbanizationRate:
+        data.urbanizationRate ??
+        (() => {
+          const housing = (data.buildings as Record<string, number> | undefined)?.worker_housing ?? 0;
+          const pop = Math.max(data.population ?? 0, 1);
+          return Math.min(1, (housing * E6.POP_K_PER_HOUSING) / pop);
+        })(),
+      railroadLevel: data.railroadLevel ?? 0,
       printNoteCache: '',
     };
     set({ ...migrated, messages: [], running: false });
@@ -1029,6 +1127,39 @@ export const useStore = create<GameState>((set, get) => ({
       expansionPending: nextEraId === 'E4' && s.era !== 'E4' ? null : s.expansionPending,
       p1Unlocked: nextEraId === 'E4' && s.era !== 'E4' ? true : s.p1Unlocked,
       legacyPoints: nextEraId === 'E4' && s.era !== 'E4' ? 0 : s.legacyPoints,
+
+      // ── E5 远洋时代：原样带过（跃迁只新增不重置）──
+      //
+      // 这八项此前**没有**出现在 set() 里，靠 zustand 的浅合并侥幸保住
+      // （set 只覆盖显式给出的键）。但那属于"隐式契约"——一旦将来有人
+      // 改成 spread 式整体替换就会静默丢失玩家全部积累。此处显式列出，
+      // 让"带着什么过河"在代码里看得见。
+      paper: s.paper,
+      books: s.books,
+      silver: s.silver,
+      researchPoints: s.researchPoints,
+      exoticGoods: s.exoticGoods,
+      literacy: s.literacy,
+      voyages: s.voyages,
+      loan: s.loan,
+      printNoteCache: '',
+
+      // ── E6 机器时代：E5→E6 交接 ──
+      //
+      // 按 E6-devplan §3.2 的「只新增不重置」：煤/钢/电/工业品/压力/污染
+      // 全部从 0 起（机器是新造的），铁路等级 0；城市化率由住宅承载推导。
+      // ⚠️ 食物/木/石/牲畜/织物/建筑/岗位/科技**原样带过**——
+      //    它们不在此处出现，正是因为不该被本段改动。
+      coal: nextEraId === 'E6' && s.era !== 'E6' ? 0 : s.coal,
+      steel: nextEraId === 'E6' && s.era !== 'E6' ? 0 : s.steel,
+      electricity: nextEraId === 'E6' && s.era !== 'E6' ? 0 : s.electricity,
+      industrial: nextEraId === 'E6' && s.era !== 'E6' ? 0 : s.industrial,
+      steamPressure: nextEraId === 'E6' && s.era !== 'E6' ? 0 : s.steamPressure,
+      pollution: nextEraId === 'E6' && s.era !== 'E6' ? 0 : s.pollution,
+      // 城市化率不重置为 0：它是由既有工人住宅承载推导的派生量，
+      // 玩家若已建住宅（回退版本等情形），重置会让面板显示 0% 却住宅成片。
+      urbanizationRate: s.urbanizationRate,
+      railroadLevel: nextEraId === 'E6' && s.era !== 'E6' ? 0 : s.railroadLevel,
     });
 
     // 5. 先产生结构化事件，再由消息层翻译（重要，置顶显示）

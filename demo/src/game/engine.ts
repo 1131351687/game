@@ -29,6 +29,26 @@ import { tickLiteracy, getLiteracyFactor } from './e5/literacy';
 import { advanceVoyage, rollVoyageEvent, ringName } from './e5/voyage';
 import { getCompoundMultiplier } from './e5/compound';
 import { tickBank } from './e5/bank';
+
+// ── E6 机器时代：能量链 + 城市化（纯函数模块）──
+import {
+  calcFactoryOutputFromRuntime,
+  calcSupply,
+  applyGridThrottle,
+  tickSteam,
+  getPressureTier,
+  getCoalDemand,
+  getBoilerEta,
+  getSteamEta2Effective,
+  isPressureSufficient,
+  emptyEnergyRuntime,
+  type EnergyRuntime,
+} from './e6/energy';
+import {
+  getUrbanizationRate,
+  tickPollution,
+  calcKnowledgeOutputE6,
+} from './e6/urban';
 import {
   FIRE,
   FIRE_TIER_INFO,
@@ -39,6 +59,7 @@ import {
   E3,
   E4,
   E5,
+  E6,
   HUNT,
   getFireTier,
   getToolMultiplier,
@@ -144,6 +165,38 @@ export interface EraState {
   voyages: Voyage[];
   /** 当前未还贷款（白银） */
   loan: number;
+
+  // ── E6 机器时代 ──
+  //
+  // 能量链：煤 →(司炉工)→ 热 →(蒸汽机 η₂)→ 机械能 →(发电机 η₃ → 输电 η₄)→ 电 →(电动机 η₅)→ 工厂
+  // 每加一环就多一次 η 乘法打折 —— 这是本代的核心矛盾，也是玩家的优化对象。
+  /** 煤：能量链起点，也是炼钢的还原剂（两个需求互相争夺 → 煤荒） */
+  coal: number;
+  /** 钢：炼钢工耗煤产出；工业设施与铁路的结构件 */
+  steel: number;
+  /** 电：发电厂由机械能转换；驱动工厂（替代直驱） */
+  electricity: number;
+  /** 工业品：工厂产出（耗机械能）；进而不入主资源条，属"产能"读数 */
+  industrial: number;
+  /**
+   * 蒸汽压力 0–100：本代的视觉主角（地位＝E1 火种）。
+   *
+   * ⚠️ 它是**积分态**（司炉工维持上升、自然衰减下降），因此必须存档。
+   *    派生值（如 η、供给率、ρ）不存档，每 tick 重算。
+   */
+  steamPressure: number;
+  /** 污染值：人口增长的「环境代价」载体，经卫生因子反噬 r */
+  pollution: number;
+  /**
+   * 城市化率 0–1：U = min(1, 工人住宅承载 / max(population,1))。
+   *
+   * 按 devplan §3.1 的说明，它虽是派生量但**存为字段**：它是拥挤系数与
+   * 「人口卡住诊断」的共同输入，存下来可避免每 tick 重算时与历史值抖动。
+   * 定义公式的单一来源是 urban.getUrbanizationRate，禁止在别处另行推导。
+   */
+  urbanizationRate: number;
+  /** 铁路工程等级 0–3（可升级工程系统，非点状建筑） */
+  railroadLevel: number;
 }
 
 /**
@@ -336,6 +389,33 @@ export interface AggregatedEffects {
   paperOutputMul: number;
   printOutputMul: number;
   researchOutputMul: number;
+
+  // ── E6 机器时代 ──
+  //
+  // ⚠️ 本代的键全部围绕能量链的 η 乘法。刻意**不给"总效率 +X%"这种笼统键** ——
+  //    那会让能量链面板失去"损耗在哪一环"的诊断能力，而逐环可观测正是本代设计意图。
+  /** 能量链系统是否解锁（蒸汽机(工业应用)） */
+  energyEnabled: boolean;
+  /** 电网 ρ 是否解锁（电磁感应·发电机） */
+  gridEnabled: boolean;
+  /** 铁路工程是否解锁 */
+  railroadEnabled: boolean;
+  /** η₁ 锅炉热效率加成（加法键；焦炭冶炼 +0.045） */
+  boilerEtaAdd: number;
+  /** η₂ 蒸汽世代内部乘数（调速器/复式/表面冷凝） */
+  steamGenMul: number;
+  /** 工厂规模效应斜率加成（加法键；回转式/复式/标准化/流水线） */
+  scaleSlopeAdd: number;
+  /** 工厂产出乘数（流水线 1.15） */
+  factoryOutMul: number;
+  /** 污染累积减免（加法键，上限 1.0） */
+  pollutionReduce: number;
+  /** 拥挤系数缓解（加法键；城市排水系统） */
+  crowdingReduce: number;
+  /** 铁路工程收益乘数（钢轨 1.25） */
+  railroadBonusMul: number;
+  /** 每人知识产出加成（分析机彩蛋 +0.05） */
+  knowledgePerPopAdd: number;
 }
 
 const DEFAULT_EFFECTS: AggregatedEffects = {
@@ -419,6 +499,19 @@ const DEFAULT_EFFECTS: AggregatedEffects = {
   paperOutputMul: 1,
   printOutputMul: 1,
   researchOutputMul: 1,
+
+  // ── E6 机器时代 ──
+  energyEnabled: false,
+  gridEnabled: false,
+  railroadEnabled: false,
+  boilerEtaAdd: 0,
+  steamGenMul: 1,
+  scaleSlopeAdd: 0,
+  factoryOutMul: 1,
+  pollutionReduce: 0,
+  crowdingReduce: 0,
+  railroadBonusMul: 1,
+  knowledgePerPopAdd: 0,
 };
 
 export function aggregateEffects(state: E1State): AggregatedEffects {
@@ -632,6 +725,32 @@ export function aggregateEffects(state: E1State): AggregatedEffects {
     if (e.paperOutputMul) acc.paperOutputMul *= mulR(e.paperOutputMul);
     if (e.printOutputMul) acc.printOutputMul *= mulR(e.printOutputMul);
     if (e.researchOutputMul) acc.researchOutputMul *= mulR(e.researchOutputMul);
+
+    // ── E6 机器时代 ──
+    //
+    // 解锁型（不衰减）：时代机制的开关，跨代后机制本身仍在（石油机仍可转），
+    // 只是效率按 eraDecay 降权 —— 与 E5 的 enableVoyage/enableBank 同处理。
+    if (e.enableEnergyChain) acc.energyEnabled = true;
+    if (e.enableGrid) acc.gridEnabled = true;
+    if (e.enableRailroad) acc.railroadEnabled = true;
+
+    // 衰减键：
+    //   boilerEtaAdd / scaleSlopeAdd 是加法键 → addR
+    //   其余乘数键 → mulR
+    //
+    // ⚠️ steamGenTier / transmitTier 这两个"绝对档位"键**不在这里聚合**。
+    //    它们是"取已研究科技中的最高档"，由 energy.ts 直接查 state.techs 决定
+    //    （getSteamEta2 / getTransmitEta4）。若在这里聚合成一个标量，
+    //    跨代衰减会把"世代 IV"降解成一个无意义的中间值，
+    //    而档位在语义上只有 I/I5/III/IV 四档，不存在"III.4"。
+    if (e.boilerEtaAdd) acc.boilerEtaAdd += addR(e.boilerEtaAdd);
+    if (e.scaleSlopeAdd) acc.scaleSlopeAdd += addR(e.scaleSlopeAdd);
+    if (e.pollutionReduce) acc.pollutionReduce += addR(e.pollutionReduce);
+    if (e.crowdingReduce) acc.crowdingReduce += addR(e.crowdingReduce);
+    if (e.knowledgePerPopAdd) acc.knowledgePerPopAdd += addR(e.knowledgePerPopAdd);
+    if (e.steamGenMul) acc.steamGenMul *= mulR(e.steamGenMul);
+    if (e.factoryOutMul) acc.factoryOutMul *= mulR(e.factoryOutMul);
+    if (e.railroadBonusMul) acc.railroadBonusMul *= mulR(e.railroadBonusMul);
   }
 
   return acc;
@@ -788,6 +907,38 @@ export function getCapacity(state: E1State): number {
       E5.POP_K_BASE +
       houses * E5.POP_K_PER_HOUSE +
       potatoK +
+      legacyHousing +
+      getTerritoryCapacity(state)
+    );
+  }
+
+  // ── E6 机器时代：人口模型切换（E6-machine.md §11.4）──
+  //
+  // K = E6 基础 900 + 工人住宅×200 + 旧时代全部遗产 + 版图
+  //
+  // ⚠️ 这是**同一个 bug 的第三次复现，必须记下来**：
+  //    E5 当年漏了这个分支，从 E4（K 上千）跃迁后 K 断崖到几十，人口归零。
+  //    E6 实装时又漏了一次 —— e6-autoplay 第一轮跑出「1200 人开局，
+  //    5 秒内人口归零」，实测 getCapacity 返回 84。
+  //    根因完全相同：默认公式只数 house / village_house，
+  //    不数 city_house、不数 worker_housing、不数版图。
+  //
+  //    教训：**每新增一个时代，必须同步在 getCapacity 加分支**，
+  //    否则"跃迁只新增不重置"这条铁律会在人口维度上被静默违反。
+  //    检查清单见 DEV-GUIDE §十一。
+  if (state.era === 'E6') {
+    const cityHouses = state.buildings.city_house ?? 0;
+    const legacyHousing =
+      cityHouses * E3.POP_PER_CITY_HOUSE +
+      houses * POPULATION.CAPACITY_PER_HOUSE +
+      villageHouses * E2.CAPACITY_PER_VILLAGE_HOUSE +
+      Math.min(fields, Math.floor(farmers / E2.FIELD_MIN_FARMERS)) * E2.CAPACITY_PER_FIELD;
+    return (
+      E6.POP_K_BASE +
+      (state.buildings.worker_housing ?? 0) * E6.POP_K_PER_HOUSING +
+      // E5 的住所加成继续生效（跃迁不重置）：新作物马铃薯的 K 不被抹掉
+      houses * E5.POP_K_PER_HOUSE +
+      (state.techs['new_crops'] ? E5.POP_K_POTATO : 0) +
       legacyHousing +
       getTerritoryCapacity(state)
     );
@@ -1232,8 +1383,21 @@ export function getBuildingCost(
   // costMultiplier≥1 时 Math.pow(...) 本身 ≥1，钳制只作用于科技折扣（buildingCostMultiplier<1）。
   const mult = Math.max(1, Math.pow(def.costMultiplier, owned) * eff.buildingCostMultiplier);
 
+  // ── E6 首座样机例外（deadlock guard）──
+  //
+  // owned === 0 且有 protoCost 时改用样机价（纯木石），**不乘 costMultiplier**
+  // （此时 mult 恒为 1 的基数，但样机是手工定制的整数价，不该被倍率扰动）。
+  //
+  // ⚠️ 这不是数值美化，是防死锁：工厂/蒸汽机/锅炉房/煤矿的正常成本都要
+  //    工业品与钢，而工业品与钢恰恰要靠它们才能生产。若第一座也按正常价，
+  //    则「无钢 → 造不了工厂 → 产不出工业品 → 永远无钢」形成闭环，
+  //    E6 在任何开局下都无法推进 —— 与 E5 航海港的白银死锁完全同源。
+  //    教训：**入口建筑不能消耗它自己产出的东西**。
+  const baseCost = owned === 0 && def.protoCost ? def.protoCost : def.cost;
+
   const out: Partial<Record<ResourceId, number>> = {};
-  for (const [res, amount] of Object.entries(def.cost)) {
+  for (const [res, amount] of Object.entries(baseCost)) {
+    // 样机价不随数量递增（owned 恒为 0），故直接用 mult 也等价；此处统一处理。
     out[res as ResourceId] = Math.ceil((amount as number) * mult);
   }
   return out;
@@ -1633,6 +1797,35 @@ export function checkAdvance(state: E1State): AdvanceCheck {
     });
   }
 
+  // ── E6 特殊条件：电网供电率 ρ ──
+  //
+  // 用**当前实时 ρ** 而不是"建了多少发电厂"：这一项考的是
+  // "你的电够不够带满全部工厂"。建了 15 座工厂却只配 3 座电厂时
+  // ρ 会掉到 0.3 一带，工厂虽"建成"产出却被电网掐住 ——
+  // 这正是 E6 的核心权衡（产能扩张必须与电力建设同步）。
+  if (cond.minRho !== undefined) {
+    const rt = calcSupply(state);
+    const rho = rt.rho;
+    items.push({
+      label: `电网供电率 ρ ≥ ${cond.minRho}`,
+      done: rho >= cond.minRho,
+      detail: `${(rho * 100).toFixed(0)}% / ${(cond.minRho * 100).toFixed(0)}%`,
+    });
+  }
+
+  // ── E6 特殊条件：城市化率 ──
+  //
+  // 城市化不是免费的：它同时是拥挤系数与污染两个负向 r 因子的载体，
+  // 所以这一项实际在考"你能不能把城市的代价治住"，而非"能堆多少住宅"。
+  if (cond.minUrbanization !== undefined) {
+    const u = getUrbanizationRate(state);
+    items.push({
+      label: `城市化率 ≥ ${(cond.minUrbanization * 100).toFixed(0)}%`,
+      done: u >= cond.minUrbanization,
+      detail: `${(u * 100).toFixed(0)}% / ${(cond.minUrbanization * 100).toFixed(0)}%`,
+    });
+  }
+
   return { ok: items.every(i => i.done), items };
 }
 
@@ -1898,6 +2091,29 @@ export interface TickResult {
   printNote: string;
   /** E5 本 tick 的远航事件消息 */
   voyageNotes: string[];
+
+  // ── E6 机器时代 ──
+  coal: number;
+  steel: number;
+  electricity: number;
+  industrial: number;
+  steamPressure: number;
+  pollution: number;
+  urbanizationRate: number;
+  /**
+   * E6 本 tick 的能量链快照（不存档）。
+   *
+   * 刻意把整个运行时对象带出来而不是拆成十几个字段：UI 的能量链面板
+   * 需要**同时**显示各环 η 与 G/D/ρ，分开取值会出现"不同帧拼在一起"的
+   * 显示不一致（同 E3 贸易排序的历史教训）。
+   */
+  energy: EnergyRuntime;
+  /** E6 本 tick 的电网惩罚（供 UI 暗角/脉冲判定） */
+  grid: { outputMul: number; brownout: boolean; blackout: boolean };
+  /** E6 本 tick 的蒸汽压力档位 */
+  pressureTier: { key: 'idle' | 'low' | 'normal' | 'high'; label: string; color: string };
+  /** E6 本 tick 的能源/城市化消息（掉档、拉闸、污染告警） */
+  energyNotes: string[];
 }
 
 export function tick(
@@ -1919,7 +2135,8 @@ export function tick(
 
   let wood = Math.min(state.wood + woodGain, getResourceStorage('wood', state));
   let stone = Math.min(state.stone + stoneGain, getResourceStorage('stone', state));
-  const experience = state.experience + expGain;
+  // E6 起知识会在 tick 末追加（calcKnowledgeOutputE6），故此处必须是 let。
+  let experience = state.experience + expGain;
 
   // 2) 火种（自动维持消耗木材）
   const fireResult = tickFire({ ...state, wood }, dt);
@@ -2272,6 +2489,183 @@ export function tick(
     paper = Math.max(0, Math.min(paper, getPaperStorage(0)));
   }
 
+  // ─────────────────────────────────────────────
+  // 5.6) E6 机器时代
+  // ─────────────────────────────────────────────
+  //
+  // 严格按 E6-devplan §3.3 的 tick 顺序：
+  //   煤/钢产出 → 能量链 → 工厂产出 → 蒸汽压力 → 污染 → 人口
+  //
+  // ⚠️ 整块被 `state.era === 'E6'` 门控。E1–E5 走不进这里，
+  //    因此 1163s / 1920s 基线与 E5 的全部数值不受任何影响 ——
+  //    这是本块最重要的正确性约束（devplan §一 的铁律）。
+  //
+  // ⚠️ 顺序不可调换：能量链（步骤 2）必须排在工厂产出（步骤 3）之前，
+  //    否则工厂会用上一帧的陈旧供给率；污染（步骤 5）必须排在人口（步骤 6）
+  //    之前，否则"治理后人口回升"会晚一拍，玩家误以为治理无效。
+  let coal = state.coal ?? 0;
+  let steel = state.steel ?? 0;
+  let electricity = state.electricity ?? 0;
+  let industrial = state.industrial ?? 0;
+  let steamPressure = state.steamPressure ?? 0;
+  let pollution = state.pollution ?? 0;
+  let urbanizationRate = state.urbanizationRate ?? 0;
+  let railroadLevel = state.railroadLevel ?? 0;
+  let energyRt: EnergyRuntime = emptyEnergyRuntime();
+  let energyNotes: string[] = [];
+
+  if (state.era === 'E6') {
+    // ── 1) 煤 / 钢产出 ──
+    //
+    // 煤矿工：0.6 煤/人/秒，每座煤矿 +25%。
+    // 炼钢工：0.15 钢/人/秒，每产 1 钢耗 0.8 煤/秒。
+    //
+    // ⚠️ 炼钢与锅炉**争夺同一批煤**，这就是设计上第一个瓶颈（煤荒）。
+    //    两者相加超过煤产量时，这里按比例分配：先保证锅炉（否则全厂停摆），
+    //    余下的才给炼钢。玩家看到的症状是"钢厂建了却不出钢"。
+    const coalMiners = state.jobs.coal_miner ?? 0;
+    const coalMines = state.buildings.coal_mine ?? 0;
+    const coalGain = coalMiners * 0.6 * (1 + 0.25 * coalMines) * dt;
+
+    const steelWorkers = state.jobs.steelworker ?? 0;
+    const steelGain = steelWorkers * 0.15 * dt;
+    const steelCoalNeed = steelWorkers * 0.8 * dt;
+
+    coal += coalGain;
+
+    // ── 2) 能量链推进（含烧煤）──
+    //
+    // E6 效率参数从 aggregateEffects 注入：energy.ts 刻意不反向 import
+    // engine（会形成循环依赖），故本模块负责把聚合结果递过去。
+    const e6fx = {
+      boilerEtaAdd: eff.boilerEtaAdd,
+      steamGenMul: eff.steamGenMul,
+      scaleSlopeAdd: eff.scaleSlopeAdd,
+      factoryOutMul: eff.factoryOutMul,
+      railroadBonusMul: eff.railroadBonusMul,
+    };
+    const e6ux = {
+      pollutionReduce: eff.pollutionReduce,
+      crowdingReduce: eff.crowdingReduce,
+      knowledgePerPopAdd: eff.knowledgePerPopAdd,
+    };
+
+    energyRt = calcSupply({ ...state, coal } as E1State, e6fx);
+
+    // 锅炉取煤。
+    //
+    // ⚠️ 取的是 min(能力, 需求) 而非纯能力：
+    //    压力封顶后若继续满负荷烧煤，煤会被白白烧光，炼钢永远分不到煤，
+    //    于是"钢 ≥ 200000"这条跃迁条件永远无法满足
+    //    （e6-autoplay 实测：煤 0↔10000 振荡、钢恒为 0）。
+    //    getCoalDemand 给出"维持满压所需"的经济上限，余量留给炼钢。
+    const boilerDemand = getCoalDemand({ ...state, coal } as E1State, e6fx);
+    const boilerBurn = Math.min(energyRt.coalBurned, boilerDemand);
+    const boilerCoal = Math.min(coal, boilerBurn * dt);
+    coal = Math.max(0, coal - boilerCoal);
+
+    // ── 3) 工厂产出 ──
+    //
+    // ⚠️ 工厂产出必须用**扣完锅炉煤之后**的状态重算供给率，
+    //    否则会出现"煤已经烧掉但工厂仍按有煤满负荷生产"的账目错误。
+    //
+    // 同时要重算烧煤量：锅炉已按"需求"取煤，机械能必须按**实际烧掉的煤**
+    // 计算，否则会凭空多出 (能力−需求) 那部分机械能 —— 那等于免费能源，
+    // 会让电网 ρ 虚高、工厂产出虚增。
+    const rtAfterCoal = calcSupply({ ...state, coal } as E1State, e6fx);
+    // 用实际烧煤量重算毛机械能（保持与扣煤账目一致）
+    const actualBurn = Math.min(rtAfterCoal.coalBurned, boilerDemand);
+    const eta1Now = getBoilerEta(e6fx);
+    const eta2Now = getSteamEta2Effective({ ...state, steamPressure } as E1State, e6fx);
+    const mechRawActual = actualBurn * E6.COAL_KW_PER_UNIT * eta1Now * eta2Now;
+    // 按实际/能力的比例缩放供给（电气与直驱两条路径同源缩放）。
+    //
+    // ⚠️ mechRaw === 0 时必须直接给 0，不能走除法：
+    //    0/0 = NaN，而 NaN 会顺着 mechSupply → supplyRate → 工厂产出
+    //    一路污染成 industrial = NaN，并在 UI 上显示成 "NaN"。
+    //    实测：未研究「纽科门机」时 eta2=0 → mechRaw=0 → 立刻 NaN。
+    const scaleRatio =
+      rtAfterCoal.mechRaw > 0 ? mechRawActual / rtAfterCoal.mechRaw : 0;
+    const mechSupplyScaled = rtAfterCoal.mechSupply * scaleRatio;
+    const gridGScaled = rtAfterCoal.gridG * scaleRatio;
+    energyRt = {
+      ...rtAfterCoal,
+      coalBurned: actualBurn,
+      mechRaw: mechRawActual,
+      mechSupply: mechSupplyScaled,
+      gridG: gridGScaled,
+      rho: rtAfterCoal.gridD > 0
+        ? Math.min(1, gridGScaled / rtAfterCoal.gridD)
+        : 1,
+      supplyRate:
+        (state.buildings.factory ?? 0) > 0
+          ? Math.min(
+              1,
+              mechSupplyScaled / ((state.buildings.factory ?? 0) * E6.FACTORY_MECH_KW)
+            )
+          : 0,
+      coalConsumed: actualBurn,
+    };
+
+    const factoryOut = calcFactoryOutputFromRuntime(
+      { ...state, coal } as E1State,
+      energyRt,
+      e6fx
+    );
+    industrial += factoryOut * dt;
+
+    // 炼钢：先看剩多少煤
+    if (steelWorkers > 0) {
+      const coalForSteel = Math.min(coal, steelCoalNeed);
+      const ratio = steelCoalNeed > 0 ? coalForSteel / steelCoalNeed : 0;
+      coal = Math.max(0, coal - coalForSteel);
+      steel += steelGain * ratio;
+      if (ratio < 0.99 && steelWorkers > 0) {
+        energyNotes.push('⚠️ 煤不足，炼钢降速——锅炉与钢厂在争同一批煤');
+      }
+    }
+
+    // ── 4) 蒸汽压力 ──
+    const steam = tickSteam(steamPressure, { ...state, coal } as E1State, dt);
+    steamPressure = steam.pressure;
+
+    // 掉档告警（仅在有工厂时提示，避免开局噪音）。
+    // ⚠️ 这里必须用 energy.isPressureSufficient 的口径，即"压力是否够当前世代"，
+    //    而不是"压力是否满"——世代 I 只需 1 点压力，满档提示会全程误报。
+    const factoriesNow = state.buildings.factory ?? 0;
+    if (factoriesNow > 0 && !isPressureSufficient({ ...state, steamPressure } as E1State)) {
+      energyNotes.push('🔥 蒸汽压力不足当档，蒸汽机喘振（效率 ×0.4）——派更多司炉工');
+    }
+
+    // ── 5) 污染累积 ──
+    const pol = tickPollution(pollution, state, dt, e6ux);
+    pollution = pol.pollution;
+
+    // ── 6) 城市化率（由住宅承载推导，单一来源）──
+    urbanizationRate = getUrbanizationRate(state);
+
+    // ── 7) 电网惩罚告警 ──
+    const throttle = applyGridThrottle(energyRt.rho);
+    if (throttle.blackout) {
+      energyNotes.push('⚡ 电网崩溃！ρ < 0.2，工厂降至 30% 产出——立刻加建发电厂');
+    } else if (throttle.brownout) {
+      energyNotes.push('⚡ 电网拉闸：ρ < 0.6，人口增长额外 −30%');
+    }
+
+    // ── 8) 知识产出（E6 沿用「知识/研究点」货币）──
+    //
+    // E6 的知识产出挂在人口上（而非像 E5 那样挂在印刷链上）：
+    // 工业化国家的知识来自普及教育，不再是少数抄书人。
+    const knowledgeOut = calcKnowledgeOutputE6(state, e6ux);
+    experience += knowledgeOut * dt;
+
+    // 铁路等级由科技与工业品解锁（三级工程系统）
+    if (state.techs['railroad'] && railroadLevel === 0) railroadLevel = 1;
+  }
+
+  const energyGrid = applyGridThrottle(energyRt.rho);
+  const energyTier = getPressureTier(steamPressure);
+
   // E4 资源也必须在 tick 末统一应用库存上限，避免产出层与资源栏显示脱节。
   if (state.era === 'E4') {
     iron = Math.max(0, Math.min(iron, getResourceStorage('iron', state)));
@@ -2324,6 +2718,18 @@ export function tick(
     loan,
     printNote,
     voyageNotes,
+    // ── E6 机器时代 ──
+    coal,
+    steel,
+    electricity,
+    industrial,
+    steamPressure,
+    pollution,
+    urbanizationRate,
+    energy: energyRt,
+    grid: energyGrid,
+    pressureTier: energyTier,
+    energyNotes,
   };
 }
 

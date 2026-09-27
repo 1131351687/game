@@ -1028,5 +1028,8 @@ if (args.includes('autoplay')) {
   }
 } else {
   openingSim();
-  console.log('提示：autoplay [beeline|focus] 跑 E1；autoplay e2 跑 E2；autoplay e3 跑 E3；autoplay e4 跑 E4');
+  console.log(
+    '提示：autoplay [beeline|focus] 跑 E1；autoplay e2 跑 E2；autoplay e3 跑 E3；autoplay e4 跑 E4；' +
+      'autoplay e5 见 src/dev/e5-autoplay.ts；autoplay e6 见 src/dev/e6-autoplay.ts'
+  );
 }
