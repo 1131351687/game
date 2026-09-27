@@ -29,6 +29,7 @@ import type { E1State } from '../game/engine';
 import { TECHS, techsOfEra } from '../data/techs';
 import { JOBS } from '../data/jobs';
 import { E5 } from '../data/constants';
+import { getCompoundMultiplier } from '../game/e5/compound';
 
 const STEP = 5;
 const HARD_CAP = 60000;
@@ -235,11 +236,13 @@ function main(): void {
     peakBooks = Math.max(peakBooks, s.books);
     if (s.food <= 0) starvationSec += STEP;
 
-    // 复利采样降频（aggregateEffects 是热点）
+    // 复利采样降频（aggregateEffects 是热点）。
+    // ⚠️ 这里必须调用引擎的 getCompoundMultiplier 取真实 R，不要手写
+    //    1 + k×min(N,35) —— 那会绕过 N_eff 的分段递减与 32 硬顶，
+    //    把 R 高估到 4.40（真实上限 ×3.75），从而掩盖复利上限的回归。
     if (step % 40 === 0) {
       const eff = aggregateEffects(s);
-      const n = e5Techs.filter(x => s.techs[x.id]).length;
-      peakR = Math.max(peakR, 1 + eff.compoundKAdd * Math.min(n, 35));
+      peakR = Math.max(peakR, getCompoundMultiplier(s, eff));
     }
 
     const sec = Math.round(t);
